@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>GIZMOWORKS — Factory Tycoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+
+<body data-screen="home">
+
+<!-- ------------------------------------------------------------------ home -->
+<section id="home" class="screen sheet">
+  <div class="masthead">
+    <p class="ref">REF. 0X46CC4B5116AA · FIG. 2 · PL. 0/1</p>
+    <h1>GIZMOWORKS</h1>
+    <p class="sub">Extracteur Balistique — a factory tycoon for 2 to 4 engineers</p>
+  </div>
+  <p class="blurb">
+    Buy machines. Bolt them into a line. Roll gizmos through it, refine them up the
+    tiers, and ship them before anyone else fills the standing orders. Stock is
+    shared, so what your rivals buy, you can't.
+  </p>
+  <div class="home-actions">
+    <button id="host-btn" class="primary wide">Start a room</button>
+    <form id="join-form" class="join">
+      <label for="join-code">or join with a code</label>
+      <div class="join-row">
+        <input id="join-code" maxlength="4" autocomplete="off" autocapitalize="characters"
+               autocorrect="off" spellcheck="false" inputmode="text" placeholder="ABCD">
+        <button type="submit" class="ghost">Join</button>
+      </div>
+    </form>
+  </div>
+  <p id="home-status" class="status" role="status"></p>
+  <p class="fine">EXTRACTEUR BALISTIQUE N° 46CC · DESS. CR</p>
+</section>
+
+<!-- ------------------------------------------------------------------ name -->
+<section id="name" class="screen sheet">
+  <h2>Sign the drawing</h2>
+  <form id="name-form">
+    <label for="name-input">Your name</label>
+    <input id="name-input" maxlength="16" autocomplete="nickname" placeholder="e.g. Marceau" required>
+    <button type="submit" class="primary wide">Continue</button>
+  </form>
+</section>
+
+<!-- ----------------------------------------------------------------- lobby -->
+<section id="lobby" class="screen sheet">
+  <h2>Assembly hall</h2>
+  <div id="host-panel" hidden>
+    <div class="qr-frame">
+      <canvas id="qr" width="220" height="220" aria-label="Scan to join this room"></canvas>
+    </div>
+    <p class="code" id="room-code" aria-live="polite"></p>
+    <button id="copy-link" class="ghost">Copy join link</button>
+  </div>
+  <ul id="roster" aria-live="polite"></ul>
+  <div class="lobby-actions">
+    <button id="ready-btn" class="ghost">I'm ready</button>
+    <button id="start-btn" class="primary" disabled>Start game</button>
+  </div>
+  <p id="lobby-status" class="status" role="status"></p>
+  <p class="fine">Rounds: <span id="rounds-label">5</span> × 90 seconds, with a restock between each.</p>
+</section>
+
+<!-- ------------------------------------------------------------------ game -->
+<section id="game" class="screen">
+  <header class="hud">
+    <div class="hud-cell">
+      <span class="hud-label">CASH</span>
+      <span class="hud-val" id="hud-cash">$0</span>
+    </div>
+    <div class="hud-cell">
+      <span class="hud-label">DRAW / SUPPLY</span>
+      <span class="hud-val" id="hud-power">0 / 0</span>
+    </div>
+    <div class="hud-cell right">
+      <span class="hud-label" id="hud-round">ROUND 1 / 5</span>
+      <span class="hud-val" id="hud-timer">1:30</span>
+    </div>
+  </header>
+  <p class="ticker"><span id="hud-power-note">POWER NOMINAL</span> · <span id="hud-bonus"></span></p>
+
+  <div class="stage-wrap">
+    <canvas id="stage"></canvas>
+  </div>
+
+  <div id="legend" class="legend"></div>
+
+  <nav class="tabbar">
+    <button id="tab-shop" class="tab-btn">Shop</button>
+    <button id="tab-orders" class="tab-btn">Orders</button>
+    <button id="tab-board" class="tab-btn">Standings</button>
+  </nav>
+
+  <aside id="slot-panel" class="drawer" hidden></aside>
+  <aside id="shop" class="drawer tall" hidden></aside>
+
+  <aside id="orders" class="drawer" hidden>
+    <div class="panel-head"><h3>Standing orders</h3><button class="x" data-close-orders>Close</button></div>
+    <p class="dim">First line to ship the full count takes the whole fee. Orders refresh between rounds.</p>
+    <ul id="orders-list" class="orders"></ul>
+  </aside>
+
+  <aside id="board" class="drawer" hidden>
+    <div class="panel-head"><h3>Standings</h3><button class="x" data-close-board>Close</button></div>
+    <p class="dim">Net worth is cash plus half of everything bolted down.</p>
+    <ul id="board-list" class="board"></ul>
+  </aside>
+
+  <div id="toast" class="toast"></div>
+</section>
+
+<!-- --------------------------------------------------------------- results -->
+<section id="results" class="screen sheet">
+  <p class="ref">FIN DE SERIE</p>
+  <h2>Final audit</h2>
+  <ol id="scores" class="results-list"></ol>
+  <button id="again-btn" class="primary wide">Back to the hall</button>
+  <p id="results-note" class="fine"></p>
+</section>
+
+<script type="module">
+import { createHost, createClient, roomFromUrl, joinUrl, clientId } from './js/net.js';
+import * as G from './js/game.js';
+import { initRenderer, draw, resize } from './js/render.js';
+import { bindCanvas, bindButton, bindKeys, keepAwake } from './js/input.js';
+import * as UI from './js/ui.js';
+
+const SLUG = 'gizmoworks';
+const MAX_PLAYERS = 4;          // including the host
+const ROUNDS = G.DEFAULT_ROUNDS;
+const TICK_MS = 50;             // 20 Hz simulation
+const SEND_MS = 125;            // 8 Hz broadcast — plenty for rolling circles
+
+const $ = s => document.querySelector(s);
+const show = s => (document.body.dataset.screen = s);
+
+let role = null;      // 'host' | 'client'
+let host = null, client = null;
+let mySeat = 0;       // game seat: host is always 0, joiners are 1..3
+let view = null;      // my packed factory
+let meta = { round: 1, phase: 'lobby', tLeft: 0, contracts: [], stock: null, board: [], names: [] };
+let selected = -1;
+
+/* ================================================================== render */
+
+initRenderer($('#stage'));
+UI.renderLegend();
+
+(function frame() {
+  if (document.body.dataset.screen === 'game' && view) {
+    draw({ ...view, name: meta.names[mySeat] }, selected);
+    UI.renderHud(view, meta.round, ROUNDS, meta.phase, meta.tLeft);
+  }
+  requestAnimationFrame(frame);
+})();
+
+/* ================================================================== intents */
+
+/** One funnel for buy / upgrade / sell / unlock, whichever role we are. */
+function emit(intent) {
+  if (role === 'host') applyIntent(0, intent);
+  else client?.input(intent);
+}
+
+bindCanvas($('#stage'), i => {
+  selected = i;
+  if (!view) return;
+  UI.closeShop();
+  UI.openSlot(i, view, meta.stock, emit);
+});
+
+bindKeys({
+  selectSlot: i => { if (view && i < G.SLOT_COUNT) { selected = i; UI.openSlot(i, view, meta.stock, emit); } },
+  upgrade: () => { if (selected >= 0) emit({ t: 'upgrade', slot: selected }); },
+  shop: () => UI.openShop(view, meta.stock, emit, null),
+  close: () => { UI.closePanel(); UI.closeShop(); $('#orders').hidden = true; $('#board').hidden = true; },
+});
+
+bindButton($('#tab-shop'), () => { UI.closePanel(); UI.openShop(view, meta.stock, emit, null); });
+bindButton($('#tab-orders'), () => { $('#orders').hidden = false; UI.renderContracts(meta.contracts, mySeat, meta.names); });
+bindButton($('#tab-board'), () => { $('#board').hidden = false; UI.renderBoard(meta.board, mySeat); });
+document.querySelectorAll('[data-close-orders]').forEach(b => bindButton(b, () => ($('#orders').hidden = true)));
+document.querySelectorAll('[data-close-board]').forEach(b => bindButton(b, () => ($('#board').hidden = true)));
+
+/* ===================================================================== host */
+
+const factories = new Map();  // game seat -> factory
+let stock = null;
+let contracts = [];
+let round = 1, phase = 'lobby', phaseEnds = 0;
+let tickTimer = null, sendTimer = null, last = 0;
+
+function startHost() {
+  role = 'host';
+  const name = savedName() || 'Chef d\'atelier';
+  host = createHost({ slug: SLUG, maxPlayers: MAX_PLAYERS - 1 });
+
+  host.on('open', code => {
+    const url = joinUrl(code);
+    QRCode.toCanvas($('#qr'), url, { width: 220, margin: 1, color: { dark: '#171412', light: '#f2efe6' } });
+    $('#room-code').textContent = code;
+    $('#host-panel').hidden = false;
+    bindButton($('#copy-link'), async () => {
+      try { await navigator.clipboard.writeText(url); UI.toast('Link copied'); }
+      catch { UI.toast(url); }
+    });
+    $('#ready-btn').hidden = true;
+    show('lobby');
+    refreshLobby();
+  });
+
+  host.on('roster', refreshLobby);
+  host.on('hello', netSeat => {
+    const seat = netSeat + 1;
+    const entry = host.roster().find(p => p.seat === netSeat);
+    // Someone arriving mid-game gets a line of their own rather than a dead seat.
+    if (!factories.has(seat) && phase !== 'lobby') factories.set(seat, G.newFactory(seat, entry?.name || `P${seat + 1}`));
+    const f = factories.get(seat);
+    if (f) { f.connected = true; if (entry?.name) f.name = entry.name; }
+    if (phase !== 'lobby') host.sendTo(netSeat, { t: 'start', state: { rounds: ROUNDS } });
+    refreshLobby();
+  });
+  host.on('leave', seat => {
+    const f = factories.get(seat + 1);
+    if (f) f.connected = false;
+    refreshLobby();
+  });
+  host.on('input', (netSeat, payload) => applyIntent(netSeat + 1, payload));
+  host.on('error', err => ($('#lobby-status').textContent = err.message));
+
+  factories.set(0, G.newFactory(0, name));
+  host.open();
+
+  bindButton($('#start-btn'), beginGame);
+}
+
+function refreshLobby() {
+  const players = [{ seat: 0, name: factories.get(0)?.name || 'Host', ready: true, connected: true },
+    ...host.roster().map(p => ({ ...p, seat: p.seat + 1 }))];
+  meta.names = [];
+  players.forEach(p => (meta.names[p.seat] = p.name));
+  UI.renderRoster(players, 0);
+  host.broadcast({ t: 'event', name: 'roster', data: { players } });
+
+  const enough = players.length >= 2;
+  const allReady = host.roster().every(p => p.ready && p.connected);
+  $('#start-btn').disabled = !(enough && allReady);
+  $('#lobby-status').textContent = !enough
+    ? 'Waiting for at least one more engineer.'
+    : allReady ? 'Everyone is ready.' : 'Waiting on ready-up.';
+}
+
+function beginGame() {
+  stock = G.newStock();
+  contracts = G.refreshContracts(1);
+  round = 1;
+  for (const p of host.roster()) {
+    if (!factories.has(p.seat + 1)) factories.set(p.seat + 1, G.newFactory(p.seat + 1, p.name));
+    const f = factories.get(p.seat + 1);
+    f.name = p.name;
+    f.connected = p.connected;
+  }
+  setPhase('round', G.ROUND_SECONDS);
+  host.setPhase('playing');
+  host.broadcast({ t: 'start', state: { rounds: ROUNDS } });
+  show('game');
+  keepAwake();
+  resize();
+
+  last = performance.now();
+  clearInterval(tickTimer); clearInterval(sendTimer);
+  tickTimer = setInterval(tick, TICK_MS);
+  sendTimer = setInterval(broadcastState, SEND_MS);
+  window.addEventListener('beforeunload', warnHost);
+}
+
+const warnHost = e => { e.preventDefault(); e.returnValue = ''; };
+
+function setPhase(p, seconds) {
+  phase = p;
+  phaseEnds = performance.now() + seconds * 1000;
+}
+
+function tick() {
+  const now = performance.now();
+  const dt = Math.min(0.25, (now - last) / 1000);
+  last = now;
+
+  if (phase === 'round') {
+    for (const f of factories.values()) {
+      const sales = [...G.tickFactory(f, dt), ...G.tickEmptySlots(f, dt)];
+      for (const s of sales) {
+        const filled = G.creditContracts(contracts, f, s.tier);
+        for (const { contract, seat } of filled) {
+          host.broadcast({ t: 'event', name: 'contract', data: { seat, reward: contract.reward, tier: contract.tier } });
+          if (seat === 0) UI.toast(`Order filled — ${UI.money(contract.reward)}`);
+        }
+      }
+    }
+  }
+
+  if (now >= phaseEnds) {
+    if (phase === 'round') {
+      if (round >= ROUNDS) return endGame();
+      G.restock(stock);
+      contracts = G.refreshContracts(round + 1);
+      host.reap();
+      setPhase('intermission', G.INTERMISSION_SECONDS);
+      host.broadcast({ t: 'event', name: 'restock', data: { round } });
+      UI.toast('Delivery arrived — shop restocked');
+    } else if (phase === 'intermission') {
+      round += 1;
+      setPhase('round', G.ROUND_SECONDS);
+      host.broadcast({ t: 'event', name: 'round', data: { round } });
+    }
+  }
+}
+
+function boardData() {
+  return [...factories.values()].map(f => ({
+    seat: f.seat, name: f.name, net: G.netWorth(f), connected: f.connected !== false,
+  }));
+}
+
+function broadcastState() {
+  const tLeft = Math.max(0, (phaseEnds - performance.now()) / 1000);
+  const board = boardData();
+  const names = [];
+  for (const f of factories.values()) names[f.seat] = f.name;
+  const common = { t: 'state', round, phase, tLeft: Math.round(tLeft * 10) / 10, board, names, contracts, stock };
+
+  meta = { ...meta, ...common };
+  view = G.packFactory(factories.get(0));
+
+  for (const f of factories.values()) {
+    if (f.seat === 0) continue;
+    host.sendTo(f.seat - 1, { ...common, me: G.packFactory(f) });
+  }
+  refreshOpenPanels();
+}
+
+/** Intents are validated here and nowhere else. Clients never touch money. */
+function applyIntent(seat, intent) {
+  const f = factories.get(seat);
+  if (!f || phase === 'lobby' || phase === 'over' || !intent) return;
+  let res;
+  switch (intent.t) {
+    case 'buy':     res = G.buy(f, stock, intent.slot, intent.id); break;
+    case 'upgrade': res = G.upgrade(f, intent.slot); break;
+    case 'sell':    res = G.sellMachine(f, stock, intent.slot); break;
+    case 'unlock':  res = G.unlockSlot(f); break;
+    default: return;
+  }
+  if (seat === 0) UI.toast(res.msg, !res.ok);
+  else host.sendTo(seat - 1, { t: 'event', name: 'notice', data: res });
+}
+
+function endGame() {
+  clearInterval(tickTimer); clearInterval(sendTimer);
+  phase = 'over';
+  window.removeEventListener('beforeunload', warnHost);
+  const results = [...factories.values()]
+    .map(f => ({ seat: f.seat, name: f.name, net: G.netWorth(f), shipped: f.shipped, earned: Math.round(f.earned) }))
+    .sort((a, b) => b.net - a.net);
+  host.over(results);
+  UI.renderResults(results);
+  $('#results-note').textContent = `${ROUNDS} rounds completed.`;
+  show('results');
+}
+
+/* =================================================================== client */
+
+function startClient(code) {
+  role = 'client';
+  const name = savedName();
+  if (!name) return promptName(code);
+
+  client = createClient({ slug: SLUG, code, name });
+
+  client.on('welcome', msg => {
+    mySeat = msg.seat + 1;
+    $('#host-panel').hidden = true;
+    $('#start-btn').hidden = true;
+    show('lobby');
+    $('#lobby-status').textContent = `Joined room ${code}. Ready up when you are.`;
+    sessionStorage.setItem('room', code);
+  });
+
+  client.on('rejected', reason => {
+    $('#home-status').textContent = reason;
+    show('home');
+  });
+
+  client.on('start', () => { show('game'); keepAwake(); resize(); });
+
+  client.on('state', msg => {
+    view = msg.me;
+    meta = { round: msg.round, phase: msg.phase, tLeft: msg.tLeft, contracts: msg.contracts, stock: msg.stock, board: msg.board, names: msg.names };
+    if (document.body.dataset.screen !== 'game' && msg.phase !== 'lobby') show('game');
+    refreshOpenPanels();
+  });
+
+  client.on('event', msg => {
+    if (msg.name === 'roster') UI.renderRoster(msg.data.players, mySeat);
+    else if (msg.name === 'notice') UI.toast(msg.data.msg, !msg.data.ok);
+    else if (msg.name === 'restock') UI.toast('Delivery arrived — shop restocked');
+    else if (msg.name === 'round') UI.toast(`Round ${msg.data.round}`);
+    else if (msg.name === 'contract' && msg.data.seat === mySeat) UI.toast(`Order filled — ${UI.money(msg.data.reward)}`);
+  });
+
+  client.on('over', results => { UI.renderResults(results); show('results'); });
+  client.on('disconnected', () => UI.toast('Lost the host. Reopen the link to rejoin.', true));
+  client.on('error', err => {
+    $('#lobby-status').textContent = err.message;
+    $('#home-status').textContent = err.message;
+  });
+
+  let ready = false;
+  bindButton($('#ready-btn'), () => {
+    ready = !ready;
+    client.ready(ready);
+    $('#ready-btn').textContent = ready ? 'Not ready' : "I'm ready";
+    $('#ready-btn').classList.toggle('on', ready);
+  });
+
+  client.connect();
+}
+
+function promptName(code) {
+  show('name');
+  $('#name-form').onsubmit = e => {
+    e.preventDefault();
+    const v = $('#name-input').value.trim();
+    if (!v) return;
+    localStorage.setItem('name', v);
+    startClient(code);
+  };
+}
+
+/* =================================================================== shared */
+
+/** Panels are re-rendered from fresh state so prices and stock never go stale. */
+function refreshOpenPanels() {
+  if (!view) return;
+  if (!$('#shop').hidden) UI.renderShop(view, meta.stock, emit);
+  if (!$('#orders').hidden) UI.renderContracts(meta.contracts, mySeat, meta.names);
+  if (!$('#board').hidden) UI.renderBoard(meta.board, mySeat);
+}
+
+const savedName = () => localStorage.getItem('name');
+
+bindButton($('#host-btn'), () => {
+  const n = savedName();
+  if (!n) {
+    show('name');
+    $('#name-form').onsubmit = e => {
+      e.preventDefault();
+      const v = $('#name-input').value.trim();
+      if (!v) return;
+      localStorage.setItem('name', v);
+      startHost();
+    };
+    return;
+  }
+  startHost();
+});
+
+$('#join-form').onsubmit = e => {
+  e.preventDefault();
+  const code = $('#join-code').value.trim().toUpperCase();
+  if (code.length !== 4) { $('#home-status').textContent = 'Room codes are four characters.'; return; }
+  location.search = `?room=${code}`;
+};
+
+bindButton($('#again-btn'), () => location.href = location.origin + location.pathname);
+
+$('#rounds-label').textContent = String(ROUNDS);
+clientId(); // seed the persistent identity on first load
+
+const urlRoom = roomFromUrl();
+if (urlRoom) startClient(urlRoom);
+else show('home');
+</script>
+</body>
+</html>

@@ -10,6 +10,25 @@
 <link rel="stylesheet" href="css/style.css">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+<script>
+/* A failed module leaves every button dead with nothing on screen to explain it.
+   This is a plain script, so it runs even when the module never does. */
+window.__boot = { ok: false, why: [] };
+window.addEventListener('error', e => {
+  const src = e.target && e.target.src;
+  window.__boot.why.push(src ? 'could not load ' + src.split('/').pop() : (e.message || 'script error'));
+}, true);
+setTimeout(() => {
+  if (window.__boot.ok) return;
+  const el = document.getElementById('boot-error');
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = location.protocol === 'file:'
+    ? 'Open this through a web server, not by double-clicking the file — browsers block modules on file:// URLs. Try: python3 -m http.server 8000'
+    : 'The game did not start' + (window.__boot.why.length ? ' — ' + window.__boot.why[0] : '') + '. Reload, and check the browser console.';
+}, 2500);
+</script>
 </head>
 
 <body data-screen="home">
@@ -40,6 +59,7 @@
     </form>
   </div>
   <p id="home-status" class="status" role="status"></p>
+  <p id="boot-error" class="status warn" role="alert" hidden></p>
   <p class="fine">EXTRACTEUR BALISTIQUE N° 46CC · DESS. CR</p>
 </section>
 
@@ -245,7 +265,24 @@ let roomCode = '';
 
 const nameOf = seat => factories.get(seat)?.name || `Player ${seat + 1}`;
 
+/**
+ * WebRTC needs https (or localhost) and both CDN globals. Any of these missing
+ * used to surface as a button that simply did nothing.
+ */
+function preflight() {
+  if (typeof Peer === 'undefined')
+    return 'The networking library did not load. Check the connection and reload.';
+  if (typeof QRCode === 'undefined')
+    return 'The QR library did not load. Check the connection and reload.';
+  if (!window.isSecureContext)
+    return 'This page has to be served over https:// (or localhost). Browsers block WebRTC anywhere else.';
+  return null;
+}
+
 function startHost() {
+  const bad = preflight();
+  if (bad) { $('#home-status').textContent = bad; return; }
+
   role = 'host';
   host = createHost({ slug: SLUG, maxPlayers: MAX_PLAYERS });
 
@@ -285,9 +322,17 @@ function startHost() {
     refreshLobby();
   });
   host.on('input', (seat, payload) => applyIntent(seat, payload));
-  host.on('error', err => ($('#lobby-status').textContent = err.message));
+  host.on('error', err => {
+    $('#lobby-status').textContent = err.message;
+    if (document.body.dataset.screen === 'home') $('#home-status').textContent = err.message;
+  });
 
-  host.open();
+  try {
+    host.open();
+  } catch (err) {
+    $('#home-status').textContent = `Could not open a room: ${err.message}`;
+    return;
+  }
   bindButton($('#start-btn'), beginGame);
 }
 
@@ -450,6 +495,9 @@ function endGame() {
 /* =================================================================== client */
 
 function startClient(code) {
+  const bad = preflight();
+  if (bad) { $('#home-status').textContent = bad; show('home'); return; }
+
   role = 'client';
   const name = savedName();
   if (!name) return promptName(code);
@@ -502,7 +550,12 @@ function startClient(code) {
     $('#ready-btn').classList.toggle('on', ready);
   });
 
-  client.connect();
+  try {
+    client.connect();
+  } catch (err) {
+    $('#home-status').textContent = `Could not join: ${err.message}`;
+    show('home');
+  }
 }
 
 function promptName(code) {
@@ -543,6 +596,8 @@ bindButton($('#again-btn'), () => location.href = location.origin + location.pat
 $('#rounds-label').textContent = String(ROUNDS);
 $('#max-players').textContent = String(MAX_PLAYERS);
 clientId(); // seed the persistent identity on first load
+
+window.__boot.ok = true;
 
 const urlRoom = roomFromUrl();
 if (urlRoom) startClient(urlRoom);

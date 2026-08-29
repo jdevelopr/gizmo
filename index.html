@@ -8,8 +8,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+<!--
+  qrcode 1.5.x does not publish build/qrcode.min.js — that path 404s on every CDN,
+  because the browser bundle was dropped from the npm tarball after 1.4.x. 1.4.4 is
+  the last version that ships it, and it has the same QRCode.toCanvas API.
+  Each library has a second CDN behind it: one host having a bad day should not take
+  the game down.
+-->
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>window.Peer||document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>');</script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+<script>window.QRCode||document.write('<script src="https://unpkg.com/qrcode@1.4.4/build/qrcode.min.js"><\/script>');</script>
 
 <script>
 /* A failed module leaves every button dead with nothing on screen to explain it.
@@ -269,6 +278,14 @@ const nameOf = seat => factories.get(seat)?.name || `Player ${seat + 1}`;
  * WebRTC needs https (or localhost) and both CDN globals. Any of these missing
  * used to surface as a button that simply did nothing.
  */
+function drawQr(canvas, url, width) {
+  Promise.resolve(QRCode.toCanvas(canvas, url, {
+    width, margin: 1, color: { dark: '#171412', light: '#f2efe6' },
+  })).catch(err => {
+    $('#lobby-status').textContent = `Could not draw the QR code (${err.message}). The room code below still works.`;
+  });
+}
+
 function preflight() {
   if (typeof Peer === 'undefined')
     return 'The networking library did not load. Check the connection and reload.';
@@ -289,8 +306,8 @@ function startHost() {
   host.on('open', code => {
     roomCode = code;
     const url = joinUrl(code);
-    QRCode.toCanvas($('#qr'), url, { width: 220, margin: 1, color: { dark: '#171412', light: '#f2efe6' } });
-    QRCode.toCanvas($('#screen-qr'), url, { width: 132, margin: 1, color: { dark: '#171412', light: '#f2efe6' } });
+    drawQr($('#qr'), url, 220);
+    drawQr($('#screen-qr'), url, 132);
     $('#room-code').textContent = code;
     $('#screen-code').textContent = code;
     $('#host-panel').hidden = false;

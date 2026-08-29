@@ -1,169 +1,268 @@
 /**
- * machines.js — the parts catalogue.
+ * machines.js — the parts list.
  *
- * 44 machines across five kinds. Pure data plus the level-scaling maths.
- * No DOM, no network: this module is imported by the host sim, the shop UI
- * and the renderer alike, so it must stay side-effect free.
+ * Everything balance-related lives here so one file tunes the whole game.
+ * Pure data and pure functions: no DOM, no network, safe to import anywhere.
  */
 
-export const MAX_LEVEL = 5;
+export const GRID = 3;            // 3 x 3 factory floor
+export const CELL = 16;           // pixel units per slot (art is authored at this size)
+export const MAX_LEVEL = 3;       // machine level cap
+export const MAX_UTIL = 5;        // producer / seller level cap
 
-/* Gizmo tiers. These six colours are the only colour in the entire game. */
-export const TIERS = [
-  { name: 'Nub',     color: '#d1382c', value: 12 },
-  { name: 'Cog',     color: '#e07b1a', value: 30 },
-  { name: 'Coil',    color: '#e0b91f', value: 78 },
-  { name: 'Rotor',   color: '#3f9c53', value: 190 },
-  { name: 'Core',    color: '#2f6fb5', value: 460 },
-  { name: 'Paragon', color: '#7b4bb0', value: 1150 },
+/* Directions, clockwise from east. dir 0 = east, 1 = south, 2 = west, 3 = north. */
+export const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+export const DIR_NAME = ['East', 'South', 'West', 'North'];
+
+/* ------------------------------------------------------------------ gizmos --- */
+
+/** Tier ladder. Each gizmo is drawn as a single pixel in its own color. */
+export const TYPES = [
+  { name: 'Scrap',  color: '#8b93a8', glow: '#c3cbdb', value: 1 },
+  { name: 'Copper', color: '#e08a3c', glow: '#ffc07a', value: 3 },
+  { name: 'Amber',  color: '#ffcd75', glow: '#fff0b8', value: 7 },
+  { name: 'Bloom',  color: '#a7f070', glow: '#dcffb0', value: 15 },
+  { name: 'Cobalt', color: '#41a6f6', glow: '#a8dcff', value: 32 },
+  { name: 'Void',   color: '#b55088', glow: '#ff9ad0', value: 70 },
+  { name: 'Ember',  color: '#ff5d4a', glow: '#ffb09a', value: 150 },
+  { name: 'Prism',  color: '#ffffff', glow: '#ffffff', value: 320 },
 ];
-export const MAX_TIER = TIERS.length - 1;
+export const MAX_TYPE = TYPES.length - 1;
+
+/* ---------------------------------------------------------------- machines --- */
 
 export const KINDS = {
-  converter: { label: 'Converters', blurb: 'Raise gizmos to a higher tier.' },
-  router:    { label: 'Routers',    blurb: 'Throw gizmos into the next lane over.' },
-  mover:     { label: 'Movers',     blurb: 'Speed the whole line up.' },
-  energizer: { label: 'Energizers', blurb: 'Supply power. Draw nothing.' },
-  keeper:    { label: 'Keepers',    blurb: 'Add buffer space and sale value.' },
+  pipe: {
+    name: 'Conveyor', short: 'CONVEYOR',
+    desc: 'Slides a gizmo one slot along, quickly.',
+    price: 10, cycle: 0.13, cap: 1, travel: 0.13,
+    body: '#2f4a63', trim: '#6ea2d8', lit: '#a8dcff',
+  },
+  dup: {
+    name: 'Doubler', short: 'DOUBLER',
+    desc: 'Copies every gizmo it eats and pushes both out front.',
+    price: 32, cycle: 0.6, cap: 1, travel: 0.26,
+    body: '#27552f', trim: '#5fbf6a', lit: '#a7f070',
+  },
+  split: {
+    name: 'Splitter', short: 'SPLITTER',
+    desc: 'Sends one copy ahead and one to its right.',
+    price: 26, cycle: 0.48, cap: 1, travel: 0.26,
+    body: '#5c4a1e', trim: '#c9a23f', lit: '#ffcd75',
+  },
+  trident: {
+    name: 'Trident', short: 'TRIDENT',
+    desc: 'Fires three copies: left, ahead and right.',
+    price: 62, cycle: 0.85, cap: 1, travel: 0.26,
+    body: '#5c2a49', trim: '#b55088', lit: '#ff9ad0',
+  },
+  mut: {
+    name: 'Mutator', short: 'MUTATOR',
+    desc: 'Rewrites whatever it eats into one fixed type.',
+    price: 0, cycle: 0.52, cap: 1, travel: 0.26,
+    body: '#3b2f5e', trim: '#7a63bf', lit: '#b58cff',
+  },
+  fuse: {
+    name: 'Fuser', short: 'FUSER',
+    desc: 'Melts two gizmos into one of the next tier up.',
+    price: 50, cycle: 0.95, cap: 2, travel: 0.26,
+    body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
+  },
 };
-export const KIND_ORDER = ['converter', 'router', 'mover', 'energizer', 'keeper'];
 
-/* ------------------------------------------------------------- catalogue --- */
-/* converter p: { time, up, maxIn, need }  need inputs of tier <= maxIn -> one at +up
-   router    p: { time, mode }             'divert' sends every gizmo sideways;
-                                           'split' alternates own lane / sideways
-   mover     p: { speed }                  additive line-speed bonus
-   energizer p: { supply }                 power units supplied
-   keeper    p: { cap, value }             +queue per slot, +% sale value          */
+/** Mutators are priced by the tier they output. */
+export const MUT_PRICE = [0, 24, 34, 48, 64, 88, 124, 170];
 
-export const MACHINES = [
-  // ---- Converters (14) -----------------------------------------------------
-  { id: 'v1',  code: 'DU/12',  name: 'Press',         kind: 'converter', cost: 150,   draw: 4,  stock: 9, p: { time: 2.4, up: 1, maxIn: 0, need: 1 } },
-  { id: 'v2',  code: 'ZR/04',  name: 'Roller',        kind: 'converter', cost: 330,   draw: 6,  stock: 8, p: { time: 2.0, up: 1, maxIn: 1, need: 1 } },
-  { id: 'v3',  code: 'TH/02',  name: 'Kiln',          kind: 'converter', cost: 490,   draw: 7,  stock: 7, p: { time: 2.6, up: 1, maxIn: 1, need: 2 } },
-  { id: 'v4',  code: 'MK/11',  name: 'Lathe',         kind: 'converter', cost: 660,   draw: 9,  stock: 7, p: { time: 2.2, up: 1, maxIn: 2, need: 1 } },
-  { id: 'v5',  code: 'QN/10',  name: 'Etcher',        kind: 'converter', cost: 1000,  draw: 11, stock: 6, p: { time: 2.8, up: 1, maxIn: 2, need: 2 } },
-  { id: 'v6',  code: 'RG/09',  name: 'Annealer',      kind: 'converter', cost: 1550,  draw: 14, stock: 6, p: { time: 2.4, up: 1, maxIn: 3, need: 1 } },
-  { id: 'v7',  code: 'VX/07',  name: 'Compressor',    kind: 'converter', cost: 2150,  draw: 16, stock: 5, p: { time: 3.2, up: 2, maxIn: 1, need: 2 } },
-  { id: 'v8',  code: 'KL/07',  name: 'Refiner',       kind: 'converter', cost: 2850,  draw: 19, stock: 5, p: { time: 2.9, up: 1, maxIn: 3, need: 2 } },
-  { id: 'v9',  code: 'OM/04',  name: 'Doper',         kind: 'converter', cost: 3950,  draw: 23, stock: 4, p: { time: 2.6, up: 1, maxIn: 4, need: 1 } },
-  { id: 'v10', code: 'TH/01',  name: 'Crucible',      kind: 'converter', cost: 5300,  draw: 27, stock: 4, p: { time: 3.4, up: 2, maxIn: 2, need: 2 } },
-  { id: 'v11', code: 'AX/11',  name: 'Aligner',       kind: 'converter', cost: 6900,  draw: 31, stock: 3, p: { time: 3.0, up: 1, maxIn: 4, need: 2 } },
-  { id: 'v12', code: 'ZR/02',  name: 'Collimator',    kind: 'converter', cost: 8300,  draw: 34, stock: 3, p: { time: 2.8, up: 1, maxIn: 5, need: 1 } },
-  { id: 'v13', code: 'RCT-1',  name: 'Reactor',       kind: 'converter', cost: 9800,  draw: 40, stock: 3, p: { time: 3.6, up: 2, maxIn: 3, need: 2 } },
-  { id: 'v14', code: 'LAV-2',  name: 'Transmuter',    kind: 'converter', cost: 14500, draw: 52, stock: 2, p: { time: 4.2, up: 3, maxIn: 2, need: 3 } },
+export const KIND_LIST = Object.keys(KINDS);
 
-  // ---- Routers (4) ---------------------------------------------------------
-  { id: 'r1',  code: 'DV/01',  name: 'Diverter',      kind: 'router', cost: 260,   draw: 4,  stock: 7, p: { time: 0.9,  mode: 'divert' } },
-  { id: 'r2',  code: 'SP/02',  name: 'Splitter',      kind: 'router', cost: 520,   draw: 6,  stock: 6, p: { time: 1.0,  mode: 'split' } },
-  { id: 'r3',  code: 'DV/07',  name: 'Swing Chute',   kind: 'router', cost: 1100,  draw: 9,  stock: 4, p: { time: 0.5,  mode: 'divert' } },
-  { id: 'r4',  code: 'SP/09',  name: 'Twin Manifold', kind: 'router', cost: 1700,  draw: 12, stock: 3, p: { time: 0.55, mode: 'split' } },
+/* ------------------------------------------------------------------- specs --- */
 
-  // ---- Movers (9) ----------------------------------------------------------
-  { id: 'm1',  code: 'TH/10',  name: 'Belt',          kind: 'mover', cost: 90,    draw: 2,  stock: 9, p: { speed: 0.12 } },
-  { id: 'm2',  code: 'QN/12',  name: 'Chain Drive',   kind: 'mover', cost: 210,   draw: 3,  stock: 8, p: { speed: 0.18 } },
-  { id: 'm3',  code: 'DU/04',  name: 'Screw Feed',    kind: 'mover', cost: 390,   draw: 5,  stock: 7, p: { speed: 0.25 } },
-  { id: 'm4',  code: 'AX/05',  name: 'Rail Sled',     kind: 'mover', cost: 660,   draw: 7,  stock: 7, p: { speed: 0.32 } },
-  { id: 'm5',  code: 'ZR/08',  name: 'Shuttle',       kind: 'mover', cost: 1120,  draw: 10, stock: 6, p: { speed: 0.42 } },
-  { id: 'm6',  code: 'VX/03',  name: 'Maglev Track',  kind: 'mover', cost: 1950,  draw: 14, stock: 5, p: { speed: 0.55 } },
-  { id: 'm7',  code: 'RG/10',  name: 'Slipstream',    kind: 'mover', cost: 3300,  draw: 19, stock: 4, p: { speed: 0.70 } },
-  { id: 'm8',  code: 'KL/12',  name: 'Gravitor',      kind: 'mover', cost: 5500,  draw: 26, stock: 3, p: { speed: 0.90 } },
-  { id: 'm9',  code: 'OM/09',  name: 'Phase Rail',    kind: 'mover', cost: 9200,  draw: 36, stock: 2, p: { speed: 1.20 } },
-
-  // ---- Energizers (9) ------------------------------------------------------
-  { id: 'e1',  code: 'KL/04',  name: 'Dry Cell',      kind: 'energizer', cost: 110,   draw: 0, stock: 9, p: { supply: 12 } },
-  { id: 'e2',  code: 'TH/08',  name: 'Dynamo',        kind: 'energizer', cost: 270,   draw: 0, stock: 8, p: { supply: 26 } },
-  { id: 'e3',  code: 'QN/09',  name: 'Turbine',       kind: 'energizer', cost: 540,   draw: 0, stock: 7, p: { supply: 48 } },
-  { id: 'e4',  code: 'ZR/05',  name: 'Boiler',        kind: 'energizer', cost: 980,   draw: 0, stock: 7, p: { supply: 82 } },
-  { id: 'e5',  code: 'VX/11',  name: 'Cell Stack',    kind: 'energizer', cost: 1750,  draw: 0, stock: 6, p: { supply: 130 } },
-  { id: 'e6',  code: 'RG/11',  name: 'Fission Pod',   kind: 'energizer', cost: 3100,  draw: 0, stock: 5, p: { supply: 200 } },
-  { id: 'e7',  code: 'AX/09',  name: 'Solar Web',     kind: 'energizer', cost: 5200,  draw: 0, stock: 4, p: { supply: 300 } },
-  { id: 'e8',  code: 'KL/03',  name: 'Fusion Ring',   kind: 'energizer', cost: 8600,  draw: 0, stock: 3, p: { supply: 460 } },
-  { id: 'e9',  code: 'LAV-9',  name: 'Zero-Point',    kind: 'energizer', cost: 14200, draw: 0, stock: 2, p: { supply: 700 } },
-
-  // ---- Keepers (8) ---------------------------------------------------------
-  { id: 'k1',  code: 'TH/11',  name: 'Bin',           kind: 'keeper', cost: 140,   draw: 1,  stock: 9, p: { cap: 1, value: 0.04 } },
-  { id: 'k2',  code: 'QN/05',  name: 'Rack',          kind: 'keeper', cost: 310,   draw: 2,  stock: 8, p: { cap: 1, value: 0.08 } },
-  { id: 'k3',  code: 'DU/06',  name: 'Silo',          kind: 'keeper', cost: 640,   draw: 3,  stock: 7, p: { cap: 2, value: 0.12 } },
-  { id: 'k4',  code: 'MK/06',  name: 'Vault',         kind: 'keeper', cost: 1250,  draw: 5,  stock: 6, p: { cap: 2, value: 0.18 } },
-  { id: 'k5',  code: 'VX/02',  name: 'Buffer Coil',   kind: 'keeper', cost: 2250,  draw: 7,  stock: 5, p: { cap: 3, value: 0.25 } },
-  { id: 'k6',  code: 'RG/04',  name: 'Depot',         kind: 'keeper', cost: 3900,  draw: 10, stock: 4, p: { cap: 3, value: 0.34 } },
-  { id: 'k7',  code: 'KL/08',  name: 'Cryostore',     kind: 'keeper', cost: 6600,  draw: 14, stock: 3, p: { cap: 4, value: 0.46 } },
-  { id: 'k8',  code: 'OM/12',  name: 'Hyperbay',      kind: 'keeper', cost: 11500, draw: 20, stock: 2, p: { cap: 5, value: 0.60 } },
-];
-
-export const BY_ID = Object.fromEntries(MACHINES.map(m => [m.id, m]));
-
-/* ------------------------------------------------------------- levelling --- */
-
-/** Cost to take a machine from `level` to `level + 1`. */
-export function upgradeCost(m, level) {
-  return Math.round(m.cost * 0.55 * Math.pow(level, 1.75));
+/** A machine spec is the shop-card form: { kind, dir, mut? }. */
+export function makeMachine(spec, id) {
+  return {
+    id,
+    kind: spec.kind,
+    dir: spec.dir ?? 0,
+    mut: spec.mut ?? 1,
+    level: 1,
+    buf: [],   // gizmos being held: { id, ty }
+    t: 0,      // seconds left in the current cycle
+    flash: 0,  // render-only pulse, set when it fires
+  };
 }
 
-/** Total money sunk into a slot at this level — drives the 50% sell refund. */
-export function investedIn(m, level) {
-  let total = m.cost;
-  for (let l = 1; l < level; l++) total += upgradeCost(m, l);
-  return total;
+export function price(spec) {
+  return spec.kind === 'mut' ? MUT_PRICE[spec.mut] : KINDS[spec.kind].price;
 }
 
-export const sellRefund = (m, level) => Math.round(investedIn(m, level) * 0.5);
+export function label(spec) {
+  return spec.kind === 'mut' ? `${TYPES[spec.mut].name} Mutator` : KINDS[spec.kind].name;
+}
+
+export function describe(spec) {
+  if (spec.kind === 'mut') return `Rewrites any gizmo into ${TYPES[spec.mut].name}.`;
+  return KINDS[spec.kind].desc;
+}
+
+export function upgradeCost(m) {
+  return Math.round(price(m) * 0.75 * m.level);
+}
+
+export function scrapValue(m) {
+  let paid = price(m);
+  for (let l = 1; l < m.level; l++) paid += Math.round(price(m) * 0.75 * l);
+  return Math.max(2, Math.round(paid * 0.5));
+}
 
 /**
- * Effective stats for a machine at a given level. Every consumer reads stats
- * through here so the scaling curve lives in exactly one place.
+ * Cycle time. Mutators are the exception: the higher the tier they print, the
+ * slower they run, which is what stops a cheap high-tier mutator from ending
+ * the economy on round two.
  */
-export function stats(m, level = 1) {
-  const n = level - 1;
-  const s = { draw: m.draw, ...m.p };
-  switch (m.kind) {
-    case 'converter':
-      s.time = m.p.time * Math.pow(0.87, n);
-      s.draw = round1(m.draw * Math.pow(1.12, n));
-      break;
-    case 'router':
-      s.time = m.p.time * Math.pow(0.9, n);
-      s.draw = round1(m.draw * Math.pow(1.12, n));
-      break;
-    case 'mover':
-      s.speed = round2(m.p.speed * (1 + 0.6 * n));
-      s.draw = round1(m.draw * Math.pow(1.15, n));
-      break;
-    case 'energizer':
-      s.supply = Math.round(m.p.supply * (1 + 0.45 * n));
-      s.draw = 0;
-      break;
-    case 'keeper':
-      s.cap = m.p.cap + n;
-      s.value = round2(m.p.value * (1 + 0.5 * n));
-      s.draw = round1(m.draw * Math.pow(1.1, n));
-      break;
-  }
-  return s;
+export function cycleTime(m) {
+  const base = m.kind === 'mut' ? MUT_CYCLE[m.mut ?? 1] : KINDS[m.kind].cycle;
+  return base * Math.pow(0.7, m.level - 1);
 }
 
-/** One-line human description of what a machine does at a given level. */
-export function describe(m, level = 1) {
-  const s = stats(m, level);
+/**
+ * Mutator speed halves each tier while gizmo value roughly doubles, so every
+ * mutator earns about the same per slot. Tier is a choice about feedstock for
+ * doublers and fusers, not a straight upgrade you buy your way past.
+ */
+export const MUT_CYCLE = [0, 0.42, 0.86, 1.76, 3.6, 7.4, 15.2, 31];
+
+export function travelTime(m) {
+  return KINDS[m.kind].travel * (m.kind === 'pipe' ? Math.pow(0.78, m.level - 1) : 1);
+}
+
+/** How many gizmos this machine needs buffered before it fires. */
+export function intake(m) {
+  return KINDS[m.kind].cap;
+}
+
+/**
+ * What comes out when the machine fires.
+ * @param {object} m machine
+ * @param {Array<{id:number,ty:number}>} inputs consumed gizmos
+ * @returns {Array<{ty:number,dir:number}>}
+ */
+export function outputs(m, inputs) {
+  const d = m.dir;
+  const a = inputs[0]?.ty ?? 0;
   switch (m.kind) {
-    case 'router':
-      return m.p.mode === 'divert'
-        ? `Throws every gizmo into the next lane, ${s.time.toFixed(2)}s`
-        : `Alternates: one ahead, one into the next lane, ${s.time.toFixed(2)}s`;
-    case 'converter': {
-      const inp = s.need > 1 ? `${s.need} inputs` : '1 input';
-      return `${inp} up to ${TIERS[s.maxIn].name} to +${s.up} tier, ${s.time.toFixed(2)}s`;
+    case 'pipe':
+      return [{ ty: a, dir: d }];
+    case 'dup': {
+      const n = 1 + m.level;                      // L1: 2, L2: 3, L3: 4
+      return Array.from({ length: n }, () => ({ ty: a, dir: d }));
     }
-    case 'mover':
-      return `Line speed +${Math.round(s.speed * 100)}%`;
-    case 'energizer':
-      return `Supplies ${s.supply} power`;
-    case 'keeper':
-      return `+${s.cap} buffer per slot, sale value +${Math.round(s.value * 100)}%`;
+    case 'split': {
+      const out = [{ ty: a, dir: d }, { ty: a, dir: (d + 1) % 4 }];
+      if (m.level >= 3) out.push({ ty: a, dir: (d + 3) % 4 });
+      return out;
+    }
+    case 'trident':
+      return [{ ty: a, dir: d }, { ty: a, dir: (d + 1) % 4 }, { ty: a, dir: (d + 3) % 4 }];
+    case 'mut': {
+      // A level 3 mutator refuses to downgrade what it is given.
+      const ty = (m.level >= 3 && a > m.mut) ? a : m.mut;
+      return [{ ty, dir: d }];
+    }
+    case 'fuse': {
+      const b = inputs[1]?.ty ?? a;
+      const step = (m.level >= 3 && a === b) ? 2 : 1;
+      return [{ ty: Math.min(MAX_TYPE, Math.max(a, b) + step), dir: d }];
+    }
+    default:
+      return [];
   }
-  return '';
 }
 
-const round1 = v => Math.round(v * 10) / 10;
-const round2 = v => Math.round(v * 100) / 100;
+/* --------------------------------------------------------- producer/seller --- */
+
+export const producerCycle = lvl => 1.35 * Math.pow(0.78, lvl - 1);
+export const producerCost = lvl => Math.round(34 * Math.pow(lvl, 1.45));
+export const sellerMult = lvl => 1 + 0.3 * (lvl - 1);
+export const sellerCost = lvl => Math.round(40 * Math.pow(lvl, 1.45));
+
+/* ---------------------------------------------------------------- geometry --- */
+
+export const cellOf = (cx, cy) => cy * GRID + cx;
+export const cx = i => i % GRID;
+export const cy = i => Math.floor(i / GRID);
+export const inGrid = (x, y) => x >= 0 && y >= 0 && x < GRID && y < GRID;
+
+/** The producer bolts onto the west face of the top-left slot. */
+export const PRODUCER_PORT = { cell: 0, dir: 2 };
+
+/** Every point where a gizmo can leave the floor: { cell, dir }. */
+export const EXITS = (() => {
+  const out = [];
+  for (let i = 0; i < GRID * GRID; i++) {
+    for (let d = 0; d < 4; d++) {
+      const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
+      if (!inGrid(nx, ny)) out.push({ cell: i, dir: d });
+    }
+  }
+  return out;
+})();
+
+/** Exits the seller is allowed to occupy (the producer owns one of them). */
+export const SELLER_SPOTS = EXITS.filter(
+  e => !(e.cell === PRODUCER_PORT.cell && e.dir === PRODUCER_PORT.dir)
+);
+
+/* -------------------------------------------------------------- shop rolls --- */
+
+/** Weighted draw of one machine spec, tuned so later rounds offer richer parts. */
+export function rollSpec(rnd, round) {
+  const table = [
+    ['pipe', 30],
+    ['dup', 20],
+    ['split', 16],
+    ['mut', 22],
+    ['fuse', 8 + round * 2],
+    ['trident', 4 + round],
+  ];
+  const total = table.reduce((s, r) => s + r[1], 0);
+  let n = rnd() * total;
+  let kind = 'pipe';
+  for (const [k, w] of table) { n -= w; if (n <= 0) { kind = k; break; } }
+
+  const spec = { kind, dir: 0 };
+  if (kind === 'mut') {
+    const ceiling = Math.min(4, 1 + Math.floor(round / 2));
+    spec.mut = 1 + Math.floor(rnd() * ceiling);
+  }
+  return spec;
+}
+
+/** Shop prices drift up with the rounds, so a purchase always costs something real. */
+export const costMult = round => 1 + 0.5 * Math.max(0, round - 1);
+export const shopCost = (spec, round) => Math.max(4, Math.round(price(spec) * costMult(round)));
+
+/** Three distinct-ish options for one player's shop. */
+export function rollShop(rnd, round, n = 3) {
+  const out = [];
+  let guard = 0;
+  while (out.length < n && guard++ < 60) {
+    const s = rollSpec(rnd, round);
+    const key = s.kind + (s.mut ?? '');
+    if (out.some(o => o.kind + (o.mut ?? '') === key)) continue;
+    out.push(s);
+  }
+  while (out.length < n) out.push(rollSpec(rnd, round));
+  for (const s of out) s.cost = shopCost(s, round);
+  return out;
+}
+
+/** Deterministic-ish RNG so a round can be replayed from a seed if ever needed. */
+export function rng(seed) {
+  let s = seed >>> 0 || 1;
+  return () => {
+    s ^= s << 13; s >>>= 0;
+    s ^= s >> 17;
+    s ^= s << 5; s >>>= 0;
+    return s / 4294967296;
+  };
+}

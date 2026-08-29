@@ -1,146 +1,138 @@
-# GIZMOWORKS
+# GIZMO
 
-A factory tycoon for 2–4 people, played in a browser. One person hosts on a laptop or
-TV, everyone else scans a QR code with their phone. Each player builds their own
-production line out of 50 different machines, rolls gizmos through it, and tries to be
-worth the most money after five rounds.
+A two-to-four player factory race for one big screen and a pile of phones.
 
-No build step, no install, no accounts. It's a folder of files.
+One device is the **floor**: it opens the room, shows a QR code, runs every player's
+factory and draws them all side by side. It is never a player. Everyone else joins on
+their own phone, which becomes their control panel.
 
 ---
 
-## Running it on your own computer
+## How it plays
 
-You can't just double-click `index.html` — browsers block the networking bits when a
-page is opened as a file. Serve it instead:
+Each player owns a 3x3 factory floor.
+
+- The **Producer** bolts onto the left of the top-left slot and drops a raw Scrap gizmo
+  every second or so. It can be upgraded to run faster.
+- The **Seller** sits on one outside face of the floor. Any gizmo pushed out of the grid
+  *at that exact face* is sold for cash. Anything pushed out anywhere else is lost.
+- **The Seller moves to a new face at the start of every round after the first.** That is
+  the whole game: your line worked perfectly, and now it points at nothing.
+
+Gizmos are single pixels, coloured by type, and climb a value ladder:
+Scrap, Copper, Amber, Bloom, Cobalt, Void, Ember, Prism.
+
+### The machines
+
+| Machine | What it does |
+|---|---|
+| Conveyor | Slides one gizmo along, fast. The plumbing of every build. |
+| Doubler | Eats one gizmo, pushes two out the front. Level 2 makes three, level 3 makes four. |
+| Splitter | One out the front, one out the right. At level 3 it also fires left. |
+| Trident | Three copies at once: left, ahead and right. Slow and expensive. |
+| Mutator | Rewrites anything it eats into one fixed type. Higher tiers run slower, so every mutator earns about the same per slot — the tier is about what you feed downstream. |
+| Fuser | Swallows two gizmos and spits out one of the next tier up. At level 3, two matching gizmos jump *two* tiers. |
+
+Every machine can be rotated, moved to any open slot, upgraded to level 3, or scrapped for
+half its money back. Machines with nowhere to go land in your crate.
+
+### A round
+
+1. **Re-route** — the Seller jumps. The line is stopped. Rearrange.
+2. **Shipping** — the Producer runs, the floor runs, money lands. Keep rearranging; the
+   floor is live the whole time.
+3. **Tally** — the round's income.
+4. **Workshop** — three machines are offered, you may buy **one**. Rerolling costs a
+   little, and a little more each time in the same round. Tap READY to close the sheet and
+   spend the rest of the window re-routing.
+
+After the last round, the most **lifetime earnings** wins. Money you spend still counts
+toward your score, so buying is never a penalty — but the nine slots are.
+
+---
+
+## Running it
+
+It is plain HTML, CSS and JavaScript. No build step, no npm install, nothing to compile.
+
+It cannot be opened by double-clicking `index.html` — browsers block JavaScript modules on
+`file://` URLs. Serve the folder instead:
 
 ```bash
-cd gizmoworks
+cd gizmo
 python3 -m http.server 8080
 ```
 
-Then open **http://localhost:8080** in your browser.
+Then open <http://localhost:8080> and press **OPEN A ROOM ON THIS SCREEN**.
 
-To test two players on one machine, use a normal window for the host and a **private /
-incognito window** for the joiner. Two normal tabs share the same browser storage, so
-the second one would steal the first one's seat.
+To try it alone, press **PRACTICE RUN** — the whole game runs locally on one device with
+no phones and no networking.
 
-To play with real phones, deploy it first. Phones can't reach `localhost`, and the
-networking needs HTTPS, which is easier to get from a host than to set up locally.
-
----
-
-## Putting it on the internet
-
-**The easy way (AWS Amplify, no Git):**
-
-1. Zip the `gizmoworks` folder — the one that contains `index.html`, not its parent.
-2. Go to the AWS Amplify console, choose **Create new app**, then **Deploy without Git**.
-3. Drop the zip in. Amplify hands you an HTTPS address.
-
-To update it later, drop in a new zip.
-
-**The Git way:** connect your repository in the Amplify console. `amplify.yml` is already
-in this folder and has no build command, which is correct — there's nothing to compile.
-
-Netlify, Vercel, Cloudflare Pages and GitHub Pages all host this identically. Nothing in
-the code is specific to Amplify.
-
-HTTPS is required either way. That's why sharing a local address like
-`http://192.168.1.20:8080` will fail even though `localhost` works on your own machine.
+To test two players on one computer, use a normal window and a private window. Two tabs in
+the same profile share storage, so the second would claim the first one's seat.
 
 ---
 
-## How to play
+## Deploying to AWS Amplify
 
-**Getting in.** The host presses *Start a room* and gets a QR code and a four-letter
-code. Everyone else scans it, or types the code on the home screen. Players enter a name
-and press *I'm ready*. Once everyone is ready, the host starts.
+**Drag and drop:** zip the `gizmo` folder itself (the one holding `index.html`), then in
+the Amplify console choose **Create new app → Deploy without Git** and drop the zip in.
+Amplify serves it over HTTPS and gives you a URL. Redeploying is dropping a new zip.
 
-**Your floor.** Each player gets three parallel lanes of five bays. Only lane 1 is
-operational to start with; lanes 2 and 3 are bought whole, one purchase each. Every
-operational lane has a free intake dropping raw gizmos onto its head, and a sell dock
-at its end — whatever rolls off is sold automatically.
+**Git-connected:** connect the repository. `amplify.yml` is already in the project and has
+no build commands, which is correct — there is nothing to compile.
 
-**Tap a bay** to open it. Empty bays open the shop. Filled bays let you upgrade (five
-levels each) or sell for half of what you've put in. Tapping a locked lane offers to
-open it.
+Netlify, Vercel, Cloudflare Pages and GitHub Pages host this identically with no
+configuration.
 
-**The five kinds of machine:**
+### HTTPS is not optional
 
-| Kind | What it does |
-|---|---|
-| Converters | Take gizmos in and push them up a tier. Some need two or three inputs to make one output. |
-| Routers | Throw gizmos sideways into the neighbouring lane. Diverters send every gizmo across; Splitters alternate between straight ahead and across. A router aimed at a lane you haven't opened jams until you open it (Splitters just keep everything in-lane). |
-| Movers | Speed up the entire line. |
-| Energizers | Supply power, and draw none themselves. |
-| Keepers | Add buffer space in every bay and raise what your gizmos sell for. |
+WebRTC refuses to run on plain HTTP from anything except `localhost`. Sharing a LAN
+address like `http://192.168.1.20:8080` will fail even though localhost works on the same
+machine. Amplify gives you HTTPS by default, which is why deploying is the easiest way to
+test on a real phone.
 
-**Power matters.** Every machine except an Energizer draws power. If your total draw
-exceeds your supply, the whole line slows to the ratio between them — a brownout. The
-bar at the top of the screen warns you.
-
-**Gizmo tiers.** Six of them: Nub, Cog, Coil, Rotor, Core, Paragon, worth $12 up to
-$1,150. They're the only coloured thing on the screen. Getting a gizmo up the tiers
-before it falls off the end is the whole game.
-
-**Orders.** Three standing orders are open at any time, each asking for a number of
-gizmos at a particular tier. The first player to ship the full count takes the entire
-fee and the order closes for everyone else. New orders arrive between rounds, and they
-get more valuable as the game goes on.
-
-**Shared stock.** The shop has a limited number of each machine and every player draws
-from the same shelf. If someone buys the last Fusion Ring, there isn't one for you until
-the restock between rounds.
-
-**Winning.** Five rounds of ninety seconds, with a fifteen-second restock in between.
-The winner is whoever has the highest net worth at the end: cash, plus half of
-everything bolted down.
-
-**Keyboard shortcuts** (useful for the host on a laptop): number keys select a bay, `U`
-upgrades the selected one, `S` opens the shop, `Escape` closes whatever is open.
+Join links look like `https://yourapp.amplifyapp.com/?room=ABCD` — a query string on the
+root path, so no redirect rules or SPA fallback are needed.
 
 ---
 
 ## Things worth knowing
 
-**If someone's phone drops out**, they keep their seat, their line and their money.
-They just reopen the same link. Their name shows as greyed out until they're back.
+- **The floor screen owns the game.** If it closes the tab, the room is gone. It warns
+  before unloading during a match.
+- **Reconnecting is free.** A phone that drops, locks, or gets a call reopens the same link
+  and gets its seat, name, factory and money back. The floor greys that player out while
+  they are away and keeps their factory running.
+- **The signalling server is the free public PeerJS broker.** It is fine for a game with
+  friends and has no uptime guarantee. For anything serious, run your own PeerServer
+  (`npm i -g peer`) behind HTTPS and pass it to both `Peer` constructors in `js/net.js`:
 
-**If the host closes their tab, the room ends.** That's how peer-to-peer games work —
-the host's browser is the server. The host gets a warning before leaving.
+  ```js
+  new Peer(id, { host: 'peer.yourdomain.com', port: 443, secure: true, path: '/' });
+  ```
 
-**The signalling server is a free shared one** run by the PeerJS project. It's fine for
-playing with friends, but it has no uptime guarantee. If you want to run this properly,
-stand up your own PeerServer (`npm i -g peer`, or the Docker image) behind HTTPS and
-point the game at it by passing peer options in `index.html`:
-
-```js
-createHost({ slug: SLUG, maxPlayers: 3, peerOptions: { host: 'peer.yourdomain.com', port: 443, secure: true, path: '/' } });
-```
-
-The same option goes on `createClient`.
-
-**Everyone on the same Wi-Fi works best.** Players on different networks may fail to
-connect through certain routers, which would need a TURN server to fix.
+- **Players on different networks may not connect.** Peer-to-peer across symmetric NAT
+  needs a TURN server. Everyone on the same Wi-Fi is the case this is built for.
 
 ---
 
-## What's in the folder
+## The files
 
 ```
-gizmoworks/
-├── index.html        all four screens, plus the host loop and client glue
-├── amplify.yml       deploy config (no build step)
-├── css/style.css     the drawing-office look
-└── js/
-    ├── net.js        peer connections, seats, reconnect
-    ├── machines.js   the 44-machine catalogue and upgrade maths
-    ├── game.js       the simulation — runs on the host only
-    ├── render.js     draws the factory as a technical drawing
-    ├── ui.js         shop, panels, orders, standings
-    └── input.js      taps, keys, haptics
+index.html        every screen; CDN tags are pinned here
+css/style.css     the whole look
+js/main.js        routing: floor, phone, or practice
+js/net.js         PeerJS: room codes, seats, reconnect
+js/host.js        the floor screen — lobby, QR, round loop, broadcast
+js/player.js      the phone control panel
+js/game.js        match engine: rounds, shop, per-player bookkeeping
+js/sim.js         the factory simulation
+js/machines.js    every number in the game lives here
+js/render.js      the pixel renderer
+amplify.yml       static hosting config, no build commands
 ```
 
-Want to change the balance? Everything lives in `js/machines.js` and the constants at
-the top of `js/game.js` — round length, number of rounds, starting cash, lane count and prices.
+Balance lives in `js/machines.js` and `DEFAULT_CFG` at the top of `js/game.js`. Gizmo
+values, machine prices, cycle times, producer and seller upgrades, and the shop's price
+drift are all there in one screen of code.

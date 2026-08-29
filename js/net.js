@@ -12,6 +12,7 @@
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0, I/1/L
 const CODE_LENGTH = 4;
 const HELLO_TIMEOUT_MS = 10000;
+const OPEN_TIMEOUT_MS = 12000;   // the public broker is free and sometimes simply doesn't answer
 const REAP_AFTER_MS = 120000;
 
 export function makeRoomCode(n = CODE_LENGTH) {
@@ -64,6 +65,7 @@ export function createHost({ slug, maxPlayers = 8, peerOptions = {} } = {}) {
   let code = null;
   let phase = 'lobby';
   let attempts = 0;
+  let openTimer = null;
 
   const roster = () =>
     [...seats.values()]
@@ -74,15 +76,25 @@ export function createHost({ slug, maxPlayers = 8, peerOptions = {} } = {}) {
     code = makeRoomCode();
     peer = new Peer(peerIdFor(slug, code), peerOptions);
 
-    peer.on('open', () => emit('open', code));
+    // Without this a broker outage looks exactly like a dead button: the peer
+    // never opens, no error fires, and the lobby never appears.
+    clearTimeout(openTimer);
+    openTimer = setTimeout(() => {
+      emit('error', new Error(
+        'No answer from the signalling server. It is a free shared service and is sometimes down — try again in a moment.'));
+    }, OPEN_TIMEOUT_MS);
+
+    peer.on('open', () => { clearTimeout(openTimer); emit('open', code); });
     peer.on('connection', wire);
     peer.on('disconnected', () => { try { peer.reconnect(); } catch {} });
     peer.on('error', err => {
       // Room code collided on a shared broker — pick another and retry.
       if (err.type === 'unavailable-id' && attempts++ < 5) {
+        clearTimeout(openTimer);
         try { peer.destroy(); } catch {}
         return open();
       }
+      clearTimeout(openTimer);
       emit('error', err);
     });
   }
@@ -195,7 +207,7 @@ export function createHost({ slug, maxPlayers = 8, peerOptions = {} } = {}) {
     state(state) { broadcast({ t: 'state', ...state }); },
     event(name, data) { broadcast({ t: 'event', name, data }); },
     over(results) { phase = 'over'; broadcast({ t: 'over', results }); },
-    destroy() { try { peer?.destroy(); } catch {} },
+    destroy() { clearTimeout(openTimer); try { peer?.destroy(); } catch {} },
   };
   return api;
 }

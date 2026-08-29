@@ -17,7 +17,7 @@ export const DEFAULT_CFG = {
   rounds: 8,
   roundSecs: 45,
   shopSecs: 30,
-  introSecs: 6,
+  planSecs: 120,      // planning phase: rearrange freely, ready up to start early
   tallySecs: 3.5,
   cash: 40,
   rerollBase: 6,
@@ -74,8 +74,8 @@ export function createEngine(cfgIn = {}) {
   function go(next) {
     phase = next;
     switch (next) {
-      case 'intro': {
-        timer = cfg.introSecs;
+      case 'plan': {
+        timer = cfg.planSecs;
         for (const p of players.values()) {
           // Round one leaves the seller where the starter kit already points, so
           // the first round teaches the loop instead of punishing it.
@@ -85,13 +85,14 @@ export function createEngine(cfgIn = {}) {
           p.f.running = false;
           p.shop = null;
           p.sellerSpot = spot;
+          p.planReady = false;
         }
         announce = `ROUND ${round}`;
         break;
       }
       case 'run':
         timer = cfg.roundSecs;
-        for (const p of players.values()) beginRound(p.f);
+        for (const p of players.values()) { beginRound(p.f); p.planReady = false; }
         announce = '';
         break;
       case 'tally':
@@ -127,7 +128,7 @@ export function createEngine(cfgIn = {}) {
       p.lastIncome = 0;
       p.bestIncome = 0;
     }
-    go('intro');
+    go('plan');
   }
 
   function resetToLobby() {
@@ -158,19 +159,28 @@ export function createEngine(cfgIn = {}) {
     }
 
     if (timer <= 0) {
-      if (phase === 'intro') go('run');
+      if (phase === 'plan') go('run');
       else if (phase === 'run') go('tally');
       else if (phase === 'tally') go('shop');
       else if (phase === 'shop') nextRound();
-    } else if (phase === 'shop' && players.size && [...players.values()].every(p => !p.connected || p.shop?.done)) {
+    } else if (phase === 'plan' && everyone(p => p.planReady)) {
+      // Nobody is still planning: start the round rather than burn the clock.
+      go('run');
+    } else if (phase === 'shop' && everyone(p => p.shop?.done)) {
       nextRound();
     }
+  }
+
+  /** True when every connected player satisfies the test (and there is at least one). */
+  function everyone(test) {
+    const live = [...players.values()].filter(p => p.connected);
+    return live.length > 0 && live.every(test);
   }
 
   function nextRound() {
     round++;
     if (round > cfg.rounds) go('over');
-    else go('intro');
+    else go('plan');
   }
 
   /* ------------------------------------------------------------ actions --- */
@@ -218,6 +228,12 @@ export function createEngine(cfgIn = {}) {
       if (phase === 'shop' && p.shop) p.shop.done = true;
       return;
     }
+
+    if (msg.t === 'plan') {
+      if (phase !== 'plan') return;
+      p.planReady = msg.v !== false;
+      return;
+    }
   }
 
   /* -------------------------------------------------------------- output --- */
@@ -228,6 +244,7 @@ export function createEngine(cfgIn = {}) {
         seat: p.seat, name: p.name, color: p.color,
         earned: Math.round(p.f.earned), income: Math.round(p.f.income),
         last: p.lastIncome, connected: p.connected,
+        ready: phase === 'plan' ? !!p.planReady : !!p.shop?.done,
       }))
       .sort((a, b) => b.earned - a.earned);
   }
@@ -261,6 +278,8 @@ export function createEngine(cfgIn = {}) {
       hud: {
         ph: phase, tm: Math.round(timer * 10) / 10, r: round, rs: cfg.rounds,
         an: announce, board: board(), note: p.note,
+        ready: !!p.planReady,
+        waiting: [...players.values()].filter(x => x.connected && !x.planReady).length,
         seat, color: p.color, name: p.name,
         spot: p.sellerSpot ? DIR_NAME[p.sellerSpot.dir] : null,
       },

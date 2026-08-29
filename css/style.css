@@ -281,7 +281,9 @@ input::placeholder { color: #414a68; }
   letter-spacing: .08em;
 }
 #pad-phase[data-ph="run"] { color: var(--lime); border-color: var(--lime); }
-#pad-phase[data-ph="intro"] { color: var(--coral); border-color: var(--coral); }
+#pad-phase[data-ph="plan"] { color: var(--coral); border-color: var(--coral); }
+#btn-plan { font-size: 13px; letter-spacing: .06em; }
+#btn-plan[hidden] { display: none; }
 #pad-hint { text-align: center; min-height: 1.6em; }
 
 #pad-stage-wrap {

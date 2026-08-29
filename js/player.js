@@ -71,9 +71,11 @@ export function createController({ send }) {
       sel = null;
       buzz(8);
     } else {
+      // Moved: drop the selection so the next tap starts fresh.
       send({ t: 'act', a: { a: 'move', from: sel, to: ref } });
-      sel = sel[0] === 'i' ? null : ref;
+      sel = null;
       buzz(14);
+      paintInv();
     }
     paintSel();
   }
@@ -113,6 +115,13 @@ export function createController({ send }) {
   wire('#btn-clear', () => { sel = null; paintSel(); });
   wire('#btn-prod', () => act({ a: 'upprod' }));
   wire('#btn-sell', () => act({ a: 'upsell' }));
+  wire('#btn-plan', () => {
+    const next = !(hud && hud.ready);
+    send({ t: 'plan', v: next });
+    if (hud) hud.ready = next;
+    buzz(next ? 18 : 10);
+    paintPlan();
+  });
   wire('#shop-reroll', () => { send({ t: 'reroll' }); buzz(12); });
   wire('#shop-done', () => { send({ t: 'done' }); buzz(16); });
 
@@ -187,7 +196,7 @@ export function createController({ send }) {
     $('#pad-rank').textContent = rank ? `${rank}/${b.length}` : '-';
     const t = Math.max(0, Math.ceil(hud.tm));
     const phaseLabel = {
-      intro: 'GET READY', run: 'SHIPPING', tally: 'TALLY',
+      plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY',
       shop: 'WORKSHOP', over: 'FINISHED', lobby: 'LOBBY',
     }[hud.ph] || hud.ph;
     $('#pad-phase').textContent = hud.ph === 'over'
@@ -197,13 +206,25 @@ export function createController({ send }) {
     const spot = hud.spot
       ? `The seller is on the ${hud.spot.toLowerCase()} face.`
       : 'The seller has moved.';
-    $('#pad-hint').textContent = hud.ph === 'intro'
-      ? `${spot} Re-route before the bell.`
-      : hud.ph === 'run' ? 'Push gizmos out through the seller.'
+    $('#pad-hint').textContent = hud.ph === 'plan'
+      ? `${spot} Build your line, then ready up.`
+      : hud.ph === 'run' ? 'Keep re-routing — the floor stays live.'
         : hud.ph === 'shop' ? 'Buy one machine, then hit READY.'
           : hud.ph === 'tally' ? `Round income $${view.n}.` : '';
     $('#pad-note').textContent = hud.note || '';
     $('#pad-note').hidden = !hud.note;
+  }
+
+  function paintPlan() {
+    const btn = $('#btn-plan');
+    if (!btn) return;
+    if (!hud || hud.ph !== 'plan') { btn.hidden = true; return; }
+    btn.hidden = false;
+    const others = Math.max(0, (hud.waiting ?? 0) - (hud.ready ? 0 : 1));
+    btn.dataset.on = hud.ready ? 'on' : 'off';
+    btn.textContent = hud.ready
+      ? (others > 0 ? `READY — WAITING FOR ${others}` : 'READY')
+      : 'READY — START THE ROUND';
   }
 
   function paintShop() {
@@ -263,6 +284,7 @@ export function createController({ send }) {
       lastPhase = hud.ph;
       if (hud.ph === 'run') buzz([12, 60, 12]);
       if (hud.ph === 'shop') buzz(30);
+      if (hud.ph === 'plan') buzz(20);
       document.body.dataset.phase = hud.ph;
     }
 
@@ -270,6 +292,7 @@ export function createController({ send }) {
     paintInv();
     paintUtil();
     paintHud();
+    paintPlan();
     paintShop();
   }
 

@@ -226,7 +226,7 @@ function startPractice() {
   let bannerText = '', bannerSub = '', bannerT = 0, last = 0;
 
   engine.on('phase', (ph, info) => {
-    if (ph === 'intro') { bannerText = `ROUND ${info.round}`; bannerSub = 'SELLER MOVED'; bannerT = 2.2; }
+    if (ph === 'plan') { bannerText = `ROUND ${info.round}`; bannerSub = 'PLANNING'; bannerT = 2.2; }
     if (ph === 'run') { bannerText = 'SHIP IT'; bannerSub = ''; bannerT = 1; stage.shake(4); }
     if (ph === 'tally') { bannerText = 'ROUND OVER'; bannerSub = ''; bannerT = 1.8; }
     if (ph === 'shop') { bannerText = 'WORKSHOP'; bannerSub = 'BUY ONE'; bannerT = 1.8; }
@@ -259,7 +259,7 @@ function startPractice() {
 
     $('#floor-round').textContent = `ROUND ${engine.round}`;
     $('#floor-phase').textContent = {
-      intro: 'RE-ROUTE', run: 'SHIPPING', tally: 'TALLY', shop: 'WORKSHOP',
+      plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'WORKSHOP',
     }[engine.phase] || '';
     $('#floor-timer').textContent = String(Math.max(0, Math.ceil(engine.timer))).padStart(2, '0');
 

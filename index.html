@@ -131,6 +131,12 @@ setTimeout(function () {
         <option value="8" selected>8 — standard</option>
         <option value="12">12 — long haul</option>
       </select>
+      <label for="cfg-plan">PLANNING TIME</label>
+      <select id="cfg-plan">
+        <option value="60">60 seconds</option>
+        <option value="120" selected>120 seconds</option>
+        <option value="180">180 seconds</option>
+      </select>
       <label for="cfg-secs">ROUND LENGTH</label>
       <select id="cfg-secs">
         <option value="30">30 seconds</option>
@@ -165,10 +171,12 @@ setTimeout(function () {
     <span class="pill">EARNED <b id="pad-earned">$0</b></span>
     <span class="pill">RANK <b id="pad-rank">-</b></span>
   </header>
-  <p id="pad-phase" data-ph="intro">R1 · GET READY</p>
+  <p id="pad-phase" data-ph="plan">R1 · PLANNING</p>
   <p id="pad-hint" class="fine"></p>
 
   <div id="pad-stage-wrap"><canvas id="pad-stage"></canvas></div>
+
+  <button id="btn-plan" class="primary wide" data-on="off" hidden>READY — START THE ROUND</button>
 
   <p id="pad-note" class="toast" hidden></p>
 

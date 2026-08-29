@@ -177,6 +177,7 @@ export function startHost(show) {
       ...DEFAULT_CFG,
       rounds: num('#cfg-rounds', DEFAULT_CFG.rounds),
       roundSecs: num('#cfg-secs', DEFAULT_CFG.roundSecs),
+      planSecs: num('#cfg-plan', DEFAULT_CFG.planSecs),
       cash: num('#cfg-cash', DEFAULT_CFG.cash),
     };
   }
@@ -185,7 +186,7 @@ export function startHost(show) {
 
   engine.on('phase', (ph, info) => {
     const t = engine.timer;
-    if (ph === 'intro') say(`ROUND ${info.round}`, 'THE SELLER HAS MOVED', 2.4);
+    if (ph === 'plan') say(`ROUND ${info.round}`, info.round > 1 ? 'THE SELLER HAS MOVED' : 'PLAN YOUR LINE', 2.6);
     if (ph === 'run') { say('SHIP IT', '', 1.2); stage.shake(4); }
     if (ph === 'tally') say('ROUND OVER', '', 2);
     if (ph === 'shop') say('WORKSHOP', 'ONE MACHINE EACH', 2);
@@ -280,7 +281,7 @@ export function startHost(show) {
       $('#floor-round').textContent = engine.phase === 'over'
         ? 'FINAL' : `ROUND ${engine.round} / ${engine.cfg.rounds}`;
       $('#floor-phase').textContent = {
-        intro: 'RE-ROUTE', run: 'SHIPPING', tally: 'TALLY', shop: 'WORKSHOP', over: 'DONE',
+        plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'WORKSHOP', over: 'DONE',
       }[engine.phase] || '';
       $('#floor-timer').textContent = engine.phase === 'over'
         ? '' : String(Math.max(0, Math.ceil(engine.timer))).padStart(2, '0');
@@ -296,9 +297,9 @@ export function startHost(show) {
   }
 
   function noteFor(p, rank) {
+    if (engine.phase === 'plan') return p.planReady ? 'READY' : 'PLANNING…';
     if (engine.phase === 'shop') return p.shop?.done ? 'READY' : 'SHOPPING…';
     if (engine.phase === 'tally') return '+$' + p.lastIncome;
-    if (engine.phase === 'intro') return 'RE-ROUTE';
     return rank === 1 ? 'LEADING' : '';
   }
 

@@ -38,13 +38,17 @@ half its money back. Machines with nowhere to go land in your crate.
 
 ### A round
 
-1. **Re-route** — the Seller jumps. The line is stopped. Rearrange.
-2. **Shipping** — the Producer runs, the floor runs, money lands. Keep rearranging; the
-   floor is live the whole time.
+1. **Planning** — two minutes with the floor stopped. The Seller has jumped, so rebuild
+   the line: move, rotate, upgrade, place whatever you bought. Tap **READY** when you are
+   happy; once everyone is ready the round starts immediately, so nobody waits out a
+   clock they do not need.
+2. **Shipping** — the Producer runs, the floor runs, money lands. You can keep moving,
+   rotating and upgrading machines the whole time — a live floor is a legitimate way to
+   play, and sometimes the only way to unclog one.
 3. **Tally** — the round's income.
 4. **Workshop** — three machines are offered, you may buy **one**. Rerolling costs a
-   little, and a little more each time in the same round. Tap READY to close the sheet and
-   spend the rest of the window re-routing.
+   little, and a little more each time in the same round. Tap READY to close the sheet;
+   whatever you bought gets placed during the next planning phase.
 
 After the last round, the most **lifetime earnings** wins. Money you spend still counts
 toward your score, so buying is never a penalty — but the nine slots are.
@@ -134,5 +138,6 @@ amplify.yml       static hosting config, no build commands
 ```
 
 Balance lives in `js/machines.js` and `DEFAULT_CFG` at the top of `js/game.js`. Gizmo
-values, machine prices, cycle times, producer and seller upgrades, and the shop's price
-drift are all there in one screen of code.
+values, machine prices, cycle times, producer and seller upgrades, phase lengths and the
+shop's price drift are all there in one screen of code. Rounds, round length, planning
+time and starting cash are also on the floor screen's **Setup** panel.

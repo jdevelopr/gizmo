@@ -58,6 +58,8 @@ setTimeout(() => {
     <button id="host-btn" class="primary wide">Open a room on this screen</button>
     <p class="fine">This device becomes the main screen — it runs the floor and shows every
       line. Players join on their own phones and never touch it.</p>
+    <button id="solo-btn" class="ghost wide">Practice solo</button>
+    <p class="fine">One line, no room, no other players — for learning the machines or testing changes.</p>
     <form id="join-form" class="join">
       <label for="join-code">or join as a player with a code</label>
       <div class="join-row">
@@ -238,8 +240,9 @@ UI.renderLegend();
 
 /* ================================================================== intents */
 
-/** Clients are the only ones with a factory, so intents only ever go on the wire. */
+/** Clients emit onto the wire; solo mode applies intents straight to the sim. */
 function emit(intent) {
+  if (role === 'solo') return soloIntent(intent);
   client?.input(intent);
 }
 
@@ -586,6 +589,91 @@ function promptName(code) {
     startClient(code);
   };
 }
+
+/* ===================================================================== solo */
+/* One factory, no network: the same sim the host runs, ticked locally.
+   Rounds and orders behave normally so balance testing is honest, but the
+   game keeps going after the last round instead of ending. */
+
+let solo = null;
+
+function startSolo() {
+  role = 'solo';
+  mySeat = 0;
+  solo = {
+    f: G.newFactory(0, savedName() || 'Test rig'),
+    stock: G.newStock(),
+    contracts: G.refreshContracts(1),
+    round: 1,
+    phase: 'round',
+    phaseEnds: performance.now() + G.ROUND_SECONDS * 1000,
+    last: performance.now(),
+  };
+  meta.names = [solo.f.name];
+  show('game');
+  keepAwake();
+  resize();
+  UI.toast('Solo practice — rounds loop forever, sell the line to reset');
+  setInterval(soloTick, TICK_MS);
+}
+
+function soloTick() {
+  const now = performance.now();
+  const dt = Math.min(0.25, (now - solo.last) / 1000);
+  solo.last = now;
+
+  if (solo.phase === 'round') {
+    const sales = [...G.tickFactory(solo.f, dt), ...G.tickEmptySlots(solo.f, dt)];
+    for (const s of sales) {
+      for (const { contract } of G.creditContracts(solo.contracts, solo.f, s.tier)) {
+        UI.toast(`Order filled — ${UI.money(contract.reward)}`);
+      }
+    }
+  }
+
+  if (now >= solo.phaseEnds) {
+    if (solo.phase === 'round') {
+      G.restock(solo.stock);
+      solo.contracts = G.refreshContracts(solo.round + 1);
+      solo.phase = 'intermission';
+      solo.phaseEnds = now + G.INTERMISSION_SECONDS * 1000;
+      UI.toast('Delivery arrived — shop restocked');
+    } else {
+      solo.round += 1;   // no cap: practice runs as long as you like
+      solo.phase = 'round';
+      solo.phaseEnds = now + G.ROUND_SECONDS * 1000;
+      UI.toast(`Round ${solo.round}`);
+    }
+  }
+
+  view = G.packFactory(solo.f);
+  meta = {
+    ...meta,
+    round: solo.round,
+    phase: solo.phase,
+    tLeft: Math.max(0, (solo.phaseEnds - now) / 1000),
+    contracts: solo.contracts,
+    stock: solo.stock,
+    board: [{ seat: 0, name: solo.f.name, net: G.netWorth(solo.f), connected: true }],
+  };
+  refreshOpenPanels();
+}
+
+function soloIntent(intent) {
+  const f = solo.f;
+  let res;
+  switch (intent.t) {
+    case 'buy':     res = G.buy(f, solo.stock, intent.slot, intent.id, intent.dir); break;
+    case 'upgrade': res = G.upgrade(f, intent.slot); break;
+    case 'sell':    res = G.sellMachine(f, solo.stock, intent.slot); break;
+    case 'lane':    res = G.buyLane(f); break;
+    case 'flip':    res = G.flipRouter(f, intent.slot); break;
+    default: return;
+  }
+  UI.toast(res.msg, !res.ok);
+}
+
+bindButton(document.querySelector('#solo-btn'), startSolo);
 
 /* =================================================================== shared */
 

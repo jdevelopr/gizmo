@@ -50,9 +50,9 @@ setTimeout(() => {
     <p class="sub">Extracteur Balistique — a factory tycoon for 2 to 4 engineers</p>
   </div>
   <p class="blurb">
-    Buy machines. Bolt them into a line. Roll gizmos through it, refine them up the
-    tiers, and ship them before anyone else fills the standing orders. Stock is
-    shared, so what your rivals buy, you can't.
+      Three lanes, five bays each. Raw gizmos roll in from the intake, your machines
+    refine them up the tiers, and routers throw them across lanes. Ship before anyone
+    else fills the standing orders — stock is shared, so what your rivals buy, you can't.
   </p>
   <div class="home-actions">
     <button id="host-btn" class="primary wide">Open a room on this screen</button>
@@ -487,10 +487,11 @@ function applyIntent(seat, intent) {
   if (!f || phase === 'lobby' || phase === 'over' || !intent) return;
   let res;
   switch (intent.t) {
-    case 'buy':     res = G.buy(f, stock, intent.slot, intent.id); break;
+    case 'buy':     res = G.buy(f, stock, intent.slot, intent.id, intent.dir); break;
     case 'upgrade': res = G.upgrade(f, intent.slot); break;
     case 'sell':    res = G.sellMachine(f, stock, intent.slot); break;
-    case 'unlock':  res = G.unlockSlot(f); break;
+    case 'lane':    res = G.buyLane(f); break;
+    case 'flip':    res = G.flipRouter(f, intent.slot); break;
     default: return;
   }
   host.sendTo(seat, { t: 'event', name: 'notice', data: res });

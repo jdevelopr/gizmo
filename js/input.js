@@ -3,8 +3,8 @@
  * as one normalised intent object, so the host never needs to know what kind of
  * device produced it.
  *
- * Intents: { t:'buy', slot, id } { t:'upgrade', slot } { t:'sell', slot }
- *          { t:'unlock' }
+ * Intents: { t:'buy', slot, id, dir? } { t:'upgrade', slot } { t:'sell', slot }
+ *          { t:'lane' } { t:'flip', slot }
  */
 
 import { slotAt } from './render.js';

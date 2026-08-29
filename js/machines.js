@@ -1,7 +1,7 @@
 /**
  * machines.js — the parts catalogue.
  *
- * 50 machines across five kinds. Pure data plus the level-scaling maths.
+ * 44 machines across five kinds. Pure data plus the level-scaling maths.
  * No DOM, no network: this module is imported by the host sim, the shop UI
  * and the renderer alike, so it must stay side-effect free.
  */
@@ -20,34 +20,23 @@ export const TIERS = [
 export const MAX_TIER = TIERS.length - 1;
 
 export const KINDS = {
-  creator:   { label: 'Creators',   blurb: 'Emit raw gizmos onto the line.' },
   converter: { label: 'Converters', blurb: 'Raise gizmos to a higher tier.' },
+  router:    { label: 'Routers',    blurb: 'Throw gizmos into the next lane over.' },
   mover:     { label: 'Movers',     blurb: 'Speed the whole line up.' },
   energizer: { label: 'Energizers', blurb: 'Supply power. Draw nothing.' },
   keeper:    { label: 'Keepers',    blurb: 'Add buffer space and sale value.' },
 };
-export const KIND_ORDER = ['creator', 'converter', 'mover', 'energizer', 'keeper'];
+export const KIND_ORDER = ['converter', 'router', 'mover', 'energizer', 'keeper'];
 
 /* ------------------------------------------------------------- catalogue --- */
-/* creator   p: { tier, interval }         emits tier every interval seconds
-   converter p: { time, up, maxIn, need }  need inputs of tier <= maxIn -> one at +up
+/* converter p: { time, up, maxIn, need }  need inputs of tier <= maxIn -> one at +up
+   router    p: { time, mode }             'divert' sends every gizmo sideways;
+                                           'split' alternates own lane / sideways
    mover     p: { speed }                  additive line-speed bonus
    energizer p: { supply }                 power units supplied
    keeper    p: { cap, value }             +queue per slot, +% sale value          */
 
 export const MACHINES = [
-  // ---- Creators (10) -------------------------------------------------------
-  { id: 'c1',  code: 'ZR/10',  name: 'Hopper',        kind: 'creator', cost: 60,    draw: 2,  stock: 9, p: { tier: 0, interval: 3.0 } },
-  { id: 'c2',  code: 'QN/02',  name: 'Feeder',        kind: 'creator', cost: 130,   draw: 3,  stock: 8, p: { tier: 0, interval: 2.2 } },
-  { id: 'c3',  code: 'DU/01',  name: 'Injector',      kind: 'creator', cost: 280,   draw: 5,  stock: 7, p: { tier: 0, interval: 1.6 } },
-  { id: 'c4',  code: 'TH/04',  name: 'Extruder',      kind: 'creator', cost: 440,   draw: 6,  stock: 6, p: { tier: 1, interval: 3.2 } },
-  { id: 'c5',  code: 'AX/02',  name: 'Spooler',       kind: 'creator', cost: 720,   draw: 8,  stock: 6, p: { tier: 1, interval: 2.4 } },
-  { id: 'c6',  code: 'MK/08',  name: 'Caster',        kind: 'creator', cost: 1180,  draw: 11, stock: 5, p: { tier: 2, interval: 3.4 } },
-  { id: 'c7',  code: 'RG/01',  name: 'Sinterer',      kind: 'creator', cost: 1850,  draw: 14, stock: 5, p: { tier: 2, interval: 2.6 } },
-  { id: 'c8',  code: 'KL/09',  name: 'Nucleator',     kind: 'creator', cost: 2950,  draw: 18, stock: 4, p: { tier: 3, interval: 3.6 } },
-  { id: 'c9',  code: 'VX/10',  name: 'Seed Array',    kind: 'creator', cost: 4700,  draw: 24, stock: 3, p: { tier: 3, interval: 2.6 } },
-  { id: 'c10', code: 'LAV-5',  name: 'Genesis Drum',  kind: 'creator', cost: 7600,  draw: 32, stock: 2, p: { tier: 4, interval: 3.8 } },
-
   // ---- Converters (14) -----------------------------------------------------
   { id: 'v1',  code: 'DU/12',  name: 'Press',         kind: 'converter', cost: 150,   draw: 4,  stock: 9, p: { time: 2.4, up: 1, maxIn: 0, need: 1 } },
   { id: 'v2',  code: 'ZR/04',  name: 'Roller',        kind: 'converter', cost: 330,   draw: 6,  stock: 8, p: { time: 2.0, up: 1, maxIn: 1, need: 1 } },
@@ -63,6 +52,12 @@ export const MACHINES = [
   { id: 'v12', code: 'ZR/02',  name: 'Collimator',    kind: 'converter', cost: 8300,  draw: 34, stock: 3, p: { time: 2.8, up: 1, maxIn: 5, need: 1 } },
   { id: 'v13', code: 'RCT-1',  name: 'Reactor',       kind: 'converter', cost: 9800,  draw: 40, stock: 3, p: { time: 3.6, up: 2, maxIn: 3, need: 2 } },
   { id: 'v14', code: 'LAV-2',  name: 'Transmuter',    kind: 'converter', cost: 14500, draw: 52, stock: 2, p: { time: 4.2, up: 3, maxIn: 2, need: 3 } },
+
+  // ---- Routers (4) ---------------------------------------------------------
+  { id: 'r1',  code: 'DV/01',  name: 'Diverter',      kind: 'router', cost: 260,   draw: 4,  stock: 7, p: { time: 0.9,  mode: 'divert' } },
+  { id: 'r2',  code: 'SP/02',  name: 'Splitter',      kind: 'router', cost: 520,   draw: 6,  stock: 6, p: { time: 1.0,  mode: 'split' } },
+  { id: 'r3',  code: 'DV/07',  name: 'Swing Chute',   kind: 'router', cost: 1100,  draw: 9,  stock: 4, p: { time: 0.5,  mode: 'divert' } },
+  { id: 'r4',  code: 'SP/09',  name: 'Twin Manifold', kind: 'router', cost: 1700,  draw: 12, stock: 3, p: { time: 0.55, mode: 'split' } },
 
   // ---- Movers (9) ----------------------------------------------------------
   { id: 'm1',  code: 'TH/10',  name: 'Belt',          kind: 'mover', cost: 90,    draw: 2,  stock: 9, p: { speed: 0.12 } },
@@ -123,12 +118,12 @@ export function stats(m, level = 1) {
   const n = level - 1;
   const s = { draw: m.draw, ...m.p };
   switch (m.kind) {
-    case 'creator':
-      s.interval = m.p.interval * Math.pow(0.87, n);
-      s.draw = round1(m.draw * Math.pow(1.12, n));
-      break;
     case 'converter':
       s.time = m.p.time * Math.pow(0.87, n);
+      s.draw = round1(m.draw * Math.pow(1.12, n));
+      break;
+    case 'router':
+      s.time = m.p.time * Math.pow(0.9, n);
       s.draw = round1(m.draw * Math.pow(1.12, n));
       break;
     case 'mover':
@@ -152,8 +147,10 @@ export function stats(m, level = 1) {
 export function describe(m, level = 1) {
   const s = stats(m, level);
   switch (m.kind) {
-    case 'creator':
-      return `Emits ${TIERS[s.tier].name} every ${s.interval.toFixed(2)}s`;
+    case 'router':
+      return m.p.mode === 'divert'
+        ? `Throws every gizmo into the next lane, ${s.time.toFixed(2)}s`
+        : `Alternates: one ahead, one into the next lane, ${s.time.toFixed(2)}s`;
     case 'converter': {
       const inp = s.need > 1 ? `${s.need} inputs` : '1 input';
       return `${inp} up to ${TIERS[s.maxIn].name} to +${s.up} tier, ${s.time.toFixed(2)}s`;

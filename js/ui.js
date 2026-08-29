@@ -7,13 +7,13 @@
  */
 
 import { MACHINES, BY_ID, KINDS, KIND_ORDER, TIERS, MAX_LEVEL, stats, describe, upgradeCost, sellRefund } from './machines.js';
-import { SLOT_COUNT, unlockCost } from './game.js';
+import { LANES, SLOT_COUNT, laneCost, laneOf, defaultDir } from './game.js';
 import { bindButton } from './input.js';
 
 const $ = s => document.querySelector(s);
 export const money = n => '$' + Math.round(n).toLocaleString('en-US');
 
-let shopFilter = 'creator';
+let shopFilter = 'converter';
 let shopSlot = null;   // slot the shop is buying into, or null for browse mode
 
 /* ----------------------------------------------------------------- lobby --- */
@@ -61,15 +61,16 @@ export function openSlot(index, view, stock, emit) {
   const entry = view.slots[index];
   const panel = $('#slot-panel');
 
-  if (index >= view.unlocked) {
-    const isNext = index === view.unlocked;
-    const price = unlockCost(index);
+  const lane = laneOf(index);
+  if (lane >= view.lanes) {
+    const isNext = lane === view.lanes;
+    const price = laneCost(lane);
     panel.innerHTML = `
-      <div class="panel-head"><h3>Slot ${index + 1}</h3><button class="x" data-close>Close</button></div>
+      <div class="panel-head"><h3>Lane ${lane + 1}</h3><button class="x" data-close>Close</button></div>
       <p class="dim">${isNext
-        ? 'This is the next section of line. Extend to keep building.'
-        : `Locked. Extend slot ${view.unlocked + 1} first.`}</p>
-      ${isNext ? `<button class="primary wide" data-unlock ${view.cash < price ? 'disabled' : ''}>Extend line — ${money(price)}</button>` : ''}`;
+        ? 'A whole new lane: its own intake, five bays, and its own sell dock. One purchase opens all of it.'
+        : `Locked. Open lane ${view.lanes + 1} first.`}</p>
+      ${isNext ? `<button class="primary wide" data-unlock ${view.cash < price ? 'disabled' : ''}>Open lane ${lane + 1} — ${money(price)}</button>` : ''}`;
     wirePanel(panel, { emit });
     show(panel);
     return;
@@ -97,6 +98,8 @@ export function openSlot(index, view, stock, emit) {
     <p class="statline">${describe(m, level)}</p>
     ${maxed ? '' : `<p class="statline next">Next: ${describe(m, level + 1)}</p>`}
     <p class="dim">Power draw ${stats(m, level).draw}</p>
+    ${m.kind === 'router' ? `<p class="statline">Throwing ${entry[2] === -1 ? 'UP into lane ' + lane : 'DOWN into lane ' + (lane + 2)}${(lane + (entry[2] || 1) >= view.lanes || lane + (entry[2] || 1) < 0) ? ' — that lane is not open yet' : ''}</p>
+    <button class="ghost wide" data-flip>Flip direction</button>` : ''}
     <div class="panel-actions">
       <button class="primary" data-upgrade ${maxed || view.cash < up ? 'disabled' : ''}>
         ${maxed ? 'Max level' : `Upgrade — ${money(up)}`}
@@ -114,7 +117,9 @@ function wirePanel(panel, { emit, index }) {
   const s = panel.querySelector('[data-sell]');
   if (s) bindButton(s, () => { emit({ t: 'sell', slot: index }); closePanel(); });
   const x = panel.querySelector('[data-unlock]');
-  if (x) bindButton(x, () => { emit({ t: 'unlock' }); closePanel(); });
+  if (x) bindButton(x, () => { emit({ t: 'lane' }); closePanel(); });
+  const fl = panel.querySelector('[data-flip]');
+  if (fl) bindButton(fl, () => { emit({ t: 'flip', slot: index }); closePanel(); });
 }
 
 export function closePanel() {
@@ -168,7 +173,7 @@ export function renderShop(view, stock, emit) {
       <button class="x" data-close-shop>Close</button>
     </div>
     <p class="dim">${KINDS[shopFilter].blurb} ${target === null
-      ? 'Every bay is full — sell something or extend the line.'
+      ? 'Every bay is full — sell something or open another lane.'
       : 'Tap a different slot on the drawing to aim elsewhere.'} Stock is shared, first come first served.</p>
     <div class="tabs">${tabs}</div>
     <ul class="shop-list">${items}</ul>`;
@@ -178,7 +183,10 @@ export function renderShop(view, stock, emit) {
     renderShop(view, stock, emit);
   }));
   el.querySelectorAll('[data-buy]').forEach(b => bindButton(b, () => {
-    emit({ t: 'buy', slot: target, id: b.dataset.buy });
+    const m = BY_ID[b.dataset.buy];
+    const intent = { t: 'buy', slot: target, id: b.dataset.buy };
+    if (m.kind === 'router') intent.dir = defaultDir({ lanes: view.lanes }, target);
+    emit(intent);
     closeShop();
   }));
   el.querySelectorAll('[data-close-shop]').forEach(b => bindButton(b, closeShop));
@@ -255,9 +263,9 @@ const show = el => (el.hidden = false);
 const hide = el => (el.hidden = true);
 export const shopTargetSlot = () => shopSlot;
 
-/** First unlocked bay with nothing bolted into it, or null if the line is full. */
+/** First operational bay with nothing bolted into it, or null if the floor is full. */
 function firstEmpty(view) {
-  for (let i = 0; i < view.unlocked; i++) if (!view.slots[i]) return i;
+  for (let i = 0; i < SLOT_COUNT; i++) if (laneOf(i) < view.lanes && !view.slots[i]) return i;
   return null;
 }
 

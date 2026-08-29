@@ -57,21 +57,21 @@ HTTPS is required either way. That's why sharing a local address like
 code. Everyone else scans it, or types the code on the home screen. Players enter a name
 and press *I'm ready*. Once everyone is ready, the host starts.
 
-**Your line.** Each player gets their own drawing: twelve bays, five of them unlocked to
-start with. Gizmos enter at a Creator and travel left to right along the belt, wrapping
-around at the end of each row. Whatever falls off the end of your unlocked run is sold
-automatically.
+**Your floor.** Each player gets three parallel lanes of five bays. Only lane 1 is
+operational to start with; lanes 2 and 3 are bought whole, one purchase each. Every
+operational lane has a free intake dropping raw gizmos onto its head, and a sell dock
+at its end — whatever rolls off is sold automatically.
 
 **Tap a bay** to open it. Empty bays open the shop. Filled bays let you upgrade (five
-levels each) or sell for half of what you've put in. Locked bays can be bought open, and
-each one costs more than the last.
+levels each) or sell for half of what you've put in. Tapping a locked lane offers to
+open it.
 
 **The five kinds of machine:**
 
 | Kind | What it does |
 |---|---|
-| Creators | Emit raw gizmos onto the line. Everything starts here. |
 | Converters | Take gizmos in and push them up a tier. Some need two or three inputs to make one output. |
+| Routers | Throw gizmos sideways into the neighbouring lane. Diverters send every gizmo across; Splitters alternate between straight ahead and across. A router aimed at a lane you haven't opened jams until you open it (Splitters just keep everything in-lane). |
 | Movers | Speed up the entire line. |
 | Energizers | Supply power, and draw none themselves. |
 | Keepers | Add buffer space in every bay and raise what your gizmos sell for. |
@@ -135,7 +135,7 @@ gizmoworks/
 ├── css/style.css     the drawing-office look
 └── js/
     ├── net.js        peer connections, seats, reconnect
-    ├── machines.js   the 50-machine catalogue and upgrade maths
+    ├── machines.js   the 44-machine catalogue and upgrade maths
     ├── game.js       the simulation — runs on the host only
     ├── render.js     draws the factory as a technical drawing
     ├── ui.js         shop, panels, orders, standings
@@ -143,4 +143,4 @@ gizmoworks/
 ```
 
 Want to change the balance? Everything lives in `js/machines.js` and the constants at
-the top of `js/game.js` — round length, number of rounds, starting cash, slot count.
+the top of `js/game.js` — round length, number of rounds, starting cash, lane count and prices.

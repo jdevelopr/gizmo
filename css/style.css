@@ -48,6 +48,7 @@ body[data-screen="home"]    #home,
 body[data-screen="name"]    #name,
 body[data-screen="lobby"]   #lobby,
 body[data-screen="game"]    #game,
+body[data-screen="screen"]  #screen,
 body[data-screen="results"] #results { display: flex; }
 
 .sheet {
@@ -341,4 +342,157 @@ label {
 @media (min-width: 760px) {
   .drawer { left: auto; right: 16px; bottom: 16px; width: 420px; border: 1px solid var(--ink); border-radius: 4px; max-height: 76dvh; }
   .legend { gap: 6px 20px; }
+}
+
+
+/* ---------------------------------------------------------------- main screen
+
+   The host device. No controls, no touch targets — it is a wall display, so
+   everything scales with the viewport and reads from across a room. */
+
+#screen {
+  flex-direction: column;
+  height: 100dvh;
+  padding: 16px 20px calc(12px + env(safe-area-inset-bottom));
+  gap: 11px;
+}
+
+.screen-head {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 3vw, 40px);
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 9px;
+}
+.screen-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.screen-title {
+  font-family: var(--mono);
+  font-size: clamp(19px, 2.5vw, 34px);
+  letter-spacing: 0.2em;
+  font-weight: 500;
+  margin: 0;
+}
+.screen-join { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.screen-join canvas {
+  width: clamp(58px, 6.5vw, 104px);
+  height: auto;
+  background: var(--paper-2);
+  border: 1px solid var(--ink);
+  padding: 4px;
+}
+.screen-join .code { margin: 0; font-size: clamp(15px, 1.9vw, 26px); letter-spacing: 0.28em; }
+.screen-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex: 0 0 auto; }
+.screen-timer {
+  font-family: var(--mono);
+  font-size: clamp(28px, 4.6vw, 64px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.screen-timer.warn { color: var(--alarm); }
+
+/* -------------------------------------------------------------------- bays */
+
+.bays { flex: 1; min-height: 0; display: grid; gap: 11px; grid-template-columns: 1fr; }
+.bays[data-count="2"] { grid-template-columns: 1fr 1fr; }
+.bays[data-count="3"],
+.bays[data-count="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+.bay {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+.bay.offline { opacity: 0.38; }
+.bay-head, .bay-foot { display: flex; align-items: center; gap: 8px; padding: 5px 9px; font-family: var(--mono); }
+.bay-head { border-bottom: 1px solid var(--ink-35); }
+.bay-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: clamp(13px, 1.35vw, 19px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bay-cash { font-size: clamp(13px, 1.45vw, 21px); font-variant-numeric: tabular-nums; }
+.bay-stage { flex: 1; min-height: 0; position: relative; }
+.bay-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.bay-foot {
+  border-top: 1px solid var(--ink-15);
+  font-size: clamp(8px, 0.8vw, 11px);
+  letter-spacing: 0.1em;
+  color: var(--ink-60);
+}
+.bay-count { flex: 1; text-align: center; }
+.bay-net { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------- foot */
+
+.screen-foot {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr 1.1fr;
+  gap: clamp(12px, 2vw, 30px);
+  border-top: 1px solid var(--ink);
+  padding-top: 9px;
+}
+.foot-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+.screen-orders { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.s-order {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: clamp(9.5px, 0.95vw, 13px);
+  font-variant-numeric: tabular-nums;
+}
+.s-order.done { opacity: 0.45; }
+.s-order .dot { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--ink); flex: 0 0 auto; }
+.s-order-title { width: 12ch; flex: 0 0 auto; }
+.s-order .bar {
+  flex: 1;
+  min-width: 30px;
+  height: 6px;
+  background: var(--paper-2);
+  border: 1px solid var(--ink-35);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.s-order-meta { width: 8ch; flex: 0 0 auto; text-align: right; color: var(--ink-60); }
+.s-order-reward { width: 7ch; flex: 0 0 auto; text-align: right; }
+
+.screen-board { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.s-rank {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: clamp(10px, 1vw, 14px);
+  font-variant-numeric: tabular-nums;
+}
+.s-rank.offline { opacity: 0.42; }
+.s-name { flex: 1; min-width: 0; font-family: var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.screen-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: clamp(9px, 0.9vw, 12px);
+  color: var(--ink-35);
+  min-height: 4.2em;
+}
+.feed-line.fresh { color: var(--ink); }
+#screen-legend { border: 0; padding: 0; margin-top: auto; }
+
+/* A host on a laptop or a portrait panel: stack the footer instead of squeezing. */
+@media (max-width: 900px) {
+  .screen-foot { grid-template-columns: 1fr 1fr; }
+  .screen-foot .foot-col:last-child { grid-column: 1 / -1; }
+  .screen-join canvas { display: none; }
 }

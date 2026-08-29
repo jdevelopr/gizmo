@@ -27,9 +27,11 @@
     shared, so what your rivals buy, you can't.
   </p>
   <div class="home-actions">
-    <button id="host-btn" class="primary wide">Start a room</button>
+    <button id="host-btn" class="primary wide">Open a room on this screen</button>
+    <p class="fine">This device becomes the main screen — it runs the floor and shows every
+      line. Players join on their own phones and never touch it.</p>
     <form id="join-form" class="join">
-      <label for="join-code">or join with a code</label>
+      <label for="join-code">or join as a player with a code</label>
       <div class="join-row">
         <input id="join-code" maxlength="4" autocomplete="off" autocapitalize="characters"
                autocorrect="off" spellcheck="false" inputmode="text" placeholder="ABCD">
@@ -67,7 +69,7 @@
     <button id="start-btn" class="primary" disabled>Start game</button>
   </div>
   <p id="lobby-status" class="status" role="status"></p>
-  <p class="fine">Rounds: <span id="rounds-label">5</span> × 90 seconds, with a restock between each.</p>
+  <p class="fine">Up to <span id="max-players">4</span> players · <span id="rounds-label">5</span> rounds × 90 seconds, with a restock between each.</p>
 </section>
 
 <!-- ------------------------------------------------------------------ game -->
@@ -115,7 +117,42 @@
     <ul id="board-list" class="board"></ul>
   </aside>
 
-  <div id="toast" class="toast"></div>
+</section>
+
+<!-- ---------------------------------------------------------- main screen -->
+<section id="screen" class="screen">
+  <header class="screen-head">
+    <div class="screen-id">
+      <h1 class="screen-title">GIZMOWORKS</h1>
+      <p class="ref">EXTRACTEUR BALISTIQUE · REF. 0X46CC4B5116AA · PLANCHE GENERALE</p>
+    </div>
+    <div class="screen-join">
+      <canvas id="screen-qr" width="132" height="132" aria-label="Scan to join this room"></canvas>
+      <p class="code small" id="screen-code"></p>
+    </div>
+    <div class="screen-clock">
+      <span class="hud-label" id="screen-round">ROUND 1 / 5</span>
+      <span class="screen-timer" id="screen-timer">1:30</span>
+    </div>
+  </header>
+
+  <div id="bays" class="bays" data-count="0"></div>
+
+  <footer class="screen-foot">
+    <section class="foot-col">
+      <h3>Standing orders</h3>
+      <ul id="screen-orders" class="screen-orders"></ul>
+    </section>
+    <section class="foot-col narrow">
+      <h3>Standings</h3>
+      <ol id="screen-board" class="screen-board"></ol>
+    </section>
+    <section class="foot-col narrow">
+      <h3>Floor log</h3>
+      <div id="screen-feed" class="screen-feed"></div>
+      <div id="screen-legend" class="legend"></div>
+    </section>
+  </footer>
 </section>
 
 <!-- --------------------------------------------------------------- results -->
@@ -127,15 +164,19 @@
   <p id="results-note" class="fine"></p>
 </section>
 
+<div id="toast" class="toast"></div>
+
 <script type="module">
 import { createHost, createClient, roomFromUrl, joinUrl, clientId } from './js/net.js';
 import * as G from './js/game.js';
 import { initRenderer, draw, resize } from './js/render.js';
 import { bindCanvas, bindButton, bindKeys, keepAwake } from './js/input.js';
 import * as UI from './js/ui.js';
+import * as Screen from './js/screen.js';
 
 const SLUG = 'gizmoworks';
-const MAX_PLAYERS = 4;          // including the host
+const MAX_PLAYERS = 4;          // the host runs the screen and never takes a seat
+const MIN_PLAYERS = 2;
 const ROUNDS = G.DEFAULT_ROUNDS;
 const TICK_MS = 50;             // 20 Hz simulation
 const SEND_MS = 125;            // 8 Hz broadcast — plenty for rolling circles
@@ -145,8 +186,8 @@ const show = s => (document.body.dataset.screen = s);
 
 let role = null;      // 'host' | 'client'
 let host = null, client = null;
-let mySeat = 0;       // game seat: host is always 0, joiners are 1..3
-let view = null;      // my packed factory
+let mySeat = 0;       // players hold seats 0..3; the host holds none
+let view = null;      // my packed factory (clients only)
 let meta = { round: 1, phase: 'lobby', tLeft: 0, contracts: [], stock: null, board: [], names: [] };
 let selected = -1;
 
@@ -156,19 +197,21 @@ initRenderer($('#stage'));
 UI.renderLegend();
 
 (function frame() {
-  if (document.body.dataset.screen === 'game' && view) {
+  const screen = document.body.dataset.screen;
+  if (screen === 'game' && view) {
     draw({ ...view, name: meta.names[mySeat] }, selected);
     UI.renderHud(view, meta.round, ROUNDS, meta.phase, meta.tLeft);
+  } else if (screen === 'screen' && role === 'host') {
+    hostFrame();
   }
   requestAnimationFrame(frame);
 })();
 
 /* ================================================================== intents */
 
-/** One funnel for buy / upgrade / sell / unlock, whichever role we are. */
+/** Clients are the only ones with a factory, so intents only ever go on the wire. */
 function emit(intent) {
-  if (role === 'host') applyIntent(0, intent);
-  else client?.input(intent);
+  client?.input(intent);
 }
 
 bindCanvas($('#stage'), i => {
@@ -193,21 +236,26 @@ document.querySelectorAll('[data-close-board]').forEach(b => bindButton(b, () =>
 
 /* ===================================================================== host */
 
-const factories = new Map();  // game seat -> factory
+const factories = new Map();  // seat -> factory. The host has no entry here.
 let stock = null;
 let contracts = [];
 let round = 1, phase = 'lobby', phaseEnds = 0;
 let tickTimer = null, sendTimer = null, last = 0;
+let roomCode = '';
+
+const nameOf = seat => factories.get(seat)?.name || `Player ${seat + 1}`;
 
 function startHost() {
   role = 'host';
-  const name = savedName() || 'Chef d\'atelier';
-  host = createHost({ slug: SLUG, maxPlayers: MAX_PLAYERS - 1 });
+  host = createHost({ slug: SLUG, maxPlayers: MAX_PLAYERS });
 
   host.on('open', code => {
+    roomCode = code;
     const url = joinUrl(code);
     QRCode.toCanvas($('#qr'), url, { width: 220, margin: 1, color: { dark: '#171412', light: '#f2efe6' } });
+    QRCode.toCanvas($('#screen-qr'), url, { width: 132, margin: 1, color: { dark: '#171412', light: '#f2efe6' } });
     $('#room-code').textContent = code;
+    $('#screen-code').textContent = code;
     $('#host-panel').hidden = false;
     bindButton($('#copy-link'), async () => {
       try { await navigator.clipboard.writeText(url); UI.toast('Link copied'); }
@@ -219,62 +267,73 @@ function startHost() {
   });
 
   host.on('roster', refreshLobby);
-  host.on('hello', netSeat => {
-    const seat = netSeat + 1;
-    const entry = host.roster().find(p => p.seat === netSeat);
+  host.on('hello', seat => {
+    const entry = host.roster().find(p => p.seat === seat);
     // Someone arriving mid-game gets a line of their own rather than a dead seat.
-    if (!factories.has(seat) && phase !== 'lobby') factories.set(seat, G.newFactory(seat, entry?.name || `P${seat + 1}`));
+    if (!factories.has(seat) && phase !== 'lobby') {
+      factories.set(seat, G.newFactory(seat, entry?.name || `Player ${seat + 1}`));
+      Screen.pushFeed(`${entry?.name || 'A new engineer'} joined the floor`);
+    }
     const f = factories.get(seat);
     if (f) { f.connected = true; if (entry?.name) f.name = entry.name; }
-    if (phase !== 'lobby') host.sendTo(netSeat, { t: 'start', state: { rounds: ROUNDS } });
+    if (phase !== 'lobby') host.sendTo(seat, { t: 'start', state: { rounds: ROUNDS } });
     refreshLobby();
   });
   host.on('leave', seat => {
-    const f = factories.get(seat + 1);
+    const f = factories.get(seat);
     if (f) f.connected = false;
     refreshLobby();
   });
-  host.on('input', (netSeat, payload) => applyIntent(netSeat + 1, payload));
+  host.on('input', (seat, payload) => applyIntent(seat, payload));
   host.on('error', err => ($('#lobby-status').textContent = err.message));
 
-  factories.set(0, G.newFactory(0, name));
   host.open();
-
   bindButton($('#start-btn'), beginGame);
 }
 
 function refreshLobby() {
-  const players = [{ seat: 0, name: factories.get(0)?.name || 'Host', ready: true, connected: true },
-    ...host.roster().map(p => ({ ...p, seat: p.seat + 1 }))];
+  const players = host.roster();
   meta.names = [];
   players.forEach(p => (meta.names[p.seat] = p.name));
-  UI.renderRoster(players, 0);
+  UI.renderRoster(players, -1);
   host.broadcast({ t: 'event', name: 'roster', data: { players } });
 
-  const enough = players.length >= 2;
-  const allReady = host.roster().every(p => p.ready && p.connected);
+  if (phase !== 'lobby') { Screen.syncBays(players); Screen.resizeBays(); }
+
+  const short = MIN_PLAYERS - players.length;
+  const enough = players.length >= MIN_PLAYERS;
+  const allReady = players.length > 0 && players.every(p => p.ready && p.connected);
   $('#start-btn').disabled = !(enough && allReady);
   $('#lobby-status').textContent = !enough
-    ? 'Waiting for at least one more engineer.'
-    : allReady ? 'Everyone is ready.' : 'Waiting on ready-up.';
+    ? `Waiting for ${short} more engineer${short === 1 ? '' : 's'} — scan the code to join.`
+    : allReady ? 'Everyone is ready. Start when you like.' : 'Waiting on ready-up.';
 }
 
 function beginGame() {
+  const players = host.roster();
+  if (players.length < MIN_PLAYERS) return;
+
   stock = G.newStock();
   contracts = G.refreshContracts(1);
   round = 1;
-  for (const p of host.roster()) {
-    if (!factories.has(p.seat + 1)) factories.set(p.seat + 1, G.newFactory(p.seat + 1, p.name));
-    const f = factories.get(p.seat + 1);
-    f.name = p.name;
+  factories.clear();
+  for (const p of players) {
+    const f = G.newFactory(p.seat, p.name);
     f.connected = p.connected;
+    factories.set(p.seat, f);
   }
+
   setPhase('round', G.ROUND_SECONDS);
   host.setPhase('playing');
   host.broadcast({ t: 'start', state: { rounds: ROUNDS } });
-  show('game');
+
+  Screen.syncBays(players);
+  Screen.clearFeed();
+  Screen.renderLegend();
+  show('screen');
+  Screen.resizeBays();
+  Screen.pushFeed('Round 1 — lines are live');
   keepAwake();
-  resize();
 
   last = performance.now();
   clearInterval(tickTimer); clearInterval(sendTimer);
@@ -290,6 +349,17 @@ function setPhase(p, seconds) {
   phaseEnds = performance.now() + seconds * 1000;
 }
 
+/** The main screen draws from live host state, so it runs smoother than the wire. */
+function hostFrame() {
+  if (phase === 'lobby') return;
+  const tLeft = Math.max(0, (phaseEnds - performance.now()) / 1000);
+  Screen.renderClock(round, ROUNDS, phase, tLeft);
+  Screen.drawBays([...factories.values()].map(f => ({
+    seat: f.seat,
+    view: { ...G.packFactory(f), name: f.name, net: G.netWorth(f) },
+  })));
+}
+
 function tick() {
   const now = performance.now();
   const dt = Math.min(0.25, (now - last) / 1000);
@@ -302,7 +372,7 @@ function tick() {
         const filled = G.creditContracts(contracts, f, s.tier);
         for (const { contract, seat } of filled) {
           host.broadcast({ t: 'event', name: 'contract', data: { seat, reward: contract.reward, tier: contract.tier } });
-          if (seat === 0) UI.toast(`Order filled — ${UI.money(contract.reward)}`);
+          Screen.pushFeed(`${nameOf(seat)} filled an order — ${UI.money(contract.reward)}`);
         }
       }
     }
@@ -314,13 +384,17 @@ function tick() {
       G.restock(stock);
       contracts = G.refreshContracts(round + 1);
       host.reap();
+      // Anyone reaped loses their line, so the standings stop listing ghosts.
+      const live = new Set(host.roster().map(p => p.seat));
+      for (const seat of [...factories.keys()]) if (!live.has(seat)) factories.delete(seat);
       setPhase('intermission', G.INTERMISSION_SECONDS);
       host.broadcast({ t: 'event', name: 'restock', data: { round } });
-      UI.toast('Delivery arrived — shop restocked');
+      Screen.pushFeed('Delivery arrived — shop restocked');
     } else if (phase === 'intermission') {
       round += 1;
       setPhase('round', G.ROUND_SECONDS);
       host.broadcast({ t: 'event', name: 'round', data: { round } });
+      Screen.pushFeed(`Round ${round} — lines are live`);
     }
   }
 }
@@ -339,13 +413,10 @@ function broadcastState() {
   const common = { t: 'state', round, phase, tLeft: Math.round(tLeft * 10) / 10, board, names, contracts, stock };
 
   meta = { ...meta, ...common };
-  view = G.packFactory(factories.get(0));
+  for (const f of factories.values()) host.sendTo(f.seat, { ...common, me: G.packFactory(f) });
 
-  for (const f of factories.values()) {
-    if (f.seat === 0) continue;
-    host.sendTo(f.seat - 1, { ...common, me: G.packFactory(f) });
-  }
-  refreshOpenPanels();
+  Screen.renderOrders(contracts, names);
+  Screen.renderStandings(board);
 }
 
 /** Intents are validated here and nowhere else. Clients never touch money. */
@@ -360,8 +431,7 @@ function applyIntent(seat, intent) {
     case 'unlock':  res = G.unlockSlot(f); break;
     default: return;
   }
-  if (seat === 0) UI.toast(res.msg, !res.ok);
-  else host.sendTo(seat - 1, { t: 'event', name: 'notice', data: res });
+  host.sendTo(seat, { t: 'event', name: 'notice', data: res });
 }
 
 function endGame() {
@@ -373,7 +443,7 @@ function endGame() {
     .sort((a, b) => b.net - a.net);
   host.over(results);
   UI.renderResults(results);
-  $('#results-note').textContent = `${ROUNDS} rounds completed.`;
+  $('#results-note').textContent = `${ROUNDS} rounds completed. Room ${roomCode} is closed.`;
   show('results');
 }
 
@@ -387,11 +457,11 @@ function startClient(code) {
   client = createClient({ slug: SLUG, code, name });
 
   client.on('welcome', msg => {
-    mySeat = msg.seat + 1;
+    mySeat = msg.seat;
     $('#host-panel').hidden = true;
     $('#start-btn').hidden = true;
     show('lobby');
-    $('#lobby-status').textContent = `Joined room ${code}. Ready up when you are.`;
+    $('#lobby-status').textContent = `Joined room ${code}. Ready up — the game runs on the big screen.`;
     sessionStorage.setItem('room', code);
   });
 
@@ -458,21 +528,8 @@ function refreshOpenPanels() {
 
 const savedName = () => localStorage.getItem('name');
 
-bindButton($('#host-btn'), () => {
-  const n = savedName();
-  if (!n) {
-    show('name');
-    $('#name-form').onsubmit = e => {
-      e.preventDefault();
-      const v = $('#name-input').value.trim();
-      if (!v) return;
-      localStorage.setItem('name', v);
-      startHost();
-    };
-    return;
-  }
-  startHost();
-});
+// The host names nothing and plays nothing — it just opens the room.
+bindButton($('#host-btn'), startHost);
 
 $('#join-form').onsubmit = e => {
   e.preventDefault();
@@ -484,6 +541,7 @@ $('#join-form').onsubmit = e => {
 bindButton($('#again-btn'), () => location.href = location.origin + location.pathname);
 
 $('#rounds-label').textContent = String(ROUNDS);
+$('#max-players').textContent = String(MAX_PLAYERS);
 clientId(); // seed the persistent identity on first load
 
 const urlRoom = roomFromUrl();

@@ -12,23 +12,64 @@ import { SLOT_COUNT, unlockCost } from './game.js';
 const COLS = 4;
 const ROWS = 3;
 
+/* All the drawing below runs against one set of "current surface" globals, so
+ * a single body of code can serve any number of canvases: the player's own
+ * factory on a phone, and every player's factory tiled on the host screen. */
 let cv, ctx, dpr = 1;
 let layout = [];        // one rect per slot index, in serpentine order
 let smooth = new Map(); // gizmo id -> eased screen position, so 8 Hz state looks fluid
+let compact = false;    // tile mode: less chrome, smaller type
+let self = null;
 
-export function initRenderer(canvas) {
-  cv = canvas;
-  ctx = cv.getContext('2d');
-  resize();
-  window.addEventListener('resize', resize);
+const instances = [];
+let resizeBound = false;
+
+function bind(inst) {
+  self = inst;
+  cv = inst.cv; ctx = inst.ctx; dpr = inst.dpr;
+  layout = inst.layout; smooth = inst.smooth; compact = inst.compact;
 }
 
-export function resize() {
+function sync() {
+  if (!self) return;
+  self.dpr = dpr; self.layout = layout; self.smooth = smooth;
+}
+
+/** A drawing surface of its own. `compact` trims the chrome for small tiles. */
+export function createRenderer(canvas, { compact: c = false } = {}) {
+  const inst = {
+    cv: canvas, ctx: canvas.getContext('2d'), dpr: 1,
+    layout: [], smooth: new Map(), compact: !!c,
+  };
+  const api = {
+    draw(view, selected = -1) { bind(inst); drawInto(view, selected); sync(); },
+    resize() { bind(inst); resizeInto(); sync(); },
+    slotAt(px, py) { bind(inst); const i = hitTest(px, py); sync(); return i; },
+    destroy() { const k = instances.indexOf(api); if (k >= 0) instances.splice(k, 1); },
+  };
+  instances.push(api);
+  if (!resizeBound) {
+    resizeBound = true;
+    window.addEventListener('resize', () => instances.forEach(r => r.resize()));
+  }
+  api.resize();
+  return api;
+}
+
+/* The player's own factory keeps the original single-surface API. */
+let main = null;
+export function initRenderer(canvas) { return (main = createRenderer(canvas)); }
+export function resize() { main?.resize(); }
+export function draw(view, selected) { main?.draw(view, selected); }
+export function slotAt(px, py) { return main ? main.slotAt(px, py) : -1; }
+
+function resizeInto() {
   if (!cv) return;
   const box = cv.parentElement.getBoundingClientRect();
   dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = Math.max(320, box.width);
-  const h = Math.max(240, box.height);
+  // Tiles on the host screen are legitimately small; don't force a scrollbar.
+  const w = Math.max(compact ? 150 : 320, box.width);
+  const h = Math.max(compact ? 110 : 240, box.height);
   cv.width = w * dpr;
   cv.height = h * dpr;
   cv.style.width = w + 'px';
@@ -37,9 +78,11 @@ export function resize() {
 }
 
 function computeLayout(w, h) {
-  const padX = 26, padY = 18, gapX = 16, gapY = 14;
+  const padX = compact ? 10 : 26, padY = compact ? 8 : 18;
+  const gapX = compact ? 7 : 16, gapY = compact ? 6 : 14;
+  const foot = compact ? 5 : 26;   // room for the title block
   const cellW = (w - padX * 2 - gapX * (COLS - 1)) / COLS;
-  const cellH = (h - padY * 2 - gapY * (ROWS - 1) - 26) / ROWS;
+  const cellH = (h - padY * 2 - gapY * (ROWS - 1) - foot) / ROWS;
   layout = [];
   for (let i = 0; i < SLOT_COUNT; i++) {
     const row = Math.floor(i / COLS);
@@ -67,7 +110,7 @@ function gizmoPos(i, prog) {
 
 /* ------------------------------------------------------------------ draw --- */
 
-export function draw(view, selected) {
+function drawInto(view, selected) {
   if (!ctx || !view) return;
   const w = cv.width / dpr, h = cv.height / dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -79,7 +122,7 @@ export function draw(view, selected) {
 
   drawBelt(view);
   for (let i = 0; i < SLOT_COUNT; i++) drawSlot(view, i, i === selected);
-  drawTitleBlock(view, w, h);
+  if (!compact) drawTitleBlock(view, w, h);
   drawGizmos(view);
 }
 
@@ -137,7 +180,7 @@ function drawSlot(view, i, isSelected) {
     return;
   }
 
-  bolts(r);
+  if (!compact) bolts(r);
 
   if (!entry) {
     ctx.save();
@@ -146,7 +189,7 @@ function drawSlot(view, i, isSelected) {
     roundRect(r.x + 9, r.y + 8, r.w - 18, r.h - 26, 4);
     ctx.stroke();
     ctx.restore();
-    label('A REMPLACER', r.x + r.w / 2, r.y + r.h * 0.42, 8);
+    if (!compact) label('A REMPLACER', r.x + r.w / 2, r.y + r.h * 0.42, 8);
     ctx.restore();
     return;
   }
@@ -290,7 +333,7 @@ function drawTitleBlock(view, w, h) {
 }
 
 /** Hit test for taps on the drawing. */
-export function slotAt(px, py) {
+function hitTest(px, py) {
   for (let i = 0; i < layout.length; i++) {
     const r = layout[i];
     if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return i;
@@ -335,7 +378,7 @@ function hatch(x, y, w, h) {
 
 function label(text, x, y, size) {
   ctx.save();
-  ctx.font = `${size}px "IBM Plex Mono", monospace`;
+  ctx.font = `${compact ? Math.max(6, size * 0.82) : size}px "IBM Plex Mono", monospace`;
   ctx.textAlign = 'center';
   ctx.globalAlpha = 0.8;
   ctx.fillText(text, x, y);

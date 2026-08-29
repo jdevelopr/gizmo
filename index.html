@@ -161,7 +161,12 @@ setTimeout(function () {
     <span id="floor-phase">RE-ROUTE</span>
     <span id="floor-timer">00</span>
   </header>
-  <div id="stage-wrap"><canvas id="stage"></canvas></div>
+  <div id="stage-wrap">
+    <div class="stage-stack">
+      <canvas id="stage"></canvas>
+      <canvas class="text-layer" aria-hidden="true"></canvas>
+    </div>
+  </div>
 </section>
 
 <!-- ================================================================== pad -->
@@ -174,7 +179,12 @@ setTimeout(function () {
   <p id="pad-phase" data-ph="plan">R1 · PLANNING</p>
   <p id="pad-hint" class="fine"></p>
 
-  <div id="pad-stage-wrap"><canvas id="pad-stage"></canvas></div>
+  <div id="pad-stage-wrap">
+    <div class="stage-stack">
+      <canvas id="pad-stage"></canvas>
+      <canvas class="text-layer" aria-hidden="true"></canvas>
+    </div>
+  </div>
 
   <button id="btn-plan" class="primary wide" data-on="off" hidden>READY — START THE ROUND</button>
 

@@ -137,6 +137,13 @@ js/render.js      the pixel renderer
 amplify.yml       static hosting config, no build commands
 ```
 
+The art is drawn on a 32-pixel cell grid into a small backing canvas that is scaled up
+by whole pixels only, so nothing is ever half a pixel wide. Text is the exception: it is
+queued in art coordinates and drawn on a transparent overlay at the display's own
+resolution, which is why the names and money read sharp instead of magnified. Phones get
+a taller-per-slot layout with no name bar — the slots end up around 80 CSS pixels across,
+and a tap near a grid line still picks the slot you meant.
+
 Balance lives in `js/machines.js` and `DEFAULT_CFG` at the top of `js/game.js`. Gizmo
 values, machine prices, cycle times, producer and seller upgrades, phase lengths and the
 shop's price drift are all there in one screen of code. Rounds, round length, planning

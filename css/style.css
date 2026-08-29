@@ -43,6 +43,15 @@ body {
 
 canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 
+/* The pixel layer and, sitting exactly on top of it, the sharp text layer. */
+.stage-stack { position: relative; line-height: 0; }
+.stage-stack .text-layer {
+  position: absolute;
+  left: 0; top: 0;
+  pointer-events: none;
+  image-rendering: auto;
+}
+
 h1, h2, h3, h4 { margin: 0; font-weight: 400; letter-spacing: .02em; }
 p { margin: 0; }
 
@@ -260,6 +269,7 @@ input::placeholder { color: #414a68; }
   padding-right: calc(10px + env(safe-area-inset-right));
   min-height: 100dvh;
 }
+#pad > * { flex: 0 0 auto; }     /* nothing gets squeezed under the canvas */
 #pad-top { display: flex; gap: 6px; }
 .pill {
   flex: 1;
@@ -284,14 +294,20 @@ input::placeholder { color: #414a68; }
 #pad-phase[data-ph="plan"] { color: var(--coral); border-color: var(--coral); }
 #btn-plan { font-size: 13px; letter-spacing: .06em; }
 #btn-plan[hidden] { display: none; }
-#pad-hint { text-align: center; min-height: 1.6em; }
+#pad-hint { text-align: center; min-height: 1.6em; padding: 0 4px; }
 
+/* Full-bleed: the grid gets the whole screen width, which is what makes the
+   slots big enough to hit without aiming. */
 #pad-stage-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 220px;
-  flex: 1 1 auto;
+  /* The solo panel is square, so the box it lives in is too: the grid then scales
+     off the full screen width instead of whatever height happens to be left. */
+  aspect-ratio: 1 / 1;
+  max-height: 54vh;
+  flex: 0 0 auto;
+  margin: 0 calc(-10px - env(safe-area-inset-left)) 0 calc(-10px - env(safe-area-inset-right));
 }
 #pad-stage { touch-action: none; }
 

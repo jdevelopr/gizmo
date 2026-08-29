@@ -6,7 +6,7 @@
  */
 
 export const GRID = 3;            // 3 x 3 factory floor
-export const CELL = 16;           // pixel units per slot (art is authored at this size)
+export const CELL = 32;           // pixel units per slot (art is authored at this size)
 export const MAX_LEVEL = 3;       // machine level cap
 export const MAX_UTIL = 5;        // producer / seller level cap
 

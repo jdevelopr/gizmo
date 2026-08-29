@@ -8,7 +8,7 @@
 
 import { Stage, drawPanel, playFx, PLAYER_COLORS } from './render.js';
 import {
-  GRID, CELL, KINDS, TYPES, DIR_NAME, MAX_LEVEL, MAX_UTIL,
+  KINDS, DIR_NAME, MAX_LEVEL, MAX_UTIL,
   upgradeCost, scrapValue, producerCost, sellerCost, label,
 } from './machines.js';
 
@@ -17,7 +17,7 @@ const buzz = ms => { try { navigator.vibrate?.(ms); } catch {} };
 
 export function createController({ send }) {
   const canvas = $('#pad-stage');
-  const stage = new Stage(canvas, { compact: true });
+  const stage = new Stage(canvas, { solo: true });
   stage.layout(1);
 
   let view = null, prev = null, tNext = 0, tPrev = 0;
@@ -45,17 +45,12 @@ export function createController({ send }) {
     const r = canvas.getBoundingClientRect();
     const bx = (e.clientX - r.left) / (r.width / stage.W);
     const by = (e.clientY - r.top) / (r.height / stage.H);
-    const rect = stage.panelRect(0);
-    const o = stage.floorOrigin(rect);
-    const gx = Math.floor((bx - o.x) / CELL);
-    const gy = Math.floor((by - o.y) / CELL);
-
-    if (gx < 0 || gy < 0 || gx >= GRID || gy >= GRID) {
-      // tapping outside the floor clears the selection
+    // Near-misses snap to the nearest slot; a real miss clears the selection.
+    const i = stage.cellAt(bx, by);
+    if (i < 0) {
       if (sel) { sel = null; paintSel(); buzz(8); }
       return;
     }
-    const i = gy * GRID + gx;
     tapCell(i);
   }, { passive: false });
 
@@ -203,11 +198,9 @@ export function createController({ send }) {
       ? 'MATCH OVER'
       : `R${hud.r}/${hud.rs} · ${phaseLabel} · ${t}s`;
     $('#pad-phase').dataset.ph = hud.ph;
-    const spot = hud.spot
-      ? `The seller is on the ${hud.spot.toLowerCase()} face.`
-      : 'The seller has moved.';
+    const spot = hud.spot ? `Seller: ${hud.spot.toLowerCase()} face.` : 'Seller moved.';
     $('#pad-hint').textContent = hud.ph === 'plan'
-      ? `${spot} Build your line, then ready up.`
+      ? `${spot} Build, then ready up.`
       : hud.ph === 'run' ? 'Keep re-routing — the floor stays live.'
         : hud.ph === 'shop' ? 'Buy one machine, then hit READY.'
           : hud.ph === 'tally' ? `Round income $${view.n}.` : '';
@@ -304,6 +297,7 @@ export function createController({ send }) {
     last = now;
     if (!view) return;
 
+    fit();          // cheap: only touches the DOM when the scale actually changes
     stage.update(dt);
     stage.begin();
 

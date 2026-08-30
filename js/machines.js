@@ -47,19 +47,19 @@ export const KINDS = {
   },
   dup: {
     name: 'Doubler', short: 'DOUBLER',
-    desc: 'Copies every gizmo it eats and pushes both out front.',
+    desc: 'Copies an original and pushes both out front. A copy is never copied again.',
     price: 32, cycle: 0.6, cap: 1, travel: 0.26,
     body: '#27552f', trim: '#5fbf6a', lit: '#a7f070',
   },
   split: {
     name: 'Splitter', short: 'SPLITTER',
-    desc: 'Sends one copy ahead and one to its right.',
+    desc: 'Splits an original ahead and right. Copies leave one at a time, alternating.',
     price: 26, cycle: 0.48, cap: 1, travel: 0.26,
     body: '#5c4a1e', trim: '#c9a23f', lit: '#ffcd75',
   },
   trident: {
     name: 'Trident', short: 'TRIDENT',
-    desc: 'Fires three copies: left, ahead and right.',
+    desc: 'Fires an original three ways. Copies leave one at a time, in turn.',
     price: 62, cycle: 0.85, cap: 1, travel: 0.26,
     body: '#5c2a49', trim: '#b55088', lit: '#ff9ad0',
   },
@@ -71,7 +71,7 @@ export const KINDS = {
   },
   fuse: {
     name: 'Fuser', short: 'FUSER',
-    desc: 'Melts two gizmos into one of the next tier up.',
+    desc: 'Melts two gizmos into one of the next tier. Two originals make an original.',
     price: 50, cycle: 0.95, cap: 2, travel: 0.26,
     body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
   },
@@ -92,8 +92,9 @@ export function makeMachine(spec, id) {
     dir: spec.dir ?? 0,
     mut: spec.mut ?? 1,
     level: 1,
-    buf: [],   // gizmos being held: { id, ty }
+    buf: [],   // gizmos being held: { id, ty, cp }
     t: 0,      // seconds left in the current cycle
+    flip: 0,   // round-robin cursor, used when routing copies
     flash: 0,  // render-only pulse, set when it fires
   };
 }
@@ -149,40 +150,70 @@ export function intake(m) {
 
 /**
  * What comes out when the machine fires.
- * @param {object} m machine
- * @param {Array<{id:number,ty:number}>} inputs consumed gizmos
- * @returns {Array<{ty:number,dir:number}>}
+ *
+ * The one rule that keeps this economy from running away: **a copy is never
+ * copied again**. Duplicating machines multiply originals and merely route
+ * copies onward, so a chain of doublers adds copies linearly with the slots you
+ * spend rather than doubling at every step. A Fuser is the launderer — it eats
+ * two gizmos and returns a fresh original that can be multiplied again.
+ *
+ * @param {object} m machine (its `flip` cursor advances when routing copies)
+ * @param {Array<{id:number,ty:number,cp:number}>} inputs consumed gizmos
+ * @returns {Array<{ty:number,dir:number,cp:number}>}
  */
 export function outputs(m, inputs) {
   const d = m.dir;
   const a = inputs[0]?.ty ?? 0;
+  const copy = inputs[0]?.cp ? 1 : 0;
+
   switch (m.kind) {
     case 'pipe':
-      return [{ ty: a, dir: d }];
+      return [{ ty: a, dir: d, cp: copy }];
+
     case 'dup': {
-      const n = 1 + m.level;                      // L1: 2, L2: 3, L3: 4
-      return Array.from({ length: n }, () => ({ ty: a, dir: d }));
+      if (copy) return [{ ty: a, dir: d, cp: 1 }];       // pass a copy straight on
+      const n = 1 + m.level;                             // L1: 2, L2: 3, L3: 4
+      return Array.from({ length: n }, (_, i) => ({ ty: a, dir: d, cp: i ? 1 : 0 }));
     }
+
     case 'split': {
-      const out = [{ ty: a, dir: d }, { ty: a, dir: (d + 1) % 4 }];
-      if (m.level >= 3) out.push({ ty: a, dir: (d + 3) % 4 });
-      return out;
+      const dirs = m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, (d + 1) % 4];
+      if (copy) return [{ ty: a, dir: nextExit(m, dirs), cp: 1 }];
+      return dirs.map((dir, i) => ({ ty: a, dir, cp: i ? 1 : 0 }));
     }
-    case 'trident':
-      return [{ ty: a, dir: d }, { ty: a, dir: (d + 1) % 4 }, { ty: a, dir: (d + 3) % 4 }];
+
+    case 'trident': {
+      const dirs = [d, (d + 1) % 4, (d + 3) % 4];
+      if (copy) return [{ ty: a, dir: nextExit(m, dirs), cp: 1 }];
+      return dirs.map((dir, i) => ({ ty: a, dir, cp: i ? 1 : 0 }));
+    }
+
     case 'mut': {
-      // A level 3 mutator refuses to downgrade what it is given.
+      // A level 3 mutator refuses to downgrade what it is given. Rewriting a copy
+      // does not make it an original — only fusing does that.
       const ty = (m.level >= 3 && a > m.mut) ? a : m.mut;
-      return [{ ty, dir: d }];
+      return [{ ty, dir: d, cp: copy }];
     }
+
     case 'fuse': {
       const b = inputs[1]?.ty ?? a;
       const step = (m.level >= 3 && a === b) ? 2 : 1;
-      return [{ ty: Math.min(MAX_TYPE, Math.max(a, b) + step), dir: d }];
+      // Originality is inherited: it takes two originals to make an original.
+      // Without this, a fuser would launder copies back into copyable stock and
+      // the doubler chain would compound all over again.
+      const cp = (inputs[0]?.cp || inputs[1]?.cp) ? 1 : 0;
+      return [{ ty: Math.min(MAX_TYPE, Math.max(a, b) + step), dir: d, cp }];
     }
+
     default:
       return [];
   }
+}
+
+/** Round-robin over a router's exits, one copy at a time. */
+function nextExit(m, dirs) {
+  m.flip = ((m.flip || 0) + 1) % dirs.length;
+  return dirs[m.flip];
 }
 
 /* --------------------------------------------------------- producer/seller --- */

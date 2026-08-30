@@ -452,12 +452,19 @@ export function drawPanel(st, view, rect, meta = {}) {
     if (m) drawMachine(ctx, lctx, o.x + cx(i) * CELL, o.y + cy(i) * CELL, m, st.t);
   }
 
-  // gizmos: one grid unit each, colour by type, glow by tier
+  // Gizmos: one grid unit each, colour by type, glow by tier. Copies are drawn
+  // dimmer and unlit, because a copy cannot be copied and that is worth seeing.
   for (const g of view.z) {
-    const ty = g[1];
+    const ty = g[1], isCopy = g[4];
     const gx = R(o.x + g[2] * CELL), gy = R(o.y + g[3] * CELL);
     if (gx < rect.x || gx > rect.x + rect.w || gy < rect.y || gy > rect.y + rect.h) continue;
     const t = TYPES[ty] || TYPES[0];
+    if (isCopy) {
+      px(ctx, gx, gy, 2, 2, shade(t.color, 0.55));
+      px(ctx, gx + 1, gy, 1, 1, t.color);
+      if (ty >= 4) glowPx(lctx, gx, gy, t.glow, 2, 0.14);
+      continue;
+    }
     px(ctx, gx, gy, 2, 2, t.color);
     if (ty >= 5) glowPx(lctx, gx, gy, t.glow, 4, 0.5);
     else if (ty >= 2) glowPx(lctx, gx, gy, t.glow, 2, 0.34);

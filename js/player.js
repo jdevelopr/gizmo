@@ -336,7 +336,7 @@ export function createController({ send }) {
     const z = n.z.map(g => {
       const o = old.get(g[0]);
       if (!o) return g;
-      return [g[0], g[1], o[2] + (g[2] - o[2]) * a, o[3] + (g[3] - o[3]) * a];
+      return [g[0], g[1], o[2] + (g[2] - o[2]) * a, o[3] + (g[3] - o[3]) * a, g[4]];
     });
     return { ...n, z };
   }

@@ -94,7 +94,7 @@ function spawnFromProducer(f) {
   const { cell } = PRODUCER_PORT;
   const ex = cx(cell) + 0.5, ey = cy(cell) + 0.5;
   f.gizmos.push({
-    id: f.nid++, ty: 0, st: 'fly',
+    id: f.nid++, ty: 0, cp: 0, st: 'fly',
     sx: ex - 1, sy: ey, ex, ey, x: ex - 1, y: ey,
     p: 0, dur: 0.3, cell, from: -1, exit: null,
   });
@@ -127,7 +127,7 @@ function emit(f, from, out, dur, n, total) {
   const inside = inGrid(nx, ny);
 
   f.gizmos.push({
-    id: f.nid++, ty: out.ty, st: 'fly',
+    id: f.nid++, ty: out.ty, cp: out.cp ? 1 : 0, st: 'fly',
     sx: sx + ox, sy: sy + oy, ex: sx + dx + ox, ey: sy + dy + oy,
     x: sx + ox, y: sy + oy,
     p: 0, dur: dur * (1 + n * 0.06),
@@ -166,7 +166,7 @@ function arrive(f, g, k) {
 }
 
 function absorb(f, m, g, k) {
-  m.buf.push({ id: g.id, ty: g.ty });
+  m.buf.push({ id: g.id, ty: g.ty, cp: g.cp | 0 });
   f.gizmos.splice(k, 1);
 }
 
@@ -352,7 +352,7 @@ export function viewOf(f) {
       f: r2(m.flash),
     }),
     v: f.inv.map(m => ({ k: m.kind, d: m.dir, l: m.level, m: m.mut })),
-    z: f.gizmos.map(g => [g.id, g.ty, r2(g.x), r2(g.y)]),
+    z: f.gizmos.map(g => [g.id, g.ty, r2(g.x), r2(g.y), g.cp | 0]),
     pl: f.producer.level, pf: r2(f.producer.flash || 0),
     sl: f.seller.level, sc: f.seller.cell, sd: f.seller.dir, sf: r2(f.seller.flash || 0),
     c: Math.round(f.cash), e: Math.round(f.earned), n: Math.round(f.income),

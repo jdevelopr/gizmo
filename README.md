@@ -29,11 +29,29 @@ Scrap, Copper, Amber, Bloom, Cobalt, Void, Ember, Prism.
 | Machine | What it does |
 |---|---|
 | Conveyor | Slides one gizmo along, fast. The plumbing of every build. |
-| Doubler | Eats one gizmo, pushes two out the front. Level 2 makes three, level 3 makes four. |
-| Splitter | One out the front, one out the right. At level 3 it also fires left. |
-| Trident | Three copies at once: left, ahead and right. Slow and expensive. |
+| Doubler | Copies an original and pushes both out the front. Level 2 makes three, level 3 makes four. |
+| Splitter | Splits an original ahead and to the right. At level 3 it also fires left. |
+| Trident | Fires an original three ways at once: left, ahead and right. Slow and expensive. |
 | Mutator | Rewrites anything it eats into one fixed type. Higher tiers run slower, so every mutator earns about the same per slot — the tier is about what you feed downstream. |
 | Fuser | Swallows two gizmos and spits out one of the next tier up. At level 3, two matching gizmos jump *two* tiers. |
+
+### Originals and copies
+
+Two rules hold the economy together, and they are worth learning early:
+
+1. **A copy is never copied again.** Duplicating machines multiply originals; a copy that
+   reaches one is simply routed onward (a Splitter or Trident sends copies out one at a
+   time, taking each exit in turn). So a line of four doublers adds copies *linearly* with
+   the slots you spent, instead of doubling at every step.
+2. **It takes two originals to make an original.** A Fuser given a copy returns a copy.
+
+Copies sell for exactly what an original of the same type sells for — they are real
+gizmos, just not copyable stock. On screen they are drawn dimmer and unlit, so a glance at
+a running floor tells you which pixels can still be multiplied.
+
+Together these keep multiplication as a way to *fill* a factory rather than a way to print
+money: value still comes from climbing the tier ladder with Mutators and Fusers, and those
+are rate-limited per slot.
 
 Every machine can be rotated, moved to any open slot, upgraded to level 3, or scrapped for
 half its money back. Machines with nowhere to go land in your crate.

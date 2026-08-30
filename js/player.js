@@ -108,6 +108,7 @@ export function createController({ send }) {
     paintSel();
   });
   wire('#btn-clear', () => { sel = null; paintSel(); });
+  wire('#btn-mover', () => { send({ t: 'mover' }); buzz(14); });
   wire('#btn-prod', () => act({ a: 'upprod' }));
   wire('#btn-sell', () => act({ a: 'upsell' }));
   wire('#btn-plan', () => {
@@ -175,6 +176,11 @@ export function createController({ send }) {
   }
 
   function paintUtil() {
+    const mv = $('#btn-mover');
+    const cost = hud?.mover ?? 10;
+    mv.textContent = `+ CONVEYOR · $${cost}`;
+    mv.disabled = view.c < cost || hud?.ph === 'over';
+
     const pc = producerCost(view.pl), sc = sellerCost(view.sl);
     const bp = $('#btn-prod'), bs = $('#btn-sell');
     bp.textContent = view.pl >= MAX_UTIL ? 'PRODUCER MAX' : `PRODUCER L${view.pl} · $${pc}`;
@@ -200,7 +206,7 @@ export function createController({ send }) {
     $('#pad-phase').dataset.ph = hud.ph;
     const spot = hud.spot ? `Seller: ${hud.spot.toLowerCase()} face.` : 'Seller moved.';
     $('#pad-hint').textContent = hud.ph === 'plan'
-      ? `${spot} Build, then ready up.`
+      ? `${spot} Lay conveyors to reach it, then ready up.`
       : hud.ph === 'run' ? 'Keep re-routing — the floor stays live.'
         : hud.ph === 'shop' ? 'Buy one machine, then hit READY.'
           : hud.ph === 'tally' ? `Round income $${view.n}.` : '';

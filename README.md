@@ -36,6 +36,12 @@ Scrap, Copper, Amber, Bloom, Cobalt, Void, Ember, Prism.
 Every machine can be rotated, moved to any open slot, upgraded to level 3, or scrapped for
 half its money back. Machines with nowhere to go land in your crate.
 
+**Conveyors are on sale at all times**, from a button on the phone, in any phase and as many
+as you can pay for. They are plumbing rather than profit — reaching a seller on the far side
+of the floor should be a matter of money, not of what the workshop happened to deal you —
+so they sit outside the one-machine-a-round limit. Their price drifts up with the rounds
+like everything else in the shop.
+
 ### A round
 
 1. **Planning** — two minutes with the floor stopped. The Seller has jumped, so rebuild
@@ -48,7 +54,8 @@ half its money back. Machines with nowhere to go land in your crate.
 3. **Tally** — the round's income.
 4. **Workshop** — three machines are offered, you may buy **one**. Rerolling costs a
    little, and a little more each time in the same round. Tap READY to close the sheet;
-   whatever you bought gets placed during the next planning phase.
+   whatever you bought gets placed during the next planning phase. Conveyors are not part
+   of this — they can be bought any time, from the phone.
 
 After the last round, the most **lifetime earnings** wins. Money you spend still counts
 toward your score, so buying is never a penalty — but the nine slots are.

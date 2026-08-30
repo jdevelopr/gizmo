@@ -10,8 +10,11 @@ import {
   applyAction, giveMachine, viewOf, drainFx,
 } from './sim.js';
 import {
-  rollShop, rng, price, label, describe, TYPES, DIR_NAME,
+  rollShop, rng, price, label, describe, shopCost, TYPES, DIR_NAME,
 } from './machines.js';
+
+/** The one machine you can always buy: it moves gizmos and nothing else. */
+const MOVER = { kind: 'pipe', dir: 0 };
 
 export const DEFAULT_CFG = {
   rounds: 8,
@@ -171,6 +174,8 @@ export function createEngine(cfgIn = {}) {
     }
   }
 
+  const moverCost = () => shopCost(MOVER, Math.max(1, round));
+
   /** True when every connected player satisfies the test (and there is at least one). */
   function everyone(test) {
     const live = [...players.values()].filter(p => p.connected);
@@ -208,8 +213,29 @@ export function createEngine(cfgIn = {}) {
       p.f.cash -= cost;
       p.shop.bought = true;
       const dest = giveMachine(p.f, spec);
-      note(p, dest.where === 'grid' ? `${label(spec)} installed` :
-        dest.where === 'inv' ? `${label(spec)} to crate` : 'No room anywhere');
+      if (dest.where === 'none') {           // floor and crate both full: nothing sold
+        p.f.cash += cost;
+        p.shop.bought = false;
+        return note(p, 'No room anywhere');
+      }
+      note(p, dest.where === 'grid' ? `${label(spec)} installed` : `${label(spec)} to crate`);
+      p.f.fx.push({ k: 'up', cell: dest.where === 'grid' ? dest.idx : 4 });
+      return;
+    }
+
+    /**
+     * Conveyors are plumbing, not profit: without one you cannot reach a seller
+     * that has jumped to the far side, so they are on sale in every phase and do
+     * not count against the one machine a round from the workshop.
+     */
+    if (msg.t === 'mover') {
+      if (phase === 'lobby' || phase === 'over') return;
+      const cost = moverCost();
+      if (p.f.cash < cost) return note(p, `Conveyor costs $${cost}`);
+      const dest = giveMachine(p.f, MOVER);
+      if (dest.where === 'none') return note(p, 'No room anywhere');
+      p.f.cash -= cost;
+      note(p, dest.where === 'grid' ? 'Conveyor installed' : 'Conveyor to crate');
       p.f.fx.push({ k: 'up', cell: dest.where === 'grid' ? dest.idx : 4 });
       return;
     }
@@ -279,6 +305,7 @@ export function createEngine(cfgIn = {}) {
         ph: phase, tm: Math.round(timer * 10) / 10, r: round, rs: cfg.rounds,
         an: announce, board: board(), note: p.note,
         ready: !!p.planReady,
+        mover: moverCost(),
         waiting: [...players.values()].filter(x => x.connected && !x.planReady).length,
         seat, color: p.color, name: p.name,
         spot: p.sellerSpot ? DIR_NAME[p.sellerSpot.dir] : null,

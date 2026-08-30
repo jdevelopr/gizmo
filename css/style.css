@@ -334,6 +334,17 @@ input::placeholder { color: #414a68; }
 .sel-btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .sel-btns button { padding: 10px 6px; font-size: 10px; }
 
+/* Always available: the plumbing you need to reach a seller that moved. */
+.buy-row {
+  width: 100%;
+  font-size: 11px;
+  color: var(--lime);
+  border-color: #3f7a2c;
+  background: color-mix(in srgb, var(--lime) 10%, var(--plate));
+  letter-spacing: .06em;
+}
+.buy-row:disabled { color: var(--dim); border-color: var(--line); background: var(--plate); }
+
 #pad-util { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 #pad-util button { font-size: 10px; padding: 10px 6px; color: var(--gold); }
 

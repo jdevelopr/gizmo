@@ -17,7 +17,7 @@ import {
   GRID, CELL, DIRS, TYPES, KINDS, cx, cy, PRODUCER_PORT,
 } from './machines.js';
 
-const GRID_PX = GRID * CELL;            // 96
+const gridPx = () => GRID * CELL;       // 96 on a 3x3, 224 on a 7x7
 const GUTTER = 24;                      // room outside the floor for producer/seller
 const HEADER = 20;
 const NOTE_H = 16;
@@ -30,15 +30,19 @@ const FONT = 16;                        // art pixels; always a multiple of 8
  * which is what makes the slots comfortable to hit with a thumb.
  */
 const SHAPE = {
-  floor: { padX: 8, padY: 2, header: HEADER, note: NOTE_H, gap: 12 },
-  solo:  { padX: 2, padY: 2, header: 0, note: 0, gap: 2 },
+  floor: { padX: 8, padY: 2, header: HEADER, note: NOTE_H, gap: 12, solo: false },
+  solo:  { padX: 0, padY: 0, header: 0, note: 0, gap: 0, solo: true },
 };
-const panelW = sh => sh.padX * 2 + GUTTER * 2 + GRID_PX;
-const panelH = sh => sh.padY * 2 + sh.header + GUTTER * 2 + GRID_PX + sh.note;
 
-export const PANEL_W = panelW(SHAPE.floor);
-export const PANEL_H = panelH(SHAPE.floor);
-export const GAP = SHAPE.floor.gap;
+/**
+ * The margin around the floor, holding the producer and the seller. A phone
+ * showing a big board trades a few pixels of gutter (and a slimmer producer) for
+ * a whole extra step of scale, which is the difference between 32px slots and
+ * 48px ones.
+ */
+const gutterFor = sh => (sh.solo && GRID >= 6 ? 18 : GUTTER);
+const panelW = sh => sh.padX * 2 + gutterFor(sh) * 2 + gridPx();
+const panelH = sh => sh.padY * 2 + sh.header + gutterFor(sh) * 2 + gridPx() + sh.note;
 
 export const PLAYER_COLORS = [
   { key: 'cyan',   name: 'Cyan',   hex: '#41a6f6', dark: '#1b4f7d', lit: '#a8dcff' },
@@ -65,9 +69,8 @@ export class Stage {
   constructor(canvas, { solo = false, text = null } = {}) {
     this.shape = solo ? SHAPE.solo : SHAPE.floor;
     this.solo = solo;
-    this.panelW = panelW(this.shape);
-    this.panelH = panelH(this.shape);
     this.gap = this.shape.gap;
+    this.gridN = 0;
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.textCanvas = text || canvas.parentElement?.querySelector('.text-layer') || null;
@@ -87,6 +90,10 @@ export class Stage {
 
   layout(n, cols, rows) {
     this.count = n;
+    this.gridN = GRID;                       // panels are sized from the floor size
+    this.gutter = gutterFor(this.shape);
+    this.panelW = panelW(this.shape);
+    this.panelH = panelH(this.shape);
     this.cols = cols || (n <= 1 ? 1 : 2);
     this.rows = rows || Math.ceil(n / this.cols);
     this.W = this.cols * this.panelW + (this.cols + 1) * this.gap;
@@ -129,17 +136,23 @@ export class Stage {
   autoFit(n, maxW, maxH) {
     let best = null;
     const target = maxW / Math.max(1, maxH);
-    for (let cols = 1; cols <= Math.min(4, Math.max(1, n)); cols++) {
-      const rows = Math.ceil(n / cols);
-      const W = cols * this.panelW + (cols + 1) * this.gap;
-      const H = rows * this.panelH + (rows + 1) * this.gap;
+    const pw = panelW(this.shape), ph = panelH(this.shape);
+    const count = Math.max(1, n);
+    for (let cols = 1; cols <= Math.min(4, count); cols++) {
+      // Only arrangements that come out even: four players go 2x2 or 1x4, never
+      // three-and-one.
+      if (count % cols !== 0) continue;
+      const rows = count / cols;
+      const W = cols * pw + (cols + 1) * this.gap;
+      const H = rows * ph + (rows + 1) * this.gap;
       const s = Math.min(maxW / W, maxH / H);
       const fit = Math.abs(Math.log((W / H) / target));
       if (!best || s > best.s + 0.001 || (Math.abs(s - best.s) <= 0.001 && fit < best.fit)) {
         best = { cols, rows, s, fit };
       }
     }
-    if (best.cols !== this.cols || best.rows !== this.rows || this.count !== n) {
+    if (best.cols !== this.cols || best.rows !== this.rows ||
+        this.count !== n || this.gridN !== GRID) {
       this.layout(n, best.cols, best.rows);
     }
     return this.fit(maxW, maxH);
@@ -156,9 +169,10 @@ export class Stage {
 
   /** Backing-pixel origin of a panel's 3x3 floor. */
   floorOrigin(rect) {
+    const g = this.gutter || gutterFor(this.shape);
     return {
-      x: rect.x + this.shape.padX + GUTTER,
-      y: rect.y + this.shape.padY + this.shape.header + GUTTER,
+      x: rect.x + this.shape.padX + g,
+      y: rect.y + this.shape.padY + this.shape.header + g,
     };
   }
 
@@ -169,8 +183,9 @@ export class Stage {
    */
   cellAt(bx, by, rect = this.panelRect(0), slack = 10) {
     const o = this.floorOrigin(rect);
+    const px = gridPx();
     if (bx < o.x - slack || by < o.y - slack ||
-        bx > o.x + GRID_PX + slack || by > o.y + GRID_PX + slack) return -1;
+        bx > o.x + px + slack || by > o.y + px + slack) return -1;
     const gx = Math.max(0, Math.min(GRID - 1, Math.floor((bx - o.x) / CELL)));
     const gy = Math.max(0, Math.min(GRID - 1, Math.floor((by - o.y) / CELL)));
     return gy * GRID + gx;
@@ -401,9 +416,10 @@ export function drawPanel(st, view, rect, meta = {}) {
   }
 
   // floor well
-  px(ctx, o.x - 4, o.y - 4, GRID_PX + 8, GRID_PX + 8, '#0d0f1a');
-  px(ctx, o.x - 2, o.y - 2, GRID_PX + 4, GRID_PX + 4, LINE);
-  px(ctx, o.x, o.y, GRID_PX, GRID_PX, FLOOR);
+  const gp = gridPx();
+  px(ctx, o.x - 4, o.y - 4, gp + 8, gp + 8, '#0d0f1a');
+  px(ctx, o.x - 2, o.y - 2, gp + 4, gp + 4, LINE);
+  px(ctx, o.x, o.y, gp, gp, FLOOR);
 
   for (let i = 0; i < GRID * GRID; i++) {
     const gx = o.x + cx(i) * CELL, gy = o.y + cy(i) * CELL;
@@ -427,8 +443,9 @@ export function drawPanel(st, view, rect, meta = {}) {
     px(ctx, gx + CELL - 2, gy - 2, 2, CELL + 4, c);
   }
 
-  drawProducer(ctx, lctx, o, view, st.t);
-  drawSeller(ctx, lctx, o, view, st.t);
+  const gut = st.gutter || GUTTER;
+  drawProducer(ctx, lctx, o, view, st.t, gut);
+  drawSeller(ctx, lctx, o, view, st.t, gut);
 
   for (let i = 0; i < GRID * GRID; i++) {
     const m = view.g[i];
@@ -589,11 +606,14 @@ function chevronR(ctx, cxp, cyp, dir, side, color) {
 
 /* --------------------------------------------------------- producer/seller --- */
 
-function drawProducer(ctx, lctx, o, view, t) {
+function drawProducer(ctx, lctx, o, view, t, gut = GUTTER) {
   const cell = PRODUCER_PORT.cell;
-  const x = o.x - GUTTER + 2, y = o.y + cy(cell) * CELL;
+  const y = o.y + cy(cell) * CELL;
   const flash = view.pf || 0;
 
+  if (gut < 24) return drawSlimProducer(ctx, lctx, o.x - gut + 1, y, flash, t, view);
+
+  const x = o.x - gut + 2;
   px(ctx, x, y + 2, 20, CELL - 4, '#0c0e18');
   px(ctx, x + 2, y + 4, 16, CELL - 8, '#3a4257');
   px(ctx, x + 2, y + 4, 16, 2, '#5a6480');
@@ -614,13 +634,29 @@ function drawProducer(ctx, lctx, o, view, t) {
   for (let i = 1; i < (view.pl || 1); i++) px(ctx, x + 3 + (i - 1) * 4, y + CELL - 8, 2, 4, '#ffe9a8');
 }
 
-function drawSeller(ctx, lctx, o, view, t) {
+/** Producer for a narrow gutter: same idea, 18 pixels wide instead of 26. */
+function drawSlimProducer(ctx, lctx, x, y, flash, t, view) {
+  px(ctx, x, y + 4, 14, CELL - 8, '#0c0e18');
+  px(ctx, x + 1, y + 6, 12, CELL - 12, '#3a4257');
+  px(ctx, x + 1, y + 6, 12, 2, '#5a6480');
+  px(ctx, x + 2, y + 10, 10, 8, '#161a2a');
+  const bob = Math.floor((t * 6) % 2) * 2;
+  px(ctx, x + 4, y + 12 + bob, 6, 3, flash > 0.3 ? '#ffffff' : '#8b93a8');
+  px(ctx, x + 3, y + 20, 3, 2, flash > 0.2 ? '#a7f070' : '#3f7a2c');
+  px(ctx, x + 13, y + 13, 5, 6, '#5a6480');
+  px(ctx, x + 15, y + 15, 3, 2, flash > 0.2 ? '#ffffff' : '#c3cbdb');
+  if (flash > 0.05) glowPx(lctx, x + 16, y + 15, '#c3cbdb', 3, 0.5 * flash);
+  for (let i = 1; i < (view.pl || 1); i++) px(ctx, x + 2 + (i - 1) * 3, y + CELL - 10, 2, 3, '#ffe9a8');
+}
+
+function drawSeller(ctx, lctx, o, view, t, gut = GUTTER) {
   const cell = view.sc, dir = view.sd;
   const [dx, dy] = DIRS[dir];
   const bx = o.x + cx(cell) * CELL + dx * CELL;
   const by = o.y + cy(cell) * CELL + dy * CELL;
-  const x = bx + (dx > 0 ? 2 : dx < 0 ? 8 : 2);
-  const y = by + (dy > 0 ? 2 : dy < 0 ? 8 : 2);
+  const back = Math.max(2, gut - 16);      // sit just outside the floor edge
+  const x = bx + (dx > 0 ? 2 : dx < 0 ? back : 2);
+  const y = by + (dy > 0 ? 2 : dy < 0 ? back : 2);
   const w = dx !== 0 ? 16 : CELL - 4, h = dy !== 0 ? 16 : CELL - 4;
   const flash = view.sf || 0;
   const mx = x + Math.floor(w / 2), my = y + Math.floor(h / 2);

@@ -161,9 +161,9 @@ input::placeholder { color: #414a68; }
   display: flex;
   gap: 22px;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;          /* the QR card and the podiums share a centre line */
   justify-content: center;
-  width: min(940px, 100%);
+  width: min(880px, 100%);
 }
 .join-card {
   background: var(--plate);
@@ -187,7 +187,13 @@ input::placeholder { color: #414a68; }
 }
 .url { font-size: 10px; color: var(--dim); word-break: break-all; margin: 4px 0 10px; }
 
-.lobby-main { flex: 1 1 380px; display: flex; flex-direction: column; gap: 12px; }
+.lobby-main {
+  flex: 1 1 360px;
+  max-width: 520px;             /* keeps the pair together instead of stranding the QR */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .podiums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .podium {
   background: var(--plate);
@@ -307,7 +313,7 @@ input::placeholder { color: #414a68; }
   aspect-ratio: 1 / 1;
   max-height: 54vh;
   flex: 0 0 auto;
-  margin: 0 calc(-10px - env(safe-area-inset-left)) 0 calc(-10px - env(safe-area-inset-right));
+  margin: 0 calc(-10px - env(safe-area-inset-right)) 0 calc(-10px - env(safe-area-inset-left));
 }
 #pad-stage { touch-action: none; }
 
@@ -440,7 +446,8 @@ input::placeholder { color: #414a68; }
 
 /* The floor screen is a laptop or a TV across the room: scale it up. */
 @media (min-width: 1100px) {
-  .lobby-grid { width: min(1240px, 100%); gap: 40px; align-items: center; }
+  .lobby-grid { width: min(1080px, 100%); gap: 44px; }
+  .lobby-main { flex: 1 1 460px; max-width: 620px; }
   .join-card { padding: 22px; }
   #qr { width: 300px; height: 300px; }
   .code { font-size: 52px; }

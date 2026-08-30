@@ -60,6 +60,8 @@ setTimeout(function () {
     <p class="fine">This device becomes the floor: it runs every factory and shows them
       all. It is not a player — everyone joins on a phone.</p>
     <button id="practice-btn" class="ghost wide">PRACTICE RUN (SOLO, NO PHONES)</button>
+    <p class="fine">Practice opens the same Setup panel, so you can try a board size
+      before putting it in front of anyone.</p>
     <form id="join-form" class="row">
       <label for="join-code">JOIN CODE</label>
       <input id="join-code" maxlength="4" autocomplete="off" autocapitalize="characters"
@@ -115,6 +117,7 @@ setTimeout(function () {
       <p class="fine">Scan with a phone, or type the code at the address above.</p>
       <div id="podiums" class="podiums"></div>
       <p id="lobby-note" class="note"></p>
+      <p id="lobby-cfg" class="fine"></p>
       <div class="row end">
         <button id="setup-btn" class="ghost">SETUP</button>
         <button id="start-btn" class="primary" disabled>NEED 2 MORE</button>
@@ -122,36 +125,6 @@ setTimeout(function () {
     </div>
   </div>
 
-  <div id="setup" class="modal" hidden>
-    <div class="modal-box stack">
-      <h3>SETUP</h3>
-      <label for="cfg-rounds">ROUNDS</label>
-      <select id="cfg-rounds">
-        <option value="5">5 — short</option>
-        <option value="8" selected>8 — standard</option>
-        <option value="12">12 — long haul</option>
-      </select>
-      <label for="cfg-plan">PLANNING TIME</label>
-      <select id="cfg-plan">
-        <option value="60">60 seconds</option>
-        <option value="120" selected>120 seconds</option>
-        <option value="180">180 seconds</option>
-      </select>
-      <label for="cfg-secs">ROUND LENGTH</label>
-      <select id="cfg-secs">
-        <option value="30">30 seconds</option>
-        <option value="45" selected>45 seconds</option>
-        <option value="60">60 seconds</option>
-      </select>
-      <label for="cfg-cash">STARTING CASH</label>
-      <select id="cfg-cash">
-        <option value="25">$25 — lean</option>
-        <option value="40" selected>$40 — standard</option>
-        <option value="80">$80 — rich</option>
-      </select>
-      <button id="setup-close" class="primary wide">DONE</button>
-    </div>
-  </div>
 </section>
 
 <!-- ================================================================ floor -->
@@ -239,6 +212,49 @@ setTimeout(function () {
     <h3>CONNECTION LOST</h3>
     <p class="note">Reopening the same link puts you back in your seat with your factory
       and your money intact.</p>
+  </div>
+</div>
+
+<!-- ============================================================ setup panel -->
+<div id="setup" class="modal" hidden>
+  <div class="modal-box stack">
+    <h3>SETUP</h3>
+    <label for="cfg-grid">PLAYING AREA</label>
+    <select id="cfg-grid">
+      <option value="3" selected>3 x 3 — classic</option>
+      <option value="4">4 x 4</option>
+      <option value="5">5 x 5 — roomy</option>
+      <option value="6">6 x 6</option>
+      <option value="7">7 x 7 — cavernous</option>
+    </select>
+    <label for="cfg-rounds">ROUNDS</label>
+    <select id="cfg-rounds">
+      <option value="3">3 — quick</option>
+      <option value="5">5 — short</option>
+      <option value="8" selected>8 — standard</option>
+      <option value="12">12 — long haul</option>
+    </select>
+    <label for="cfg-plan">PLANNING TIME</label>
+    <select id="cfg-plan">
+      <option value="60">60 seconds</option>
+      <option value="120" selected>120 seconds</option>
+      <option value="180">180 seconds</option>
+    </select>
+    <label for="cfg-secs">ROUND LENGTH</label>
+    <select id="cfg-secs">
+      <option value="30">30 seconds</option>
+      <option value="45" selected>45 seconds</option>
+      <option value="60">60 seconds</option>
+      <option value="90">90 seconds</option>
+    </select>
+    <label for="cfg-cash">STARTING CASH</label>
+    <select id="cfg-cash">
+      <option value="25">$25 — lean</option>
+      <option value="40" selected>$40 — standard</option>
+      <option value="80">$80 — rich</option>
+    </select>
+    <p id="cfg-note" class="fine"></p>
+    <button id="setup-close" class="primary wide">DONE</button>
   </div>
 </div>
 

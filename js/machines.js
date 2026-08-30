@@ -5,7 +5,14 @@
  * Pure data and pure functions: no DOM, no network, safe to import anywhere.
  */
 
-export const GRID = 3;            // 3 x 3 factory floor
+/**
+ * Floor size, in slots per side. Always square. One page runs one match, so this
+ * is module state rather than a parameter threaded through every call: the host
+ * sets it from the Setup panel and every phone sets it from the state it is sent.
+ */
+export let GRID = 3;
+export const MIN_GRID = 3;
+export const MAX_GRID = 7;
 export const CELL = 32;           // pixel units per slot (art is authored at this size)
 export const MAX_LEVEL = 3;       // machine level cap
 export const MAX_UTIL = 5;        // producer / seller level cap
@@ -196,7 +203,12 @@ export const inGrid = (x, y) => x >= 0 && y >= 0 && x < GRID && y < GRID;
 export const PRODUCER_PORT = { cell: 0, dir: 2 };
 
 /** Every point where a gizmo can leave the floor: { cell, dir }. */
-export const EXITS = (() => {
+export let EXITS = [];
+
+/** Exits the seller is allowed to occupy (the producer owns one of them). */
+export let SELLER_SPOTS = [];
+
+function rebuildGeometry() {
   const out = [];
   for (let i = 0; i < GRID * GRID; i++) {
     for (let d = 0; d < 4; d++) {
@@ -204,13 +216,26 @@ export const EXITS = (() => {
       if (!inGrid(nx, ny)) out.push({ cell: i, dir: d });
     }
   }
-  return out;
-})();
+  EXITS = out;
+  SELLER_SPOTS = out.filter(
+    e => !(e.cell === PRODUCER_PORT.cell && e.dir === PRODUCER_PORT.dir)
+  );
+}
+rebuildGeometry();
 
-/** Exits the seller is allowed to occupy (the producer owns one of them). */
-export const SELLER_SPOTS = EXITS.filter(
-  e => !(e.cell === PRODUCER_PORT.cell && e.dir === PRODUCER_PORT.dir)
-);
+/**
+ * Resize the floor. Everything derived from the size is rebuilt here, so callers
+ * only need to make sure no factory outlives the change — the engine rebuilds
+ * every factory when a match starts.
+ * @returns {number} the size actually applied
+ */
+export function setGridSize(n) {
+  const next = Math.max(MIN_GRID, Math.min(MAX_GRID, Math.round(n) || MIN_GRID));
+  if (next === GRID) return GRID;
+  GRID = next;
+  rebuildGeometry();
+  return GRID;
+}
 
 /* -------------------------------------------------------------- shop rolls --- */
 

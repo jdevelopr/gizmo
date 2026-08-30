@@ -10,7 +10,9 @@ their own phone, which becomes their control panel.
 
 ## How it plays
 
-Each player owns a 3x3 factory floor.
+Each player owns a square factory floor. It is **3x3 by default and can be set as large
+as 7x7** in the Setup panel, along with the number of rounds, the phase lengths and the
+starting cash. Everyone in a match plays the same size.
 
 - The **Producer** bolts onto the left of the top-left slot and drops a raw Scrap gizmo
   every second or so. It can be upgraded to run faster.
@@ -76,8 +78,9 @@ python3 -m http.server 8080
 
 Then open <http://localhost:8080> and press **OPEN A ROOM ON THIS SCREEN**.
 
-To try it alone, press **PRACTICE RUN** — the whole game runs locally on one device with
-no phones and no networking.
+To try it alone, press **PRACTICE RUN** — it opens the same Setup panel, then runs the
+whole game locally on one device with no phones and no networking. That is the quickest way
+to see what a 5x5 or a 7x7 actually plays like before putting one in front of people.
 
 To test two players on one computer, use a normal window and a private window. Two tabs in
 the same profile share storage, so the second would claim the first one's seat.
@@ -143,6 +146,12 @@ js/machines.js    every number in the game lives here
 js/render.js      the pixel renderer
 amplify.yml       static hosting config, no build commands
 ```
+
+The floor size is module state in `js/machines.js` (`setGridSize`), set once when a match
+starts and echoed to every phone in the state it receives, so one page always runs one size.
+Panels, hit-testing and the producer's gutter all size themselves from it — a phone on a
+7x7 board narrows the gutter and draws a slimmer producer to buy back a whole step of
+scale, which keeps slots at roughly 48 pixels instead of 32.
 
 The art is drawn on a 32-pixel cell grid into a small backing canvas that is scaled up
 by whole pixels only, so nothing is ever half a pixel wide. Text is the exception: it is

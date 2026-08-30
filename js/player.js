@@ -8,7 +8,7 @@
 
 import { Stage, drawPanel, playFx, PLAYER_COLORS } from './render.js';
 import {
-  KINDS, DIR_NAME, MAX_LEVEL, MAX_UTIL,
+  KINDS, DIR_NAME, MAX_LEVEL, MAX_UTIL, GRID, setGridSize,
   upgradeCost, scrapValue, producerCost, sellerCost, label,
 } from './machines.js';
 
@@ -130,6 +130,8 @@ export function createController({ send }) {
       box.dataset.on = 'off';
       $('#sel-name').textContent = 'Tap a machine';
       $('#sel-sub').textContent = 'then tap an empty slot to move it';
+      $('#btn-up').textContent = 'UPGRADE';
+      $('#btn-scrap').textContent = 'SCRAP';
       $('#btn-up').disabled = true;
       $('#btn-scrap').disabled = true;
       $('#btn-rot').disabled = true;
@@ -266,6 +268,14 @@ export function createController({ send }) {
     view = msg.v;
     hud = msg.hud;
     shop = msg.shop;
+
+    // The host owns the floor size; adopt it before drawing a single frame.
+    // In practice mode the engine shares this page, so the size may already be
+    // set while the canvas is still shaped for the old one — check both.
+    if (hud.n) {
+      if (hud.n !== GRID) setGridSize(hud.n);
+      if (stage.gridN !== GRID) { stage.layout(1); fit(); }
+    }
 
     if (sel) {
       const i = parseInt(sel.slice(1), 10);

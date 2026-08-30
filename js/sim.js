@@ -13,11 +13,14 @@ import {
 } from './machines.js';
 
 const MAX_IDLE_PER_CELL = 10;   // a full slot starts destroying arrivals
-const MAX_GIZMOS = 240;         // hard ceiling, keeps the wire and the frame sane
 const INV_CAP = 8;
+
+/** Hard ceiling on live gizmos: enough to fill a floor, few enough to send 15x a second. */
+const maxGizmos = () => Math.min(400, 24 * GRID * GRID + 60);
 
 export function createFactory({ cash = 40 } = {}) {
   const f = {
+    n: GRID,
     grid: new Array(GRID * GRID).fill(null),
     inv: [],
     producer: { level: 1, t: 0 },
@@ -36,15 +39,14 @@ export function createFactory({ cash = 40 } = {}) {
 }
 
 /**
- * The starting line: producer -> doubler -> conveyor -> conveyor -> seller.
- * Round one therefore earns money untouched, and every round after it breaks
- * when the seller jumps somewhere else.
+ * The starting line: producer -> doubler -> conveyors -> seller, filling the top
+ * row whatever the floor size. Round one therefore earns money untouched at every
+ * board size, and every round after it breaks when the seller jumps somewhere else.
  */
 export function starterKit(f) {
   place(f, makeMachine({ kind: 'dup', dir: 0 }, f.nid++), 0);
-  place(f, makeMachine({ kind: 'pipe', dir: 0 }, f.nid++), 1);
-  place(f, makeMachine({ kind: 'pipe', dir: 0 }, f.nid++), 2);
-  f.seller = { level: 1, cell: 2, dir: 0 };
+  for (let i = 1; i < GRID; i++) place(f, makeMachine({ kind: 'pipe', dir: 0 }, f.nid++), i);
+  f.seller = { level: 1, cell: GRID - 1, dir: 0 };
 }
 
 function place(f, m, i) { f.grid[i] = m; }
@@ -87,7 +89,7 @@ export function stepFactory(f, dt) {
 }
 
 function spawnFromProducer(f) {
-  if (f.gizmos.length >= MAX_GIZMOS) return;
+  if (f.gizmos.length >= maxGizmos()) return;
   f.producer.flash = 1;
   const { cell } = PRODUCER_PORT;
   const ex = cx(cell) + 0.5, ey = cy(cell) + 0.5;
@@ -114,7 +116,7 @@ function fire(f, m, i) {
 }
 
 function emit(f, from, out, dur, n, total) {
-  if (f.gizmos.length >= MAX_GIZMOS) { f.fx.push({ k: 'clog', cell: from }); return; }
+  if (f.gizmos.length >= maxGizmos()) { f.fx.push({ k: 'clog', cell: from }); return; }
 
   const [dx, dy] = DIRS[out.dir];
   const sx = cx(from) + 0.5, sy = cy(from) + 0.5;
@@ -216,7 +218,7 @@ export function giveMachine(f, spec) {
   return { where: 'none', idx: -1 };
 }
 
-const okGrid = i => Number.isInteger(i) && i >= 0 && i < GRID * GRID;
+const okGrid = (f, i) => Number.isInteger(i) && i >= 0 && i < f.grid.length;
 
 /**
  * Apply one player action. Returns { ok, msg } — never throws on bad input,
@@ -227,7 +229,7 @@ export function applyAction(f, a) {
 
   switch (a.a) {
     case 'rot': {
-      if (!okGrid(a.i) || !f.grid[a.i]) return no('Nothing there');
+      if (!okGrid(f, a.i) || !f.grid[a.i]) return no('Nothing there');
       const m = f.grid[a.i];
       m.dir = (m.dir + 1) % 4;
       f.fx.push({ k: 'rot', cell: a.i });
@@ -319,7 +321,7 @@ function parseRef(f, ref) {
   const zone = ref[0] === 'g' ? 'grid' : ref[0] === 'i' ? 'inv' : null;
   const idx = parseInt(ref.slice(1), 10);
   if (!zone || Number.isNaN(idx) || idx < 0) return null;
-  if (zone === 'grid' && !okGrid(idx)) return null;
+  if (zone === 'grid' && !okGrid(f, idx)) return null;
   if (zone === 'inv' && idx > INV_CAP) return null;
   return { zone, idx };
 }
@@ -363,4 +365,4 @@ export function drainFx(f, cap = 24) {
   return out;
 }
 
-export { MAX_IDLE_PER_CELL, INV_CAP };
+export { MAX_IDLE_PER_CELL, INV_CAP, maxGizmos };

@@ -9,6 +9,7 @@ import { createClient, roomFromUrl, clientId } from './net.js';
 import { createEngine } from './game.js';
 import { createController } from './player.js';
 import { Stage, drawPanel, playFx, banner, PLAYER_COLORS } from './render.js';
+import { openSetup } from './setup.js';
 
 const $ = s => document.querySelector(s);
 const show = s => { document.body.dataset.screen = s; };
@@ -34,7 +35,10 @@ function bootHome() {
     startHost(show);
   });
 
-  $('#practice-btn').addEventListener('click', () => startPractice());
+  $('#practice-btn').addEventListener('click', () => openSetup({
+    label: 'START PRACTICE',
+    done: cfg => startPractice(cfg),
+  }));
 
   $('#join-form').addEventListener('submit', e => {
     e.preventDefault();
@@ -215,12 +219,11 @@ function connectPhone(room, name) {
 
 /* ---------------------------------------------------------- practice --- */
 
-function startPractice() {
-  const engine = createEngine({ rounds: 99, roundSecs: 45, shopSecs: 25 });
+function startPractice(cfg = {}) {
+  const engine = createEngine({ shopSecs: 25, ...cfg });
   engine.addPlayer(0, localStorage.getItem('gizmo-name') || 'YOU', 0);
 
   const stage = new Stage($('#stage'));
-  stage.layout(1);
   const ctrl = createController({ send: msg => engine.action(0, msg) });
 
   let bannerText = '', bannerSub = '', bannerT = 0, last = 0;
@@ -234,6 +237,26 @@ function startPractice() {
 
   engine.on('fx', (seat, fx) => playFx(stage, fx, stage.floorOrigin(stage.panelRect(0))));
 
+  engine.on('over', results => {
+    const list = $('#podium');
+    list.innerHTML = '';
+    (results || []).forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'result place-' + r.place;
+      li.style.setProperty('--pc', PLAYER_COLORS[r.color % 4].hex);
+      li.innerHTML = '<span class="place"></span><span class="who"></span><span class="amt"></span>';
+      li.querySelector('.place').textContent = '#' + r.place;
+      li.querySelector('.who').textContent = r.name;
+      li.querySelector('.amt').textContent = '$' + r.earned;
+      list.appendChild(li);
+    });
+    const me = (results || [])[0];
+    $('#results-sub').textContent = me ? `Practice over — $${me.earned} shipped.` : 'Practice over.';
+    $('#again-btn').textContent = 'ANOTHER PRACTICE RUN';
+    $('#again-btn').onclick = () => location.reload();
+    show('results');
+  });
+
   show('practice');
   ctrl.start();
   engine.startGame();
@@ -242,6 +265,7 @@ function startPractice() {
     requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000 || 0);
     last = now;
+    if (document.body.dataset.screen !== 'practice') return;
 
     engine.step(dt);
     if (bannerT > 0) bannerT -= dt;
@@ -257,7 +281,7 @@ function startPractice() {
     if (bannerT > 0) banner(stage, bannerText, bannerSub);
     stage.end();
 
-    $('#floor-round').textContent = `ROUND ${engine.round}`;
+    $('#floor-round').textContent = `ROUND ${engine.round} / ${engine.cfg.rounds}`;
     $('#floor-phase').textContent = {
       plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'WORKSHOP',
     }[engine.phase] || '';

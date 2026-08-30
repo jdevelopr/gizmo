@@ -10,7 +10,8 @@ import {
   applyAction, giveMachine, viewOf, drainFx,
 } from './sim.js';
 import {
-  rollShop, rng, price, label, describe, shopCost, TYPES, DIR_NAME,
+  rollShop, rng, price, label, describe, shopCost, setGridSize, GRID,
+  TYPES, DIR_NAME,
 } from './machines.js';
 
 /** The one machine you can always buy: it moves gizmos and nothing else. */
@@ -21,6 +22,7 @@ export const DEFAULT_CFG = {
   roundSecs: 45,
   shopSecs: 30,
   planSecs: 120,      // planning phase: rearrange freely, ready up to start early
+  gridSize: 3,        // slots per side, always square, 3 to 7
   tallySecs: 3.5,
   cash: 40,
   rerollBase: 6,
@@ -125,6 +127,8 @@ export function createEngine(cfgIn = {}) {
 
   function startGame() {
     round = 1;
+    // Resize before any factory is built: every floor in the match is this size.
+    setGridSize(cfg.gridSize);
     for (const p of players.values()) {
       p.f = createFactory({ cash: cfg.cash });
       starterKit(p.f);
@@ -138,6 +142,7 @@ export function createEngine(cfgIn = {}) {
     phase = 'lobby';
     round = 0;
     timer = 0;
+    setGridSize(cfg.gridSize);
     for (const p of players.values()) {
       p.f = createFactory({ cash: cfg.cash });
       starterKit(p.f);
@@ -303,6 +308,7 @@ export function createEngine(cfgIn = {}) {
       fx: p.outbox.splice(0, p.outbox.length),
       hud: {
         ph: phase, tm: Math.round(timer * 10) / 10, r: round, rs: cfg.rounds,
+        n: GRID,
         an: announce, board: board(), note: p.note,
         ready: !!p.planReady,
         mover: moverCost(),

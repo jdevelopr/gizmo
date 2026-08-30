@@ -6,7 +6,8 @@
  */
 
 import { createHost, joinUrl } from './net.js';
-import { createEngine, DEFAULT_CFG } from './game.js';
+import { createEngine } from './game.js';
+import { readSetupCfg, openSetup, summary } from './setup.js';
 import { Stage, drawPanel, playFx, banner, PLAYER_COLORS } from './render.js';
 
 const $ = s => document.querySelector(s);
@@ -16,7 +17,7 @@ const SEND_MS = 66;
 
 export function startHost(show) {
   const stage = new Stage($('#stage'));
-  const engine = createEngine(readCfg());
+  const engine = createEngine(readSetupCfg());
   const host = createHost({ slug: SLUG, maxPlayers: MAX_PLAYERS });
 
   let url = '';
@@ -129,6 +130,9 @@ export function startHost(show) {
       pods.appendChild(el);
     }
 
+    const cfgLine = $('#lobby-cfg');
+    if (cfgLine) cfgLine.textContent = summary(engine.cfg);
+
     const ready = list.filter(p => p.ready && p.connected).length;
     const btn = $('#start-btn');
     btn.disabled = started || ready < 2 || ready !== list.filter(p => p.connected).length;
@@ -148,17 +152,15 @@ export function startHost(show) {
     setTimeout(() => { $('#copy-link').textContent = 'COPY LINK'; }, 1600);
   });
 
-  $('#setup-btn').addEventListener('click', () => { $('#setup').hidden = false; });
-  $('#setup-close').addEventListener('click', () => {
-    $('#setup').hidden = true;
-    Object.assign(engine.cfg, readCfg());
-    syncAll();
-  });
+  $('#setup-btn').addEventListener('click', () => openSetup({
+    label: 'DONE',
+    done: cfg => { Object.assign(engine.cfg, cfg); syncAll(); paintLobby(); },
+  }));
 
   $('#start-btn').addEventListener('click', () => {
     if (started) return;
     started = true;
-    Object.assign(engine.cfg, readCfg());
+    Object.assign(engine.cfg, readSetupCfg());
     engine.startGame();
     host.start({ cfg: engine.cfg });
     show('floor');
@@ -166,21 +168,6 @@ export function startHost(show) {
   });
 
   const warn = e => { e.preventDefault(); e.returnValue = ''; };
-
-  function readCfg() {
-    const num = (id, d) => {
-      const el = $(id);
-      const v = el ? parseInt(el.value, 10) : NaN;
-      return Number.isFinite(v) ? v : d;
-    };
-    return {
-      ...DEFAULT_CFG,
-      rounds: num('#cfg-rounds', DEFAULT_CFG.rounds),
-      roundSecs: num('#cfg-secs', DEFAULT_CFG.roundSecs),
-      planSecs: num('#cfg-plan', DEFAULT_CFG.planSecs),
-      cash: num('#cfg-cash', DEFAULT_CFG.cash),
-    };
-  }
 
   /* ------------------------------------------------------------- engine --- */
 

@@ -475,3 +475,168 @@ body[data-screen="practice"] #pad { min-height: auto; }
   body[data-screen="practice"] #floor { height: 100dvh; }
   body[data-screen="practice"] #pad { height: 100dvh; overflow-y: auto; }
 }
+
+/* ------------------------------------------------------------- the manual --- */
+
+/* Rendered from machines.js when it opens, so the numbers are always the live ones. */
+#howto {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--ink);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0 calc(48px + env(safe-area-inset-bottom));
+}
+#howto[hidden] { display: none; }
+
+#howto-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--plate);
+  border-bottom: 2px solid var(--line);
+  padding: 12px 16px calc(12px);
+  padding-left: calc(16px + env(safe-area-inset-left));
+  padding-right: calc(16px + env(safe-area-inset-right));
+}
+#howto-head h2 { font-size: 15px; color: var(--gold); letter-spacing: .12em; }
+#howto-close { padding: 10px 18px; min-height: 44px; }
+
+/* The manual is the one place in the game with real paragraphs, so prose gets a
+   face built for reading. Headings, labels and tables stay in Silkscreen. */
+.ht-note, .ht-desc, .ht-steps li, .ht-rule p, .ht-levels li {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.ht-levels li { font-size: 12px; }
+.ht-steps b, .ht-levels b, .ht-rule h4 { font-family: Silkscreen, 'Courier New', monospace; }
+.ht-steps b { font-size: 11px; }
+.ht-levels b { font-size: 10px; }
+
+#howto-body {
+  width: min(1000px, 100%);
+  margin: 0 auto;
+  padding: 20px 16px 0;
+  padding-left: calc(16px + env(safe-area-inset-left));
+  padding-right: calc(16px + env(safe-area-inset-right));
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+
+.ht-sec { display: flex; flex-direction: column; gap: 12px; }
+.ht-sec > h3 {
+  font-size: 13px;
+  letter-spacing: .12em;
+  color: var(--text);
+  border-bottom: 2px solid var(--line);
+  padding-bottom: 8px;
+}
+.ht-note { font-size: 11px; line-height: 1.9; color: var(--dim); max-width: 62ch; }
+.ht-dim { color: var(--dim); }
+.ht-buy { color: var(--gold); }
+.ht-sell { color: var(--lime); }
+.ht-sub { display: block; font-size: 9px; color: var(--dim); }
+
+.ht-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
+.ht-steps li { font-size: 11px; line-height: 1.9; color: var(--dim); }
+.ht-steps b { color: var(--gold-lit); letter-spacing: .06em; }
+
+.ht-rule {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  border-left: 8px solid var(--gold);
+  padding: 12px 14px;
+}
+.ht-rule h4 { font-size: 11px; color: var(--gold-lit); letter-spacing: .06em; margin-bottom: 6px; }
+.ht-rule p { font-size: 11px; line-height: 1.9; color: var(--dim); }
+
+.ht-grid { display: grid; gap: 12px; }
+@media (min-width: 760px) { .ht-grid { grid-template-columns: 1fr 1fr; } }
+
+.ht-card {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  border-top: 6px solid var(--id);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ht-head { display: flex; gap: 12px; align-items: center; }
+.ht-card h4 { font-size: 13px; color: var(--lit); letter-spacing: .04em; }
+.ht-price { font-size: 13px; color: var(--gold); margin-top: 4px; }
+.ht-price .ht-dim { font-size: 9px; }
+.ht-desc { font-size: 11px; line-height: 1.8; color: var(--dim); }
+
+/* exits, with the machine facing east */
+.ht-dia {
+  display: grid;
+  grid-template-columns: repeat(3, 8px);
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 5px;
+  background: var(--ink2);
+  border: 2px solid var(--line);
+}
+.ht-dia i { display: block; width: 8px; height: 8px; background: #232941; }
+.ht-dia .core { background: var(--c); opacity: .4; }
+.ht-dia .out { background: var(--c); }
+
+.ht-scroll { overflow-x: auto; }
+#howto table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+#howto thead th {
+  text-align: left;
+  font-size: 9px;
+  letter-spacing: .08em;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line);
+  padding: 0 10px 6px 0;
+  white-space: nowrap;
+}
+#howto tbody th { text-align: left; color: var(--text); }
+#howto tbody th,
+#howto tbody td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid #262c40;
+  white-space: nowrap;
+  color: var(--text);
+}
+#howto tbody tr:last-child th,
+#howto tbody tr:last-child td { border-bottom: 0; }
+
+.ht-levels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.ht-levels li { font-size: 10px; line-height: 1.8; color: var(--dim); }
+.ht-levels b { color: var(--lit); margin-right: 6px; }
+
+.ht-pair { display: grid; gap: 12px; }
+@media (min-width: 760px) { .ht-pair { grid-template-columns: 1fr 1fr; } }
+.ht-panel { background: var(--plate); border: 2px solid var(--line); padding: 14px; }
+.ht-panel h4 { font-size: 12px; color: var(--gold-lit); letter-spacing: .06em; margin-bottom: 4px; }
+.ht-panel .ht-note { margin-bottom: 10px; }
+
+.ht-ladder { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.ht-ladder li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--plate);
+  border: 2px solid var(--line);
+  padding: 8px 10px;
+  font-size: 11px;
+}
+.ht-ladder .ht-chip { width: 10px; height: 10px; background: var(--c); }
+.ht-ladder .ht-val { color: var(--gold); }
+
+.pad-howto { font-size: 10px; min-height: 40px; padding: 8px 12px; align-self: center; }

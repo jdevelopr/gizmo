@@ -56,6 +56,12 @@ are rate-limited per slot.
 Every machine can be rotated, moved to any open slot, upgraded to level 3, or scrapped for
 half its money back. Machines with nowhere to go land in your crate.
 
+**HOW TO PLAY** on the home screen, in either lobby and at the bottom of the phone pad
+opens the manual: the round structure, the two copy rules, and every machine with its
+levels, upgrade costs and scrap values. It is generated from `js/machines.js` when it
+opens, so it cannot drift from the balance — change a price there and the manual changes
+with it.
+
 **Conveyors are on sale at all times**, from a button on the phone, in any phase and as many
 as you can pay for. They are plumbing rather than profit — reaching a seller on the far side
 of the floor should be a matter of money, not of what the workshop happened to deal you —
@@ -160,6 +166,7 @@ js/host.js        the floor screen — lobby, QR, round loop, broadcast
 js/player.js      the phone control panel
 js/game.js        match engine: rounds, shop, per-player bookkeeping
 js/sim.js         the factory simulation
+js/howto.js       the in-game manual, rendered from machines.js on open
 js/machines.js    every number in the game lives here
 js/render.js      the pixel renderer
 amplify.yml       static hosting config, no build commands

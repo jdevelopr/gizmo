@@ -10,6 +10,7 @@ import { createEngine } from './game.js';
 import { createController } from './player.js';
 import { Stage, drawPanel, playFx, banner, PLAYER_COLORS } from './render.js';
 import { openSetup } from './setup.js';
+import './howto.js';        // wires every [data-howto] button
 
 const $ = s => document.querySelector(s);
 const show = s => { document.body.dataset.screen = s; };

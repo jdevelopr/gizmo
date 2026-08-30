@@ -9,7 +9,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 
 <!--
@@ -60,6 +60,7 @@ setTimeout(function () {
     <p class="fine">This device becomes the floor: it runs every factory and shows them
       all. It is not a player — everyone joins on a phone.</p>
     <button id="practice-btn" class="ghost wide">PRACTICE RUN (SOLO, NO PHONES)</button>
+    <button class="ghost wide" data-howto>HOW TO PLAY</button>
     <p class="fine">Practice opens the same Setup panel, so you can try a board size
       before putting it in front of anyone.</p>
     <form id="join-form" class="row">
@@ -99,6 +100,7 @@ setTimeout(function () {
     <div id="colors" class="colors"></div>
     <button id="ready-btn" class="primary wide" data-on="off">I AM READY</button>
     <button id="rename-btn" class="ghost">CHANGE NAME</button>
+    <button class="ghost" data-howto>HOW TO PLAY</button>
     <p id="plobby-note" class="note"></p>
   </div>
 </section>
@@ -119,6 +121,7 @@ setTimeout(function () {
       <p id="lobby-note" class="note"></p>
       <p id="lobby-cfg" class="fine"></p>
       <div class="row end">
+        <button class="ghost" data-howto>HOW TO</button>
         <button id="setup-btn" class="ghost">SETUP</button>
         <button id="start-btn" class="primary" disabled>NEED 2 MORE</button>
       </div>
@@ -186,6 +189,8 @@ setTimeout(function () {
 
   <div id="pad-inv" class="crate"></div>
 
+  <button class="ghost pad-howto" data-howto>HOW TO PLAY</button>
+
   <div id="shop" hidden>
     <h3 id="shop-title">WORKSHOP</h3>
     <p class="fine">One machine per round. It lands in an open slot, or in your crate.</p>
@@ -213,6 +218,15 @@ setTimeout(function () {
     <p class="note">Reopening the same link puts you back in your seat with your factory
       and your money intact.</p>
   </div>
+</div>
+
+<!-- ================================================================ manual -->
+<div id="howto" hidden>
+  <header id="howto-head">
+    <h2>HOW TO PLAY</h2>
+    <button id="howto-close" class="primary">CLOSE</button>
+  </header>
+  <div id="howto-body"></div>
 </div>
 
 <!-- ============================================================ setup panel -->

@@ -1,0 +1,302 @@
+/**
+ * main.js — entry point and screen routing.
+ *
+ * No room in the URL  -> this device can open a room (floor screen) or practise solo.
+ * ?room=ABCD          -> this device is a phone: name, colour, ready, then the pad.
+ */
+
+import { createClient, roomFromUrl, clientId } from './net.js';
+import { createEngine } from './game.js';
+import { createController } from './player.js';
+import { Stage, drawPanel, playFx, banner, PLAYER_COLORS } from './render.js';
+import { openSetup } from './setup.js';
+import './howto.js';        // wires every [data-howto] button
+
+const $ = s => document.querySelector(s);
+const show = s => { document.body.dataset.screen = s; };
+const SLUG = 'gizmo-floor';
+
+window.__boot = window.__boot || { ok: false, why: [] };
+
+const code = roomFromUrl();
+if (code) bootPhone(code);
+else bootHome();
+
+window.__boot.ok = true;
+
+/* -------------------------------------------------------------- home --- */
+
+function bootHome() {
+  show('home');
+
+  $('#host-btn').addEventListener('click', async () => {
+    $('#host-btn').disabled = true;
+    $('#host-btn').textContent = 'OPENING ROOM…';
+    const { startHost } = await import('./host.js');
+    startHost(show);
+  });
+
+  $('#practice-btn').addEventListener('click', () => openSetup({
+    label: 'START PRACTICE',
+    done: cfg => startPractice(cfg),
+  }));
+
+  $('#join-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('#join-code').value.trim().toUpperCase();
+    if (v.length !== 4) return;
+    location.search = '?room=' + v;
+  });
+}
+
+/* ------------------------------------------------------------- phone --- */
+
+function bootPhone(room) {
+  const stored = localStorage.getItem('gizmo-name');
+  if (!stored) {
+    show('name');
+    $('#name-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const v = $('#name-input').value.trim().slice(0, 12);
+      if (!v) return;
+      localStorage.setItem('gizmo-name', v);
+      connectPhone(room, v);
+    });
+    return;
+  }
+  connectPhone(room, stored);
+}
+
+function connectPhone(room, name) {
+  show('connecting');
+  $('#connect-note').textContent = `Reaching room ${room}…`;
+
+  const client = createClient({ slug: SLUG, code: room, name });
+  const ctrl = createController({ send: msg => client.send(msg) });
+  let roster = [], myColor = 0, mySeat = 0, ready = false;
+
+  client.on('welcome', msg => {
+    mySeat = msg.seat;
+    roster = msg.players || [];
+    show('plobby');
+    paintPhoneLobby();
+  });
+
+  client.on('lobby', players => { roster = players; syncMe(); paintPhoneLobby(); });
+
+  /** The host owns the roster, including whether this phone is ready. */
+  function syncMe() {
+    const me = roster.find(p => p.seat === mySeat);
+    if (!me) return;
+    myColor = me.color ?? myColor;
+    ready = !!me.ready;
+  }
+
+  client.on('msg', msg => {
+    if (msg.t !== 'sync') return;
+    roster = msg.players || roster;
+    syncMe();
+    // The floor screen went back to the lobby: follow it, from the pad or the results.
+    const screen = document.body.dataset.screen;
+    if (msg.phase === 'lobby' && (screen === 'pad' || screen === 'results')) show('plobby');
+    paintPhoneLobby();
+  });
+
+  client.on('start', () => { show('pad'); ctrl.start(); ctrl.fit(); });
+
+  client.on('state', msg => {
+    // A state tick is also how a reconnecting phone learns the match is running.
+    if (!msg.hud || msg.hud.ph === 'lobby') return;
+    if (document.body.dataset.screen !== 'pad' && document.body.dataset.screen !== 'results') {
+      show('pad');
+      ctrl.start();
+    }
+    ctrl.applyState(msg);
+  });
+
+  client.on('over', results => {
+    const list = $('#podium');
+    list.innerHTML = '';
+    (results || []).forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'result place-' + r.place + (r.seat === mySeat ? ' me' : '');
+      li.style.setProperty('--pc', PLAYER_COLORS[r.color % 4].hex);
+      li.innerHTML = '<span class="place"></span><span class="who"></span><span class="amt"></span>';
+      li.querySelector('.place').textContent = '#' + r.place;
+      li.querySelector('.who').textContent = r.name;
+      li.querySelector('.amt').textContent = '$' + r.earned;
+      list.appendChild(li);
+    });
+    const mine = (results || []).find(r => r.seat === mySeat);
+    $('#results-sub').textContent = mine ? `You placed #${mine.place} with $${mine.earned}.` : '';
+    $('#again-btn').hidden = true;
+    show('results');
+  });
+
+  let done = false;
+
+  client.on('rejected', reason => {
+    done = true;                 // stop here: do not thrash the room with retries
+    client.destroy();
+    show('home');
+    $('#home-note').textContent = reason;
+    $('#home-note').hidden = false;
+    history.replaceState(null, '', location.pathname);
+  });
+
+  client.on('disconnected', () => {
+    if (done) return;
+    $('#drop').hidden = false;
+    setTimeout(() => { if (!done) location.reload(); }, 4000);
+  });
+
+  client.on('error', err => {
+    $('#connect-note').textContent = err?.message || 'Could not connect.';
+    $('#connect-retry').hidden = false;
+  });
+
+  $('#connect-retry').addEventListener('click', () => location.reload());
+
+  /* colour + ready */
+  const colorRow = $('#colors');
+  colorRow.innerHTML = '';
+  PLAYER_COLORS.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.className = 'swatch';
+    b.style.setProperty('--pc', c.hex);
+    b.setAttribute('aria-label', c.name);
+    b.addEventListener('click', () => {
+      client.send({ t: 'color', c: i });
+      myColor = i;
+      paintPhoneLobby();
+      navigator.vibrate?.(12);
+    });
+    colorRow.appendChild(b);
+  });
+
+  $('#ready-btn').addEventListener('click', () => {
+    ready = !ready;
+    client.ready(ready);
+    navigator.vibrate?.(16);
+    paintPhoneLobby();
+  });
+
+  $('#rename-btn').addEventListener('click', () => {
+    const v = prompt('Name', name);
+    if (!v) return;
+    name = v.trim().slice(0, 12);
+    localStorage.setItem('gizmo-name', name);
+    client.send({ t: 'rename', n: name });
+  });
+
+  function paintPhoneLobby() {
+    const wrap = $('#plobby-roster');
+    wrap.innerHTML = '';
+    roster.forEach(p => {
+      const el = document.createElement('div');
+      el.className = 'plob-row' + (p.seat === mySeat ? ' me' : '');
+      el.style.setProperty('--pc', PLAYER_COLORS[(p.color ?? p.seat) % 4].hex);
+      el.innerHTML = '<span class="dot"></span><span class="nm"></span><span class="st"></span>';
+      el.querySelector('.nm').textContent = p.name + (p.seat === mySeat ? ' (you)' : '');
+      el.querySelector('.st').textContent = p.ready ? 'READY' : '…';
+      wrap.appendChild(el);
+    });
+    [...colorRow.children].forEach((b, i) => {
+      const taken = roster.some(p => p.seat !== mySeat && p.color === i);
+      b.disabled = taken;
+      b.setAttribute('aria-pressed', myColor === i ? 'true' : 'false');
+    });
+    $('#ready-btn').textContent = ready ? 'READY — TAP TO UNDO' : 'I AM READY';
+    $('#ready-btn').dataset.on = ready ? 'on' : 'off';
+    $('#plobby-note').textContent = `${roster.filter(p => p.ready).length} of ${roster.length} ready. The floor screen starts the match.`;
+  }
+
+  // Tell the host on the way out so the floor greys this player straight away.
+  window.addEventListener('pagehide', () => { try { client.send({ t: 'bye' }); } catch {} });
+
+  client.connect();
+  void clientId();
+}
+
+/* ---------------------------------------------------------- practice --- */
+
+function startPractice(cfg = {}) {
+  const engine = createEngine({ shopSecs: 25, ...cfg });
+  engine.addPlayer(0, localStorage.getItem('gizmo-name') || 'YOU', 0);
+
+  const stage = new Stage($('#stage'));
+  const ctrl = createController({ send: msg => engine.action(0, msg) });
+
+  let bannerText = '', bannerSub = '', bannerT = 0, last = 0;
+
+  engine.on('phase', (ph, info) => {
+    if (ph === 'plan') {
+      bannerText = `ROUND ${info.round}`;
+      bannerSub = info.round > 1 ? 'EXTEND · CLAIM · UPGRADE' : 'PLANNING';
+      bannerT = 2.2;
+    }
+    if (ph === 'run') { bannerText = 'SHIP IT'; bannerSub = ''; bannerT = 1; stage.shake(4); }
+    if (ph === 'tally') { bannerText = 'ROUND OVER'; bannerSub = ''; bannerT = 1.8; }
+    if (ph === 'shop') { bannerText = 'WORKSHOP'; bannerSub = 'BUY ONE'; bannerT = 1.8; }
+  });
+
+  engine.on('fx', (seat, fx) => playFx(stage, fx, stage.floorOrigin(stage.panelRect(0))));
+
+  engine.on('over', results => {
+    const list = $('#podium');
+    list.innerHTML = '';
+    (results || []).forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'result place-' + r.place;
+      li.style.setProperty('--pc', PLAYER_COLORS[r.color % 4].hex);
+      li.innerHTML = '<span class="place"></span><span class="who"></span><span class="amt"></span>';
+      li.querySelector('.place').textContent = '#' + r.place;
+      li.querySelector('.who').textContent = r.name;
+      li.querySelector('.amt').textContent = '$' + r.earned;
+      list.appendChild(li);
+    });
+    const me = (results || [])[0];
+    const p0 = engine.players.get(0);
+    $('#results-sub').textContent = me
+      ? `Practice over — $${me.earned} shipped on a ${p0.f.claim}x${p0.f.claim} plot, `
+        + `${p0.filled} orders filled.`
+      : 'Practice over.';
+    $('#again-btn').textContent = 'ANOTHER PRACTICE RUN';
+    $('#again-btn').onclick = () => location.reload();
+    show('results');
+  });
+
+  show('practice');
+  ctrl.start();
+  engine.startGame();
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.05, (now - last) / 1000 || 0);
+    last = now;
+    if (document.body.dataset.screen !== 'practice') return;
+
+    engine.step(dt);
+    if (bannerT > 0) bannerT -= dt;
+
+    const wrap = $('#stage-wrap').getBoundingClientRect();
+    stage.autoFit(1, Math.max(80, wrap.width), Math.max(90, wrap.height));
+    stage.update(dt);
+    stage.begin();
+    const p = engine.players.get(0);
+    drawPanel(stage, engine.viewOfSeat(0), stage.panelRect(0), {
+      name: p.name, color: PLAYER_COLORS[0], earned: Math.round(p.f.earned),
+    });
+    if (bannerT > 0) banner(stage, bannerText, bannerSub);
+    stage.end();
+
+    $('#floor-round').textContent = `ROUND ${engine.round} / ${engine.cfg.rounds}`;
+    $('#floor-phase').textContent = {
+      plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'WORKSHOP',
+    }[engine.phase] || '';
+    $('#floor-timer').textContent = String(Math.max(0, Math.ceil(engine.timer))).padStart(2, '0');
+
+    ctrl.applyState(engine.stateFor(0));
+  }
+  requestAnimationFrame(frame);
+}

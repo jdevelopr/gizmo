@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#12131f">
+<title>GIZMO 2 — Claim the Plot</title>
+<meta name="description" content="A 2 to 4 player factory builder. Claim land, grow one factory across the whole match, and beat your own best round.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+
+<!--
+  Each library has a second CDN behind it: one host having a bad day should not
+  take the game down. qrcode 1.5.x does not ship build/qrcode.min.js — that path
+  404s on every CDN — so 1.4.4 is pinned; it has the same QRCode.toCanvas API.
+-->
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>window.Peer||document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>');</script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+<script>window.QRCode||document.write('<script src="https://unpkg.com/qrcode@1.4.4/build/qrcode.min.js"><\/script>');</script>
+
+<script>
+/* A failed module leaves every button dead with nothing on screen to explain it.
+   This is a plain script, so it runs even when the module never does. */
+window.__boot = { ok: false, why: [] };
+window.addEventListener('error', e => {
+  const src = e.target && e.target.src;
+  window.__boot.why.push(src ? 'could not load ' + src.split('/').pop() : (e.message || 'script error'));
+}, true);
+setTimeout(function () {
+  if (window.__boot.ok) return;
+  var el = document.getElementById('boot-error');
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = location.protocol === 'file:'
+    ? 'Open this through a web server, not by double-clicking the file — browsers block modules on file:// URLs. Try: python3 -m http.server 8000'
+    : 'The game did not start' + (window.__boot.why.length ? ' — ' + window.__boot.why[0] : '') + '. Reload, and check the browser console.';
+}, 2500);
+</script>
+</head>
+
+<body data-screen="boot">
+
+<p id="boot-error" hidden></p>
+
+<!-- ================================================================= home -->
+<section id="home" class="screen">
+  <div class="stack">
+    <h1 class="logo">GIZMO<span class="two">2</span></h1>
+    <p class="tag">Claim the plot. Grow the engine.</p>
+    <p class="blurb">
+      Raw gizmos drop into the top-left slot of a nine-slot claim. Nothing is ever
+      taken away from you: the line you build in the first round is still running in
+      the last one. Buy land to grow the plot, and every round the order board asks
+      the only question that matters — is your factory shipping more than it ever has?
+      Two to four players, each on their own phone.
+    </p>
+    <button id="host-btn" class="primary wide">OPEN A ROOM ON THIS SCREEN</button>
+    <p class="fine">This device becomes the floor: it runs every factory and shows them
+      all. It is not a player — everyone joins on a phone.</p>
+    <button id="practice-btn" class="ghost wide">PRACTICE RUN (SOLO, NO PHONES)</button>
+    <button class="ghost wide" data-howto>HOW TO PLAY</button>
+    <p class="fine">Practice opens the same Setup panel, so you can try a plot size
+      before putting it in front of anyone.</p>
+    <form id="join-form" class="row">
+      <label for="join-code">JOIN CODE</label>
+      <input id="join-code" maxlength="4" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" inputmode="text" placeholder="ABCD">
+      <button type="submit" class="ghost">JOIN</button>
+    </form>
+    <p id="home-note" class="note" hidden></p>
+  </div>
+</section>
+
+<!-- ================================================================= name -->
+<section id="name" class="screen">
+  <form id="name-form" class="stack">
+    <h2>WHAT DO WE CALL YOU?</h2>
+    <input id="name-input" maxlength="12" autocomplete="nickname" required placeholder="ENGINEER">
+    <button type="submit" class="primary wide">CONTINUE</button>
+  </form>
+</section>
+
+<!-- =========================================================== connecting -->
+<section id="connecting" class="screen">
+  <div class="stack">
+    <h2 class="pulse">CONNECTING</h2>
+    <p id="connect-note" class="note"></p>
+    <button id="connect-retry" class="ghost" hidden>TRY AGAIN</button>
+  </div>
+</section>
+
+<!-- ======================================================= phone lobby -->
+<section id="plobby" class="screen">
+  <div class="stack">
+    <h2>LOBBY</h2>
+    <div id="plobby-roster"></div>
+    <p class="label">PICK A COLOUR</p>
+    <div id="colors" class="colors"></div>
+    <button id="ready-btn" class="primary wide" data-on="off">I AM READY</button>
+    <button id="rename-btn" class="ghost">CHANGE NAME</button>
+    <button class="ghost" data-howto>HOW TO PLAY</button>
+    <p id="plobby-note" class="note"></p>
+  </div>
+</section>
+
+<!-- ======================================================== floor lobby -->
+<section id="lobby" class="screen">
+  <div class="lobby-grid">
+    <div class="join-card">
+      <canvas id="qr" width="220" height="220" aria-label="Scan to join"></canvas>
+      <p class="code" id="room-code" aria-live="polite">····</p>
+      <p class="url" id="join-url"></p>
+      <button id="copy-link" class="ghost">COPY LINK</button>
+    </div>
+    <div class="lobby-main">
+      <h2 class="logo small">GIZMO</h2>
+      <p class="fine">Scan with a phone, or type the code at the address above.</p>
+      <div id="podiums" class="podiums"></div>
+      <p id="lobby-note" class="note"></p>
+      <p id="lobby-cfg" class="fine"></p>
+      <div class="row end">
+        <button class="ghost" data-howto>HOW TO</button>
+        <button id="setup-btn" class="ghost">SETUP</button>
+        <button id="start-btn" class="primary" disabled>NEED 2 MORE</button>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ================================================================ floor -->
+<section id="floor" class="screen">
+  <header id="floor-hud">
+    <span id="floor-round">ROUND 1</span>
+    <span id="floor-phase">RE-ROUTE</span>
+    <span id="floor-timer">00</span>
+  </header>
+  <div id="stage-wrap">
+    <div class="stage-stack">
+      <canvas id="stage"></canvas>
+      <canvas class="text-layer" aria-hidden="true"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================== pad -->
+<section id="pad" class="screen">
+  <header id="pad-top">
+    <span class="pill">CASH <b id="pad-cash">$0</b></span>
+    <span class="pill">EARNED <b id="pad-earned">$0</b></span>
+    <span class="pill">RANK <b id="pad-rank">-</b></span>
+  </header>
+  <p id="pad-phase" data-ph="plan">R1 · PLANNING</p>
+
+  <!-- The order board: your own best round, plus a quarter. Filling it pays a
+       bonus; missing it costs nothing but the bonus. -->
+  <div id="pad-order" data-met="off" hidden>
+    <div class="order-bar"><i id="order-fill"></i></div>
+    <small id="order-text"></small>
+  </div>
+
+  <p id="pad-hint" class="fine"></p>
+
+  <div id="pad-stage-wrap">
+    <div class="stage-stack">
+      <canvas id="pad-stage"></canvas>
+      <canvas class="text-layer" aria-hidden="true"></canvas>
+    </div>
+  </div>
+
+  <button id="btn-plan" class="primary wide" data-on="off" hidden>READY — START THE ROUND</button>
+
+  <p id="pad-note" class="toast" hidden></p>
+
+  <!-- Always reachable without scrolling: the plumbing, and the land it runs on. -->
+  <button id="btn-mover" class="buy-row">+ CONVEYOR</button>
+  <button id="btn-expand" class="buy-row land" data-nudge="off" hidden>+ CLAIM LAND</button>
+
+  <div id="pad-sel" data-on="off">
+    <div class="sel-text">
+      <b id="sel-name">Tap a machine</b>
+      <small id="sel-sub">then tap an owned slot to move it — belts aim themselves</small>
+    </div>
+    <div class="sel-btns">
+      <button id="btn-rot" disabled>ROTATE</button>
+      <button id="btn-up" disabled>UPGRADE</button>
+      <button id="btn-stow" disabled>TO CRATE</button>
+      <button id="btn-scrap" disabled>SCRAP</button>
+    </div>
+  </div>
+
+  <div id="pad-util">
+    <button id="btn-prod">PRODUCER</button>
+    <button id="btn-sell">SELLER</button>
+  </div>
+
+  <div id="pad-inv" class="crate"></div>
+
+  <button class="ghost pad-howto" data-howto>HOW TO PLAY</button>
+
+  <div id="shop" hidden>
+    <h3 id="shop-title">WORKSHOP</h3>
+    <p class="fine">One machine per round. It lands in an open slot, or in your crate.</p>
+    <div id="shop-cards"></div>
+    <div class="row end">
+      <button id="shop-reroll" class="ghost">REROLL</button>
+      <button id="shop-done" class="primary">READY</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================== results -->
+<section id="results" class="screen">
+  <div class="stack">
+    <h2 class="logo small">FINAL LEDGER</h2>
+    <ol id="podium"></ol>
+    <p id="results-sub" class="note"></p>
+    <button id="again-btn" class="primary wide">BACK TO LOBBY</button>
+  </div>
+</section>
+
+<div id="drop" class="modal" hidden>
+  <div class="modal-box stack">
+    <h3>CONNECTION LOST</h3>
+    <p class="note">Reopening the same link puts you back in your seat with your factory
+      and your money intact.</p>
+  </div>
+</div>
+
+<!-- ================================================================ manual -->
+<div id="howto" hidden>
+  <header id="howto-head">
+    <h2>HOW TO PLAY</h2>
+    <button id="howto-close" class="primary">CLOSE</button>
+  </header>
+  <div id="howto-body"></div>
+</div>
+
+<!-- ============================================================ setup panel -->
+<div id="setup" class="modal" hidden>
+  <div class="modal-box stack">
+    <h3>SETUP</h3>
+    <label for="cfg-grid">PLOT SIZE</label>
+    <select id="cfg-grid">
+      <option value="3">3 x 3 — no room to grow</option>
+      <option value="4">4 x 4 — one expansion</option>
+      <option value="5">5 x 5 — two, and a second vault</option>
+      <option value="6">6 x 6</option>
+      <option value="7" selected>7 x 7 — the full run</option>
+    </select>
+    <p class="fine">Everyone starts owning a 3 x 3 corner of this and buys the rest
+      during the match. This is how far the fence can go, not where it starts.</p>
+    <label for="cfg-rounds">ROUNDS</label>
+    <select id="cfg-rounds">
+      <option value="3">3 — quick</option>
+      <option value="5">5 — short</option>
+      <option value="8" selected>8 — standard</option>
+      <option value="12">12 — long haul</option>
+    </select>
+    <label for="cfg-plan">PLANNING TIME</label>
+    <select id="cfg-plan">
+      <option value="60">60 seconds</option>
+      <option value="120" selected>120 seconds</option>
+      <option value="180">180 seconds</option>
+    </select>
+    <label for="cfg-secs">ROUND LENGTH</label>
+    <select id="cfg-secs">
+      <option value="60">60 seconds</option>
+      <option value="90" selected>90 seconds</option>
+      <option value="120">120 seconds</option>
+      <option value="150">150 seconds</option>
+    </select>
+    <label for="cfg-cash">STARTING CASH</label>
+    <select id="cfg-cash">
+      <option value="75">$75 — lean</option>
+      <option value="120" selected>$120 — standard</option>
+      <option value="240">$240 — rich</option>
+    </select>
+    <p id="cfg-note" class="fine"></p>
+    <button id="setup-close" class="primary wide">DONE</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

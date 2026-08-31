@@ -1,0 +1,696 @@
+/* GIZMO — pixel art UI.
+   Hard edges, no radii, no gradients, one small palette, Silkscreen everywhere. */
+
+:root {
+  --ink: #12131f;
+  --ink2: #0d0f1a;
+  --plate: #1e2233;
+  --plate2: #272c40;
+  --line: #343b55;
+  --text: #e8ecf8;
+  --dim: #7c86a6;
+  --gold: #ffcd75;
+  --gold-lit: #ffe9a8;
+  --cyan: #41a6f6;
+  --lime: #a7f070;
+  --coral: #ef7d57;
+  --orchid: #b55088;
+  --pc: var(--cyan);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font-family: Silkscreen, 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+body {
+  background-image:
+    linear-gradient(transparent 15px, rgba(52, 59, 85, .16) 16px),
+    linear-gradient(90deg, transparent 15px, rgba(52, 59, 85, .16) 16px);
+  background-size: 16px 16px;
+}
+
+canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+
+/* The pixel layer and, sitting exactly on top of it, the sharp text layer. */
+.stage-stack { position: relative; line-height: 0; }
+.stage-stack .text-layer {
+  position: absolute;
+  left: 0; top: 0;
+  pointer-events: none;
+  image-rendering: auto;
+}
+
+h1, h2, h3, h4 { margin: 0; font-weight: 400; letter-spacing: .02em; }
+p { margin: 0; }
+
+/* ------------------------------------------------------------- screens --- */
+
+.screen { display: none; }
+body[data-screen="home"] #home,
+body[data-screen="name"] #name,
+body[data-screen="connecting"] #connecting,
+body[data-screen="plobby"] #plobby,
+body[data-screen="lobby"] #lobby,
+body[data-screen="floor"] #floor,
+body[data-screen="pad"] #pad,
+body[data-screen="results"] #results { display: flex; }
+body[data-screen="practice"] #floor,
+body[data-screen="practice"] #pad { display: flex; }
+
+#home, #name, #connecting, #plobby, #results {
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+}
+
+#boot-error {
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--coral);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------ typography --- */
+
+.logo {
+  font-size: 42px;
+  letter-spacing: .08em;
+  color: var(--gold);
+  text-shadow: 3px 3px 0 var(--ink2), 6px 6px 0 rgba(0, 0, 0, .35);
+}
+.logo.small { font-size: 22px; text-shadow: 2px 2px 0 var(--ink2); }
+.logo .two {
+  font-size: .58em;
+  color: var(--cyan, #41a6f6);
+  margin-left: .12em;
+  vertical-align: super;
+}
+.tag { color: var(--lime); font-size: 12px; }
+.blurb { color: var(--dim); font-size: 12px; line-height: 1.8; }
+.fine { color: var(--dim); font-size: 10px; line-height: 1.7; }
+.note { color: var(--gold); font-size: 11px; min-height: 1.4em; }
+.label { color: var(--dim); font-size: 10px; letter-spacing: .1em; }
+.dim { color: var(--dim); }
+.pulse { animation: blink 1s steps(2, end) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+
+/* --------------------------------------------------------------- controls --- */
+
+button, select, input {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--plate);
+  border: 2px solid var(--line);
+  border-radius: 0;
+  padding: 12px 14px;
+  min-height: 48px;
+  cursor: pointer;
+  transition: transform .06s steps(2), background .1s;
+}
+button:active:not(:disabled) { transform: translate(2px, 2px); }
+button:disabled { opacity: .4; cursor: default; }
+
+button.primary {
+  background: var(--gold);
+  color: var(--ink);
+  border-color: var(--gold-lit);
+  box-shadow: 4px 4px 0 var(--ink2);
+}
+button.primary:active:not(:disabled) { box-shadow: 2px 2px 0 var(--ink2); }
+button.ghost { background: transparent; color: var(--gold); border-color: var(--line); }
+button.wide { width: 100%; }
+button[data-on="on"] { background: var(--lime); border-color: #dcffb0; color: var(--ink); }
+
+input {
+  background: var(--ink2);
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+input::placeholder { color: #414a68; }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row.end { justify-content: flex-end; }
+#join-form label { font-size: 10px; color: var(--dim); }
+#join-code { width: 92px; text-align: center; }
+
+/* ---------------------------------------------------------- floor lobby --- */
+
+#lobby {
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.lobby-grid {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  align-items: center;          /* the QR card and the podiums share a centre line */
+  justify-content: center;
+  width: min(880px, 100%);
+}
+.join-card {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  padding: 14px;
+  text-align: center;
+  box-shadow: 6px 6px 0 var(--ink2);
+}
+#qr {
+  width: 220px; height: 220px;
+  background: #f4f4f4;
+  border: 4px solid var(--gold);
+  padding: 6px;
+}
+.code {
+  font-size: 34px;
+  letter-spacing: .22em;
+  color: var(--gold);
+  margin-top: 10px;
+  text-shadow: 2px 2px 0 var(--ink2);
+}
+.url { font-size: 10px; color: var(--dim); word-break: break-all; margin: 4px 0 10px; }
+
+.lobby-main {
+  flex: 1 1 360px;
+  max-width: 520px;             /* keeps the pair together instead of stranding the QR */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.podiums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.podium {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  border-bottom: 6px solid var(--ink2);
+  padding: 12px;
+  min-height: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+.podium.filled { border-color: var(--pc); }
+.podium.ready { background: color-mix(in srgb, var(--pc) 18%, var(--plate)); }
+.pod-badge {
+  width: 34px; height: 34px;
+  background: var(--pc);
+  box-shadow: inset -3px -3px 0 rgba(0, 0, 0, .35), 3px 3px 0 var(--ink2);
+}
+.pod-badge.empty { background: repeating-linear-gradient(45deg, #262b40 0 4px, #1e2233 4px 8px); box-shadow: none; }
+.pod-name { font-size: 13px; }
+.pod-state { font-size: 9px; color: var(--gold); letter-spacing: .1em; }
+.podium:not(.ready) .pod-state { color: var(--dim); }
+
+.modal {
+  position: fixed; inset: 0;
+  background: rgba(9, 10, 18, .86);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; z-index: 20;
+}
+.modal[hidden] { display: none; }
+.modal-box {
+  background: var(--plate);
+  border: 2px solid var(--gold);
+  box-shadow: 8px 8px 0 var(--ink2);
+  padding: 20px;
+  width: min(360px, 100%);
+}
+.modal-box label { font-size: 10px; color: var(--dim); }
+
+/* ---------------------------------------------------------------- floor --- */
+
+#floor {
+  flex-direction: column;
+  height: 100dvh;
+  padding: 10px;
+  gap: 8px;
+}
+#floor-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--plate);
+  border: 2px solid var(--line);
+  padding: 8px 14px;
+  font-size: 14px;
+  color: var(--gold);
+  flex: 0 0 auto;
+}
+#floor-phase { color: var(--lime); letter-spacing: .12em; }
+#floor-timer { font-size: 22px; color: var(--gold-lit); min-width: 2ch; text-align: right; }
+#stage-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------------ pad --- */
+
+#pad {
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px calc(12px + env(safe-area-inset-bottom));
+  padding-left: calc(10px + env(safe-area-inset-left));
+  padding-right: calc(10px + env(safe-area-inset-right));
+  min-height: 100dvh;
+}
+#pad > * { flex: 0 0 auto; }     /* nothing gets squeezed under the canvas */
+#pad-top { display: flex; gap: 6px; }
+.pill {
+  flex: 1;
+  background: var(--plate);
+  border: 2px solid var(--line);
+  padding: 6px 8px;
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: .06em;
+}
+.pill b { display: block; font-size: 15px; color: var(--gold-lit); letter-spacing: 0; }
+#pad-phase {
+  background: var(--plate2);
+  border: 2px solid var(--line);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--gold);
+  text-align: center;
+  letter-spacing: .08em;
+}
+#pad-phase[data-ph="run"] { color: var(--lime); border-color: var(--lime); }
+#pad-phase[data-ph="plan"] { color: var(--coral); border-color: var(--coral); }
+#btn-plan { font-size: 13px; letter-spacing: .06em; }
+#btn-plan[hidden] { display: none; }
+#pad-hint { text-align: center; min-height: 1.6em; padding: 0 4px; }
+
+/* Full-bleed: the grid gets the whole screen width, which is what makes the
+   slots big enough to hit without aiming. */
+#pad-stage-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* The solo panel is square, so the box it lives in is too: the grid then scales
+     off the full screen width instead of whatever height happens to be left. */
+  aspect-ratio: 1 / 1;
+  max-height: 54vh;
+  flex: 0 0 auto;
+  margin: 0 calc(-10px - env(safe-area-inset-right)) 0 calc(-10px - env(safe-area-inset-left));
+}
+#pad-stage { touch-action: none; }
+
+.toast {
+  background: var(--gold);
+  color: var(--ink);
+  padding: 6px 10px;
+  font-size: 11px;
+  text-align: center;
+}
+
+#pad-sel {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#pad-sel[data-on="on"] { border-color: var(--gold); }
+.sel-text { display: flex; flex-direction: column; gap: 2px; }
+.sel-text b { font-size: 12px; color: var(--gold-lit); }
+.sel-text small { font-size: 9px; color: var(--dim); line-height: 1.6; }
+.sel-btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.sel-btns button { padding: 10px 6px; font-size: 10px; }
+
+/*
+ * The order board. A bar rather than a number, because the thing a player wants
+ * to know mid-round is not "how much" but "am I going to make it".
+ */
+#pad-order { display: grid; gap: 4px; }
+.order-bar {
+  height: 6px;
+  background: var(--ink2, #12131f);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.order-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--gold, #ffcd75);
+  transition: width .25s linear;
+}
+#pad-order[data-met="on"] .order-bar > i { background: var(--lime, #a7f070); }
+#order-text { font-size: 9px; color: var(--dim); letter-spacing: .04em; }
+#pad-order[data-met="on"] #order-text { color: var(--lime, #a7f070); }
+
+/* Always available: the plumbing, and the ground it runs on. */
+.buy-row {
+  width: 100%;
+  font-size: 11px;
+  color: var(--lime);
+  border-color: #3f7a2c;
+  background: color-mix(in srgb, var(--lime) 10%, var(--plate));
+  letter-spacing: .06em;
+}
+.buy-row:disabled { color: var(--dim); border-color: var(--line); background: var(--plate); }
+
+/* Land reads as its own kind of purchase: it is the only thing you buy that is
+   not a machine, and the only one that changes the shape of the floor. */
+.buy-row.land {
+  color: #a8dcff;
+  border-color: #2f4a63;
+  background: color-mix(in srgb, #41a6f6 10%, var(--plate));
+  margin-top: 6px;
+}
+.buy-row.land:disabled { color: var(--dim); border-color: var(--line); background: var(--plate); }
+.buy-row.land[data-nudge="on"] { animation: nudge .3s steps(2) 3; }
+@keyframes nudge {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(3px); }
+}
+
+#pad-util { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#pad-util button { font-size: 10px; padding: 10px 6px; color: var(--gold); }
+
+.crate { display: flex; gap: 6px; flex-wrap: wrap; min-height: 40px; align-items: center; }
+.crate-empty { font-size: 9px; color: var(--dim); }
+.chip {
+  --chip: var(--line);
+  border-color: var(--chip);
+  color: var(--chip);
+  padding: 8px 10px;
+  min-height: 40px;
+  font-size: 10px;
+  background: var(--plate);
+}
+.chip[aria-pressed="true"] { background: var(--chip); color: var(--ink); }
+
+/* --------------------------------------------------------------- shop --- */
+
+#shop {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  background: var(--ink);
+  padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#shop[hidden] { display: none; }
+#shop h3 { color: var(--gold); font-size: 18px; letter-spacing: .1em; }
+#shop-cards { display: flex; flex-direction: column; gap: 10px; }
+.shop-card {
+  --tint: var(--gold);
+  background: var(--plate);
+  border: 2px solid var(--tint);
+  border-left: 8px solid var(--tint);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shop-card h4 { font-size: 13px; color: var(--tint); }
+.shop-card p { font-size: 10px; color: var(--dim); line-height: 1.7; }
+.shop-card .buy { background: var(--tint); color: var(--ink); border-color: var(--tint); }
+
+/* ------------------------------------------------------------- results --- */
+
+#podium { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.result {
+  --pc: var(--line);
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  background: var(--plate);
+  border: 2px solid var(--pc);
+  border-left: 8px solid var(--pc);
+  padding: 12px;
+}
+.result .place { color: var(--pc); font-size: 16px; }
+.result .amt { color: var(--gold-lit); font-size: 16px; }
+.result.place-1 { background: color-mix(in srgb, var(--gold) 16%, var(--plate)); }
+.result.me { outline: 2px dashed var(--gold); outline-offset: 2px; }
+
+/* ------------------------------------------------------- phone lobby --- */
+
+#plobby-roster { display: flex; flex-direction: column; gap: 6px; }
+.plob-row {
+  --pc: var(--line);
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  background: var(--plate);
+  border: 2px solid var(--line);
+  padding: 10px;
+  font-size: 11px;
+}
+.plob-row.me { border-color: var(--pc); }
+.plob-row .dot { width: 14px; height: 14px; background: var(--pc); }
+.plob-row .st { font-size: 9px; color: var(--gold); }
+.colors { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.swatch {
+  --pc: var(--cyan);
+  background: var(--pc);
+  border: 2px solid var(--ink2);
+  height: 56px;
+  box-shadow: inset -4px -4px 0 rgba(0, 0, 0, .3);
+}
+.swatch[aria-pressed="true"] { border-color: var(--gold-lit); box-shadow: inset -4px -4px 0 rgba(0, 0, 0, .3), 0 0 0 3px var(--gold); }
+.swatch:disabled { opacity: .25; }
+
+/* The floor screen is a laptop or a TV across the room: scale it up. */
+@media (min-width: 1100px) {
+  .lobby-grid { width: min(1080px, 100%); gap: 44px; }
+  .lobby-main { flex: 1 1 460px; max-width: 620px; }
+  .join-card { padding: 22px; }
+  #qr { width: 300px; height: 300px; }
+  .code { font-size: 52px; }
+  .url { font-size: 12px; }
+  .logo.small { font-size: 34px; }
+  .lobby-main .fine { font-size: 13px; }
+  .podium { min-height: 168px; gap: 10px; border-bottom-width: 8px; }
+  .pod-badge { width: 60px; height: 60px; }
+  .pod-name { font-size: 20px; }
+  .pod-state { font-size: 12px; }
+  .note { font-size: 14px; }
+  #start-btn, #setup-btn { font-size: 16px; padding: 16px 26px; }
+  #floor-hud { font-size: 20px; padding: 12px 22px; }
+  #floor-timer { font-size: 34px; }
+}
+
+/* ------------------------------------------------------------ practice --- */
+
+body[data-screen="practice"] { overflow-y: auto; }
+body[data-screen="practice"] #floor { height: auto; min-height: 40dvh; }
+body[data-screen="practice"] #pad { min-height: auto; }
+
+@media (min-width: 900px) {
+  body[data-screen="practice"] { display: grid; grid-template-columns: 1fr 380px; height: 100dvh; overflow: hidden; }
+  body[data-screen="practice"] #floor { height: 100dvh; }
+  body[data-screen="practice"] #pad { height: 100dvh; overflow-y: auto; }
+}
+
+/* ------------------------------------------------------------- the manual --- */
+
+/* Rendered from machines.js when it opens, so the numbers are always the live ones. */
+#howto {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--ink);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0 calc(48px + env(safe-area-inset-bottom));
+}
+#howto[hidden] { display: none; }
+
+#howto-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--plate);
+  border-bottom: 2px solid var(--line);
+  padding: 12px 16px calc(12px);
+  padding-left: calc(16px + env(safe-area-inset-left));
+  padding-right: calc(16px + env(safe-area-inset-right));
+}
+#howto-head h2 { font-size: 15px; color: var(--gold); letter-spacing: .12em; }
+#howto-close { padding: 10px 18px; min-height: 44px; }
+
+/* The manual is the one place in the game with real paragraphs, so prose gets a
+   face built for reading. Headings, labels and tables stay in Silkscreen. */
+.ht-note, .ht-desc, .ht-steps li, .ht-rule p, .ht-levels li {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.ht-levels li { font-size: 12px; }
+.ht-steps b, .ht-levels b, .ht-rule h4 { font-family: Silkscreen, 'Courier New', monospace; }
+.ht-steps b { font-size: 11px; }
+.ht-levels b { font-size: 10px; }
+
+#howto-body {
+  width: min(1000px, 100%);
+  margin: 0 auto;
+  padding: 20px 16px 0;
+  padding-left: calc(16px + env(safe-area-inset-left));
+  padding-right: calc(16px + env(safe-area-inset-right));
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+
+.ht-sec { display: flex; flex-direction: column; gap: 12px; }
+.ht-sec > h3 {
+  font-size: 13px;
+  letter-spacing: .12em;
+  color: var(--text);
+  border-bottom: 2px solid var(--line);
+  padding-bottom: 8px;
+}
+.ht-note { font-size: 11px; line-height: 1.9; color: var(--dim); max-width: 62ch; }
+.ht-dim { color: var(--dim); }
+.ht-buy { color: var(--gold); }
+.ht-sell { color: var(--lime); }
+.ht-sub { display: block; font-size: 9px; color: var(--dim); }
+
+.ht-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
+.ht-steps li { font-size: 11px; line-height: 1.9; color: var(--dim); }
+.ht-steps b { color: var(--gold-lit); letter-spacing: .06em; }
+
+.ht-rule {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  border-left: 8px solid var(--gold);
+  padding: 12px 14px;
+}
+.ht-rule h4 { font-size: 11px; color: var(--gold-lit); letter-spacing: .06em; margin-bottom: 6px; }
+.ht-rule p { font-size: 11px; line-height: 1.9; color: var(--dim); }
+
+.ht-grid { display: grid; gap: 12px; }
+@media (min-width: 760px) { .ht-grid { grid-template-columns: 1fr 1fr; } }
+
+.ht-card {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  border-top: 6px solid var(--id);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ht-head { display: flex; gap: 12px; align-items: center; }
+.ht-card h4 { font-size: 13px; color: var(--lit); letter-spacing: .04em; }
+.ht-price { font-size: 13px; color: var(--gold); margin-top: 4px; }
+.ht-price .ht-dim { font-size: 9px; }
+.ht-desc { font-size: 11px; line-height: 1.8; color: var(--dim); }
+
+/* exits, with the machine facing east */
+.ht-dia {
+  display: grid;
+  grid-template-columns: repeat(3, 8px);
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 5px;
+  background: var(--ink2);
+  border: 2px solid var(--line);
+}
+.ht-dia i { display: block; width: 8px; height: 8px; background: #232941; }
+.ht-dia .core { background: var(--c); opacity: .4; }
+.ht-dia .out { background: var(--c); }
+
+.ht-scroll { overflow-x: auto; }
+#howto table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+#howto thead th {
+  text-align: left;
+  font-size: 9px;
+  letter-spacing: .08em;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line);
+  padding: 0 10px 6px 0;
+  white-space: nowrap;
+}
+#howto tbody th { text-align: left; color: var(--text); }
+#howto tbody th,
+#howto tbody td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid #262c40;
+  white-space: nowrap;
+  color: var(--text);
+}
+#howto tbody tr:last-child th,
+#howto tbody tr:last-child td { border-bottom: 0; }
+
+.ht-levels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.ht-levels li { font-size: 10px; line-height: 1.8; color: var(--dim); }
+.ht-levels b { color: var(--lit); margin-right: 6px; }
+
+.ht-pair { display: grid; gap: 12px; }
+@media (min-width: 760px) { .ht-pair { grid-template-columns: 1fr 1fr; } }
+.ht-panel { background: var(--plate); border: 2px solid var(--line); padding: 14px; }
+.ht-panel h4 { font-size: 12px; color: var(--gold-lit); letter-spacing: .06em; margin-bottom: 4px; }
+.ht-panel .ht-note { margin-bottom: 10px; }
+
+.ht-ladder { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.ht-ladder li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--plate);
+  border: 2px solid var(--line);
+  padding: 8px 10px;
+  font-size: 11px;
+}
+.ht-ladder .ht-chip { width: 10px; height: 10px; background: var(--c); }
+.ht-ladder .ht-val { color: var(--gold); }
+
+.pad-howto { font-size: 10px; min-height: 40px; padding: 8px 12px; align-self: center; }
+
+/* The custody rule gets its own plate in the manual: it is the one mechanic that
+   explains why the floor looks the way it does. */
+.ht-custody {
+  margin: 10px 0 6px;
+  padding: 9px 11px;
+  border-left: 3px solid #6ea2d8;
+  background: #141827;
+  color: #c3cbdb;
+  line-height: 1.5;
+}

@@ -482,6 +482,7 @@ export function drawPanel(st, view, rect, meta = {}) {
   for (const port of view.pp || [[PRODUCER_PORT.cell, 0, view.pf || 0, view.px || 0]]) {
     drawProducer(ctx, lctx, o, view, st.t, gut, port);
   }
+  if (view.lb) drawLab(ctx, lctx, o, view, st.t, gut, view.lb);
   for (const v of view.sv || []) drawSeller(ctx, lctx, o, view, st.t, gut, v);
 
   for (let i = 0; i < GRID * GRID; i++) {
@@ -847,6 +848,50 @@ function drawSlimProducer(ctx, lctx, x, y, flash, t, view, ty = TYPES[0], stalle
   for (let i = 1; i < (view.pl || 1); i++) px(ctx, x + 2 + (i - 1) * 3, y + CELL - 10, 2, 3, '#ffe9a8');
 }
 
+/**
+ * The Lab, drawn in the same idiom as a vault because it is the same kind of thing:
+ * a port on the fence that pays for whatever you push into it. It sits on the north
+ * face of the slot the first vault trades from, so the two are always shoulder to
+ * shoulder and the choice between them is one rotation apart.
+ * `spot` is [cell, dir, flash].
+ */
+function drawLab(ctx, lctx, o, view, t, gut = GUTTER, spot) {
+  const cell = spot[0], dir = spot[1];
+  const [dx, dy] = DIRS[dir];
+  const bx = o.x + cx(cell) * CELL + dx * CELL;
+  const by = o.y + cy(cell) * CELL + dy * CELL;
+  const back = Math.max(2, gut - 16);
+  const x = bx + (dx > 0 ? 2 : dx < 0 ? back : 2);
+  const y = by + (dy > 0 ? 2 : dy < 0 ? back : 2);
+  const w = dx !== 0 ? 16 : CELL - 4, h = dy !== 0 ? 16 : CELL - 4;
+  const flash = spot[2] || 0;
+  const mx = x + Math.floor(w / 2), my = y + Math.floor(h / 2);
+
+  px(ctx, x - 2, y - 2, w + 4, h + 4, '#0c0e18');
+  px(ctx, x, y, w, h, flash > 0.3 ? '#1f4f74' : '#173d5a');
+  px(ctx, x, y, w, 2, '#2f7ba8');
+  px(ctx, x, y, 2, h, '#26618c');
+  px(ctx, x, y + h - 2, w, 2, '#0f2436');
+  // intake facing the floor
+  const mw = dx !== 0 ? 4 : w - 8, mh = dy !== 0 ? 4 : h - 8;
+  const mox = dx > 0 ? x : dx < 0 ? x + w - 4 : x + 4;
+  const moy = dy > 0 ? y : dy < 0 ? y + h - 4 : y + 4;
+  px(ctx, mox, moy, mw, mh, '#08151f');
+  const lip = flash > 0.1 || (t * 2) % 2 < 1.2 ? '#a8dcff' : '#2f7ba8';
+  px(ctx, dx > 0 ? mox : dx < 0 ? mox + 2 : mox,
+    dy > 0 ? moy : dy < 0 ? moy + 2 : moy,
+    dx !== 0 ? 2 : mw, dy !== 0 ? 2 : mh, lip);
+  // the flask: a bulb of something that bubbles when it is being fed
+  const glass = flash > 0.1 ? '#dff3ff' : '#a8dcff';
+  px(ctx, mx - 1, my - 6, 2, 4, glass);
+  px(ctx, mx - 4, my - 2, 8, 7, glass);
+  px(ctx, mx - 3, my - 1, 6, 5, flash > 0.1 ? '#4fd8bb' : '#2fb98f');
+  const bub = Math.floor(t * 4) % 3;
+  px(ctx, mx - 2 + bub, my - 1, 1, 1, '#dff3ff');
+  if (flash > 0.05) glowPx(lctx, mx, my, '#a8dcff', 6, 0.55 * flash);
+  else glowPx(lctx, mx, my, '#a8dcff', 2, 0.16 + 0.09 * Math.sin(t * 2.2));
+}
+
 /** One vault. `spot` is [cell, dir, flash] as packed by sim.viewOf. */
 function drawSeller(ctx, lctx, o, view, t, gut = GUTTER, spot) {
   const cell = spot[0], dir = spot[1];
@@ -943,6 +988,20 @@ export function playFx(st, fx, o, opts = {}) {
         st.burst(o.x + (n * CELL) / 2, o.y + n * CELL, '#a8dcff', 22, 70, 0.7);
         st.float(o.x + (n * CELL) / 2, o.y + n * CELL - 10, `${n} x ${n}`, '#a8dcff');
         st.shake(4 * boost);
+        break;
+      }
+      case 'sci': {
+        const x = o.x + (cx(e.cell) + 0.5 + DIRS[e.dir][0] * 0.7) * CELL;
+        const y = o.y + (cy(e.cell) + 0.5 + DIRS[e.dir][1] * 0.7) * CELL;
+        st.burst(x, y, '#a8dcff', Math.min(14, 3 + Math.round(e.v / 4)), 52, 0.5);
+        st.float(x, y - 14, '+' + e.v, '#a8dcff', { key: 'sci' + e.cell, value: e.v });
+        break;
+      }
+      case 'tech': {
+        st.float(o.x + (GRID * CELL) / 2, o.y + (GRID * CELL) / 2,
+          String(e.name || '').toUpperCase(), '#a8dcff');
+        st.burst(o.x + (GRID * CELL) / 2, o.y + (GRID * CELL) / 2, '#a8dcff', 24, 70, 0.9);
+        st.shake(5 * boost);
         break;
       }
       case 'order': {

@@ -110,8 +110,9 @@ export const KINDS = {
     // Deliberately the slowest multiplier on the floor: it is the one that needs no
     // routing, so it pays for that convenience in seconds. A Balancer is far faster
     // but only ever moves what it is given — speed is the price of multiplication.
-    desc: 'Holds an original, copies it, and pushes both out front. Slow. A copy is never copied again.',
-    price: 96, cycle: 1.8, cap: 1, hold: 2, travel: 0.52,
+    desc: 'Holds an original, copies it, and pushes both out front. Levels add exits, '
+      + 'never speed. It will not copy anything above Cobalt, and a copy is never copied again.',
+    price: 260, cycle: 1.8, cap: 1, hold: 2, travel: 0.52,
     body: '#27552f', trim: '#5fbf6a', lit: '#a7f070',
   },
   bal: {
@@ -388,8 +389,10 @@ export function cycleTime(m) {
   const base = m.kind === 'mut' ? MUT_CYCLE[m.mut ?? 1]
     : m.kind === 'asm' ? recipeOf(m).cycle
       : KINDS[m.kind].cycle;
-  // A Storage level buys capacity instead, so its pace never changes.
-  if (m.kind === 'store') return base;
+  // Storage levels buy capacity, and a copier's levels buy extra exits. Neither
+  // buys speed: a Doubler you could also make faster would be printing money again,
+  // so its throughput stays fixed at whatever is feeding it.
+  if (m.kind === 'store' || m.kind === 'dup' || m.kind === 'trident') return base;
   return base * Math.pow(0.7, m.level - 1);
 }
 
@@ -415,6 +418,19 @@ export function intake(m) {
  * only starts once something has been made of it.
  */
 export const sizeOf = ty => (RAW.includes(ty) ? 0.5 : 1);
+
+/**
+ * The hard ceiling on duplication.
+ *
+ * Copying is the only thing in GIZMO that makes a gizmo out of nothing, and a
+ * Doubler behind a Prism Mutator would print several hundred dollars a second
+ * against an economy anchored near four and a half. Rather than nerf the machine
+ * into uselessness, it simply cannot hold a pattern above Cobalt: feed it anything
+ * richer and it passes it through untouched. That is a rule you read off the card
+ * instead of discovering in the balance sheet.
+ */
+export const COPY_MAX_VALUE = 32;
+export const copyable = ty => TYPES[ty].value <= COPY_MAX_VALUE;
 
 /**
  * Total room inside a machine, in gizmo units: everything in its hands plus
@@ -458,6 +474,7 @@ export function outputs(m, inputs) {
 
     case 'dup': {
       if (copy) return [{ ty: a, dir: d, cp: 1 }];       // pass a copy straight on
+      if (!copyable(a)) return [{ ty: a, dir: d, cp: 0 }];
       const n = 1 + m.level;                             // L1: 2, L2: 3, L3: 4
       return Array.from({ length: n }, (_, i) => ({ ty: a, dir: d, cp: i ? 1 : 0 }));
     }
@@ -481,7 +498,7 @@ export function outputs(m, inputs) {
 
     case 'trident': {
       const dirs = [d, (d + 1) % 4, (d + 3) % 4];
-      if (copy) return [{ ty: a, dir: nextExit(m, dirs), cp: 1 }];
+      if (copy || !copyable(a)) return [{ ty: a, dir: nextExit(m, dirs), cp: copy }];
       return dirs.map((dir, i) => ({ ty: a, dir, cp: i ? 1 : 0 }));
     }
 
@@ -629,6 +646,18 @@ export function claimCells(claim) {
  */
 export const SECOND_VAULT_CLAIM = 5;
 
+/**
+ * Where the Lab sits: the north face of the very slot the first vault trades from.
+ *
+ * That adjacency is the whole point. The last slot of a line can fire east into the
+ * vault for cash or north into the Lab for science, so "sell it now or research it"
+ * is a decision you make with a machine rather than from a menu — and splitting
+ * your output between money and growth becomes the Balancer's canonical job.
+ */
+export function labSpotFor(claim) {
+  return { cell: cellOf(claim - 1, 0), dir: 3 };
+}
+
 export function sellerSpotsFor(claim) {
   const spots = [{ cell: cellOf(claim - 1, 0), dir: 0 }];
   if (claim >= SECOND_VAULT_CLAIM) spots.push({ cell: cellOf(claim - 1, claim - 1), dir: 0 });
@@ -692,49 +721,95 @@ export function setGridSize(n) {
   return GRID;
 }
 
-/* -------------------------------------------------------------- shop rolls --- */
+/* ------------------------------------------------------------- research --- */
 
 /**
- * Machines the workshop will not offer. GIZMO 2 keeps duplication in the game but
- * intends it as a deep research unlock rather than a round-two staple, so this is
- * the seam the tech tree will populate. It is empty for now: the copy machines are
- * still on the shop floor until there is a tree to hide them behind.
+ * Science is your factory's output spent on itself.
+ *
+ * A gizmo pushed into the Lab is worth exactly what a vault would have paid for it
+ * \u2014 no bonus, no penalty \u2014 so the only thing research costs you is the money you
+ * did not take. That is the Factorio trade in its plainest form: growth is
+ * rate-limited by what your floor can actually make, not by what is in your bank,
+ * and you cannot buy your way past a line that is not running.
  */
-export const TECH_LOCKED = new Set();
+export const SCIENCE_RATE = 1;
 
-/** Weighted draw of one machine spec, tuned so later rounds offer richer parts. */
-export function rollSpec(rnd, round) {
-  // Routing machines are not in here: they are on permanent sale from the phone,
-  // so spending one of three shop cards on a belt would be a wasted card.
-  const table = ([
-    ['store', 22],
-    ['dup', 24],
-    ['mut', 30],
-    ['fuse', 14 + round * 2],
-    ['asm', round >= 3 ? 10 + round * 3 : 0],
-    ['trident', 6 + round],
-  ]).filter(r => r[1] > 0 && !TECH_LOCKED.has(r[0]));
-  const total = table.reduce((s, r) => s + r[1], 0);
-  let n = rnd() * total;
-  let kind = 'pipe';
-  for (const [k, w] of table) { n -= w; if (n <= 0) { kind = k; break; } }
+/**
+ * The tech tree.
+ *
+ * What starts unlocked is already a complete game: Conveyors and Balancers to
+ * route, Mutators to climb the ladder, Fusers to double up. Everything here makes
+ * that game bigger, and every node is paid for out of production.
+ *
+ * `unlocks` names machine kinds, or `asm:N` for one Assembler recipe. `level`
+ * raises the ceiling every machine on the floor can be upgraded to.
+ */
+export const TECH = [
+  { id: 'sorting', name: 'Sorting', cost: 120, needs: [], unlocks: ['sort'],
+    blurb: 'Puts the Sorter on permanent sale with the rest of the plumbing.' },
+  { id: 'storage', name: 'Warehousing', cost: 200, needs: [], unlocks: ['store'],
+    blurb: 'Unlocks Storage \u2014 the cure for a line that keeps backing up.' },
+  { id: 'assembly', name: 'Assembly', cost: 340, needs: [], unlocks: ['asm:0'],
+    blurb: 'Unlocks the Engine Assembler, and with it recipes at all.' },
+  { id: 'overclock', name: 'Overclocking', cost: 620, needs: ['storage'], level: 3,
+    blurb: 'Raises every machine\u2019s upgrade ceiling from level 2 to level 3.' },
+  { id: 'assembly2', name: 'Assembly II', cost: 950, needs: ['assembly'], unlocks: ['asm:1'],
+    blurb: 'Unlocks the Turbine Assembler.' },
+  { id: 'replication', name: 'Replication', cost: 1400, needs: ['overclock'], unlocks: ['dup'],
+    blurb: 'Unlocks the Doubler. Copies are gizmos out of nothing and nothing else in '
+      + 'the game is, which is why it sits this deep and refuses to copy anything rich.' },
+  { id: 'assembly3', name: 'Assembly III', cost: 2100, needs: ['assembly2'], unlocks: ['asm:2'],
+    blurb: 'Unlocks the Reactor Assembler, the richest recipe there is.' },
+  { id: 'trifurcation', name: 'Trifurcation', cost: 2800, needs: ['replication'],
+    unlocks: ['trident'], blurb: 'Unlocks the Trident: three exits, one job.' },
+];
 
-  const spec = { kind, dir: 0 };
-  if (kind === 'mut') {
-    const ceiling = Math.min(4, 1 + Math.floor(round / 2));
-    spec.mut = 1 + Math.floor(rnd() * ceiling);
-  }
-  if (kind === 'asm') {
-    // Later rounds put the heavier recipes on the table; the Engine is always there.
-    const ceiling = Math.min(RECIPES.length, 1 + Math.floor((round - 2) / 2));
-    spec.mut = Math.floor(rnd() * ceiling);
-  }
-  return spec;
+export const techById = id => TECH.find(t => t.id === id) || null;
+
+/** Can this node be started \u2014 is everything it needs already done? */
+export const techOpen = (t, done) => (t.needs || []).every(n => done.includes(n));
+
+/** Everything a set of finished research makes buildable. */
+export function unlockedBy(done = []) {
+  const out = new Set(['pipe', 'bal', 'mut', 'fuse']);
+  for (const id of done) for (const u of techById(id)?.unlocks || []) out.add(u);
+  return out;
 }
+
+/** The upgrade ceiling, which Overclocking raises. */
+export const levelCap = (done = []) =>
+  done.some(id => techById(id)?.level) ? MAX_LEVEL : MAX_LEVEL - 1;
+
+/** Routing machines on sale right now \u2014 the Sorter has to be researched first. */
+export const routeKindsFor = (done = []) =>
+  ROUTE_KINDS.filter(k => k !== 'sort' || unlockedBy(done).has('sort'));
 
 /** Shop prices compound with the rounds, so a late purchase is a real commitment. */
 export const costMult = round => Math.pow(SHOP_STEP, Math.max(0, round - 1));
 export const shopCost = (spec, round) => Math.max(4, Math.round(price(spec) * costMult(round)));
+
+/**
+ * Everything buildable right now, priced for this round.
+ *
+ * The workshop used to deal three random cards and let you keep one. A tech tree
+ * makes that randomness actively wrong: a node you paid production for has to
+ * actually hand you the thing. So it is a catalogue \u2014 what you have unlocked, at
+ * what it costs, as many as you can afford and can fit. Slots are the limit now,
+ * which is the limit it should always have been.
+ */
+export function catalogue(done = [], round = 1) {
+  const on = unlockedBy(done);
+  const out = [];
+  const add = spec => out.push({ ...spec, dir: 0, cost: shopCost(spec, round) });
+
+  if (on.has('store')) add({ kind: 'store' });
+  add({ kind: 'fuse' });
+  if (on.has('dup')) add({ kind: 'dup' });
+  if (on.has('trident')) add({ kind: 'trident' });
+  RECIPES.forEach((r, i) => { if (on.has('asm:' + i)) add({ kind: 'asm', mut: i }); });
+  for (let t = 1; t <= LADDER_MAX; t++) add({ kind: 'mut', mut: t });
+  return out;
+}
 
 /**
  * What the next conveyor costs. The first few each round go for base price whatever
@@ -754,21 +829,6 @@ export function routeCost(kind, round, bought = 0, claim = GRID) {
 /** The conveyor's price, which is the one every explanation is written around. */
 export const moverCost = (round, bought = 0, claim = GRID) =>
   routeCost('pipe', round, bought, claim);
-
-/** Three distinct-ish options for one player's shop. */
-export function rollShop(rnd, round, n = 3) {
-  const out = [];
-  let guard = 0;
-  while (out.length < n && guard++ < 60) {
-    const s = rollSpec(rnd, round);
-    const key = s.kind + (s.mut ?? '');
-    if (out.some(o => o.kind + (o.mut ?? '') === key)) continue;
-    out.push(s);
-  }
-  while (out.length < n) out.push(rollSpec(rnd, round));
-  for (const s of out) s.cost = shopCost(s, round);
-  return out;
-}
 
 /** Deterministic-ish RNG so a round can be replayed from a seed if ever needed. */
 export function rng(seed) {

@@ -52,10 +52,18 @@ function goShopping(eng) {
     // Trident fires into three directions; dropping either into one row throttles
     // it to nothing, which is bad play rather than a bad economy — and the harness
     // is here to measure the economy.
-    const RANK = { mut: 3, dup: 2, store: 1 };
-    const best = sh.opts.map((o, i) => ({ i, c: o.cost, rank: RANK[o.kind] || 0 }))
-      .filter(o => o.rank > 0 && o.c <= f.cash)
-      .sort((a, b) => (b.rank - a.rank) || (b.c - a.c))[0];
+    //
+    // Buy the richest Mutator the line can actually keep fed. Buying the most
+    // expensive one it could afford was the bot's own worst habit: a Prism Mutator
+    // takes 62 seconds a gizmo, so dropping one into a line delivering one a second
+    // throttles everything behind it to nothing. Matching the machine to the feed
+    // is the single most important thing a player learns, and a harness that does
+    // not do it measures the wrong game.
+    const feed = 2 / M.producerCycle(f.producer.level);   // gizmos/s reaching the line
+    const affordable = sh.opts.map((o, i) => ({ i, o }))
+      .filter(x => x.o.kind === 'mut' && x.o.cost <= f.cash
+        && M.MUT_CYCLE[x.o.mut] <= (1 / feed) * 1.15);
+    const best = affordable.sort((a, b) => b.o.cost - a.o.cost)[0];
     if (best) {
       const had = new Set(f.grid.map((m, i) => (m ? i : -1)).filter(i => i >= 0));
       eng.action(0, { t: 'buy', i: best.i });
@@ -87,6 +95,10 @@ const ordinary = eng => {
   const p = eng.players.get(0), f = p.f;
   const cash = () => f.cash;
 
+  // Land first. With the catalogue there is always something to spend on, so a bot
+  // that buys machines before slots simply never grows — and neither would a player.
+  if (f.claim < M.GRID && cash() > M.expandCost(f.claim) * 1.2) eng.action(0, { t: 'expand' });
+
   for (let k = 0; k < 4; k++) {
     const pc = M.producerCost(f.producer.level);
     if (f.producer.level >= M.MAX_UTIL || cash() < pc * 1.5) break;
@@ -99,8 +111,6 @@ const ordinary = eng => {
   }
   const sc = M.sellerCost(f.seller.level);
   if (f.seller.level < M.MAX_UTIL && cash() > sc * 2.5) eng.action(0, { t: 'act', a: { a: 'upsell' } });
-
-  if (f.claim < M.GRID && cash() > M.expandCost(f.claim) * 2) eng.action(0, { t: 'expand' });
 
   // Belts only to reach the fence the vault just rode out to. Buying them for
   // their own sake is how the bot used to spend itself broke.

@@ -237,7 +237,9 @@ function startPractice(cfg = {}) {
     }
     if (ph === 'run') { bannerText = 'SHIP IT'; bannerSub = ''; bannerT = 1; stage.shake(4); }
     if (ph === 'tally') { bannerText = 'ROUND OVER'; bannerSub = ''; bannerT = 1.8; }
-    if (ph === 'shop') { bannerText = 'WORKSHOP'; bannerSub = 'BUY ONE'; bannerT = 1.8; }
+    if (ph === 'shop') {
+      bannerText = 'BUILD & RESEARCH'; bannerSub = 'SPEND CASH AND SCIENCE'; bannerT = 1.8;
+    }
   });
 
   engine.on('fx', (seat, fx) => playFx(stage, fx, stage.floorOrigin(stage.panelRect(0))));
@@ -292,7 +294,7 @@ function startPractice(cfg = {}) {
 
     $('#floor-round').textContent = `ROUND ${engine.round} / ${engine.cfg.rounds}`;
     $('#floor-phase').textContent = {
-      plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'WORKSHOP',
+      plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'BUILD',
     }[engine.phase] || '';
     $('#floor-timer').textContent = String(Math.max(0, Math.ceil(engine.timer))).padStart(2, '0');
 

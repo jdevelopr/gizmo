@@ -98,6 +98,43 @@ does, but needs four or five slots behind it to stay fed and twice the raw mater
 Recipes are what you build when the floor has outgrown its feeds, not what you open
 with.
 
+**Research is what growth costs.** The **Lab** is a port on the fence, like a vault,
+sitting on the north face of the very slot your first vault trades from. Push a gizmo
+into it and you get science worth exactly what the vault would have paid — no bonus,
+no penalty — so the only thing research costs you is the money you did not take.
+
+That adjacency is the whole design. The last slot of a line can fire east into the
+vault for cash or north into the Lab for science, so spending now versus growing
+later is one rotation apart, and splitting your output between the two is finally
+what a Balancer is for.
+
+```
+                       [LAB]  science
+                         ^
+ ... -> [Mutator] -> [Balancer] -> [VAULT]  cash
+```
+
+**The random workshop is gone.** Three cards and a reroll made sense when the shop
+was the only way to get machines; once you pay production for a tech node, that node
+has to actually hand you the thing. So the build phase is a **catalogue** of
+everything you have unlocked at this round's prices — buy as many as you can afford,
+with slots as the only limit — beside a **tech tree** you spend science on. No
+randomness, no reroll, no one-machine-a-round cap.
+
+You start able to build Conveyors, Balancers, Mutators and Fusers, which is a
+complete game on its own. Eight nodes make it bigger: Sorting and Warehousing put the
+Sorter and Storage on sale, Assembly opens recipes one at a time, Overclocking raises
+every machine's upgrade ceiling from level 2 to 3, and deep behind it sit Replication
+and Trifurcation.
+
+**Duplication has a hard ceiling.** Copying is the only thing in GIZMO that makes a
+gizmo out of nothing — a Doubler behind a Prism Mutator would print hundreds of
+dollars a second against an economy anchored near four and a half. Rather than nerf
+it into uselessness, it simply cannot hold a pattern worth more than Cobalt: feed it
+something richer and it passes straight through, uncopied. Its levels buy extra exits
+rather than speed, and it sits behind two research nodes. A rule you read off the
+card instead of discovering in the balance sheet.
+
 **Ratios are visible.** Every machine reports its rate in jobs per second, and the
 two failure modes are drawn differently because they want opposite fixes: amber all
 round the casing means BACKED UP (holding finished goods, fix the line ahead), four
@@ -125,7 +162,7 @@ Identical in shape to the original. What GIZMO 2 changed:
 js/machines.js    claims, expansion, vault geometry, orders, families, recipes
 js/sim.js         the claim is the edge of the world; growth; starved detection;
                   two producers; acceptance that knows about type
-js/game.js        per-player orders, land purchases, no seller jump
+js/game.js        per-player orders, land purchases, the catalogue and the tech tree
 js/render.js      unbought land, the fence, the starved badge
 js/player.js      the CLAIM LAND button, the order bar, per-machine rates
 js/howto.js       the manual, still generated from machines.js on open
@@ -133,6 +170,7 @@ tools/lint.mjs    parses every module as a module, the way the browser will
 tools/routing.mjs proves the Balancer divides and the Sorter sorts
 tools/recipes.mjs proves an Assembler cannot deadlock, and the chain runs
 tools/economy.mjs every price at every round, and what real builds pay back
+tools/tech.mjs    proves research gates the game and the Lab pays what a vault does
 tools/balance.mjs an ordinary-player bot, for calibrating the numbers
 tools/verify.mjs  headless assertions over a whole match
 ```
@@ -148,6 +186,7 @@ node tools/verify.mjs     # invariants: nothing on unowned land, vaults on the f
 node tools/routing.mjs    # the Balancer divides evenly; the Sorter never misroutes
 node tools/recipes.mjs    # two feeds, two lines, one Assembler, no deadlock
 node tools/economy.mjs    # the cost tables, and what worked builds earn back
+node tools/tech.mjs       # the gate binds, the Lab pays, duplication stays capped
 node tools/balance.mjs    # what an ordinary player actually ships, round by round
 ```
 

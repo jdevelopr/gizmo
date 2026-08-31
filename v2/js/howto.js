@@ -16,6 +16,7 @@ import {
   producerCycle, producerCost, sellerMult, sellerCost, shopCost, costMult,
   GRID, CLAIM_START, SECOND_VAULT_CLAIM, expandCost,
   RECIPES, recipeText, RESIN_CLAIM, FAM_START, FAM_LEN, ALLOY, PART, PRODUCT, price,
+  TECH, unlockedBy, levelCap, COPY_MAX_VALUE, SCIENCE_RATE, KIND_LIST,
   ORDER_GROWTH, ORDER_FLOOR_GROWTH, ORDER_BONUS,
 } from './machines.js';
 
@@ -120,7 +121,7 @@ function build() {
     ['PLANNING', 'The floor is stopped and everything you built is exactly where you left it. Extend the line, upgrade it, and claim land if you can afford it — land is bought here and nowhere else, because the vault rides out to the new fence and moving it mid-round would sell gizmos into a wall. A conveyor aims itself whenever it lands on a slot, so laying a route is a row of taps. ROTATE always overrides it. The round starts as soon as everyone is ready.'],
     ['SHIPPING', 'The producer runs and money lands. You can keep building the whole time — a live floor is a fair way to play, and sometimes the only way to unclog one.'],
     ['TALLY', 'What the round earned, and whether it filled the order.'],
-    ['WORKSHOP', 'Three machines offered, buy one. Reroll for a fee. What you buy gets placed in the next planning phase.'],
+    ['BUILD & RESEARCH', 'Two sheets. BUILD is a catalogue of everything you have unlocked, at this round\u2019s prices — buy as many as you can afford, slots are the only limit. RESEARCH spends the science your Lab has collected. What you buy gets placed in the next planning phase.'],
   ].forEach(([k, t]) => {
     const li = el('li');
     li.appendChild(el('b', null, k));
@@ -192,6 +193,31 @@ function build() {
     + 'bigger factory is chasing a bigger prize.'));
   body.appendChild(ord);
 
+  /* --- research ---------------------------------------------------------- */
+  const res = section('THE LAB AND RESEARCH',
+    'The Lab is a port on the fence, like a vault, on the north face of the very slot '
+    + 'your first vault trades from. Push a gizmo into it and you get science worth '
+    + `exactly what the vault would have paid — ${SCIENCE_RATE === 1 ? 'no bonus, no penalty' : SCIENCE_RATE + 'x its value'}. `
+    + 'The only thing research costs you is the money you did not take.');
+  res.appendChild(el('p', 'ht-custody',
+    'That adjacency is deliberate. The last slot of a line can fire east into the vault '
+    + 'for cash or north into the Lab for science, so the choice between spending now and '
+    + 'growing later is one rotation apart — and splitting your output between the two is '
+    + 'what a Balancer is for. Research is permanent: it is the one thing you buy that a '
+    + 'bad round cannot take back.'));
+  res.appendChild(el('p', 'ht-note',
+    `You start able to build ${[...unlockedBy([])].map(k => KINDS[k]?.name).filter(Boolean).join(', ')} `
+    + `— a complete game on its own. Everything below makes it bigger. Machines cap at `
+    + `level ${levelCap([])} until Overclocking raises it to ${levelCap(['overclock'])}.`));
+  res.appendChild(table(['Research', 'Science', 'Needs', 'Gives'],
+    TECH.map(t => [
+      t.name,
+      { v: String(t.cost), cls: 'ht-buy' },
+      (t.needs || []).map(n => TECH.find(x => x.id === n)?.name).join(', ') || '—',
+      t.blurb,
+    ])));
+  body.appendChild(res);
+
   /* --- recipes ----------------------------------------------------------- */
   const rec = section('RECIPES',
     'A Fuser eats two of anything and climbs one rung. An Assembler eats two '
@@ -252,6 +278,7 @@ function build() {
   const rules = section('THE TWO RULES');
   [
     ['A copy is never copied', 'Duplicating machines multiply originals. A copy that reaches one is routed onward instead — a Trident sends copies out one at a time, taking each exit in turn. Routing machines never copy anything at all.'],
+    ['Nothing rich is copied', 'A Doubler or Trident will not hold a pattern worth more than ' + money(COPY_MAX_VALUE) + ' — feed it something richer and it passes straight through, uncopied. Copying is the only thing in the game that makes a gizmo out of nothing, so it is capped at the one place that would otherwise break the economy, and its levels buy extra exits rather than speed.'],
     ['Two originals make an original', 'A Fuser handed a copy returns a copy. Copies sell for full price; they just cannot become copyable stock again. On the floor they are drawn dimmer and unlit.'],
   ].forEach(([h, p]) => {
     const card = el('div', 'ht-rule');

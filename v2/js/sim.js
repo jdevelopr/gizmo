@@ -11,8 +11,8 @@ import {
   intake, outputs, exitDirs, sizeOf, capacity, EMPTY_HOLD,
   producerCycle, producerCost, sellerMult, sellerCost,
   cellOf, cx, cy, inClaim, claimed, claimCells,
-  CLAIM_START, sellerSpotsFor, expandCost, PRODUCER_PORT, activePorts,
-  balDirs, REROUTES, wants,
+  CLAIM_START, sellerSpotsFor, labSpotFor, expandCost, PRODUCER_PORT, activePorts,
+  balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
 } from './machines.js';
 
 const INV_CAP = 8;
@@ -37,6 +37,12 @@ export function createFactory({ cash = 120, claim = CLAIM_START } = {}) {
     // One shared level, one or more vaults, welded to the east face of the claim.
     // They ride outward when you buy land and never move otherwise.
     seller: { level: 1, spots: [] },
+    // The Lab. Not a machine and not a slot — a port on the fence, like a vault,
+    // that pays in science instead of money.
+    lab: { cell: 0, dir: 3, flash: 0 },
+    science: 0,
+    spent: 0,
+    done: [],        // finished research, by id
     gizmos: [],
     load: new Float64Array(GRID * GRID),   // gizmo units resting on or flying to each slot
     cash,
@@ -50,6 +56,7 @@ export function createFactory({ cash = 120, claim = CLAIM_START } = {}) {
     expansions: 0,
   };
   f.seller.spots = sellerSpotsFor(f.claim).map(v => ({ ...v, flash: 0 }));
+  f.lab = { ...labSpotFor(f.claim), flash: 0 };
   return f;
 }
 
@@ -65,6 +72,7 @@ export function starterKit(f) {
     place(f, makeMachine({ kind: 'pipe', dir: 0 }, f.nid++), cellOf(x, 0));
   }
   f.seller.spots = sellerSpotsFor(f.claim).map(v => ({ ...v, flash: 0 }));
+  f.lab = { ...labSpotFor(f.claim), flash: 0 };
 }
 
 /**
@@ -84,6 +92,7 @@ export function expandFloor(f) {
   f.expansions = (f.expansions || 0) + 1;
   const want = sellerSpotsFor(f.claim);
   f.seller.spots = want.map((v, i) => ({ ...v, flash: f.seller.spots[i]?.flash || 0 }));
+  f.lab = { ...labSpotFor(f.claim), flash: f.lab?.flash || 0 };
   f.fx.push({ k: 'grow', claim: f.claim });
   return f.claim;
 }
@@ -215,6 +224,7 @@ export function stepFactory(f, dt) {
     if (f.producer.flash[k] > 0) f.producer.flash[k] = Math.max(0, f.producer.flash[k] - dt * 5);
   }
   for (const v of f.seller.spots) if (v.flash > 0) v.flash = Math.max(0, v.flash - dt * 4);
+  if (f.lab.flash > 0) f.lab.flash = Math.max(0, f.lab.flash - dt * 4);
 }
 
 function spawnFromProducer(f, port, k) {
@@ -344,6 +354,7 @@ function arrive(f, g, k) {
   if (g.exit !== null) {
     const vault = f.seller.spots.find(v => v.cell === g.from && v.dir === g.exit);
     if (vault) sell(f, g, vault);
+    else if (f.lab.cell === g.from && f.lab.dir === g.exit) study(f, g);
     else {
       f.lost++;
       f.fx.push({ k: 'lost', ty: g.ty, x: g.ex, y: g.ey });
@@ -376,6 +387,36 @@ function sell(f, g, vault) {
   f.sold++;
   vault.flash = 1;
   f.fx.push({ k: 'sell', v, ty: g.ty, cell: vault.cell, dir: vault.dir, x: g.ex, y: g.ey });
+}
+
+/**
+ * Into the Lab. A gizmo is worth exactly what a vault would have paid for it, so
+ * the only cost of research is the money you chose not to take — and the rate is
+ * set by what the floor can actually make, not by what is in the bank.
+ */
+function study(f, g) {
+  const v = Math.max(1, Math.round(TYPES[g.ty].value * SCIENCE_RATE));
+  f.science += v;
+  f.lab.flash = 1;
+  f.fx.push({ k: 'sci', v, ty: g.ty, cell: f.lab.cell, dir: f.lab.dir, x: g.ex, y: g.ey });
+}
+
+/**
+ * Spend science on one node. Research is permanent and survives every round, which
+ * is the point: it is the one thing you buy that a bad round cannot take back.
+ * @returns {{ok:boolean,msg?:string}}
+ */
+export function research(f, id) {
+  const t = techById(id);
+  if (!t) return { ok: false, msg: 'No such research' };
+  if (f.done.includes(id)) return { ok: false, msg: 'Already known' };
+  if (!techOpen(t, f.done)) return { ok: false, msg: 'Needs earlier research' };
+  if (f.science < t.cost) return { ok: false, msg: `Needs ${t.cost} science` };
+  f.science -= t.cost;
+  f.spent += t.cost;
+  f.done.push(id);
+  f.fx.push({ k: 'tech', name: t.name });
+  return { ok: true, msg: `${t.name} complete` };
 }
 
 /* ----------------------------------------------------------------- rounds --- */
@@ -471,7 +512,10 @@ export function smartDir(f, i) {
       // Off the claim is a loss, unless it is some vault's window. Unbought land
       // is exactly as fatal as the edge of the world, which is what stops a belt
       // from politely aiming into a field you do not own yet.
-      score += f.seller.spots.some(v => v.cell === i && v.dir === d) ? 100 : -100;
+      // A vault is the obvious place to aim; the Lab is a real destination too,
+      // just not the one a belt should choose on its own.
+      score += f.seller.spots.some(v => v.cell === i && v.dir === d) ? 100
+        : (f.lab.cell === i && f.lab.dir === d) ? 30 : -100;
     } else {
       const closer = here - gap(nx, ny);
       score += closer * 10;
@@ -559,7 +603,10 @@ export function applyAction(f, a) {
       const ref = parseRef(f, a.ref);
       const m = ref && getRef(f, ref);
       if (!m) return no('Nothing there');
-      if (m.level >= MAX_LEVEL) return no('Already maxed');
+      const cap = levelCap(f.done);
+      if (m.level >= cap) {
+        return no(cap < MAX_LEVEL ? 'Overclocking would raise this' : 'Already maxed');
+      }
       const c = upgradeCost(m);
       if (f.cash < c) return no(`Need $${c}`);
       f.cash -= c;
@@ -677,6 +724,8 @@ export function viewOf(f) {
     ]),
     sl: f.seller.level,
     sv: f.seller.spots.map(v => [v.cell, v.dir, r2(v.flash || 0)]),
+    lb: [f.lab.cell, f.lab.dir, r2(f.lab.flash || 0)],
+    sc: Math.round(f.science), dn: f.done.slice(), lc: levelCap(f.done),
     c: Math.round(f.cash), e: Math.round(f.earned), n: Math.round(f.income),
     cl: f.claim, xc: f.claim < GRID ? expandCost(f.claim) : 0,
   };

@@ -13,6 +13,9 @@ import {
   cycleTime, claimed, describe, TYPES, ROUTE_KINDS,
 } from './machines.js';
 
+/** Which half of the build sheet is showing. Build first: it is the common case. */
+let tab = 'build';
+
 const $ = (s, r = document) => r.querySelector(s);
 const buzz = ms => { try { navigator.vibrate?.(ms); } catch {} };
 
@@ -131,8 +134,9 @@ export function createController({ send }) {
     buzz(next ? 18 : 10);
     paintPlan();
   });
-  wire('#shop-reroll', () => { send({ t: 'reroll' }); buzz(12); });
   wire('#shop-done', () => { send({ t: 'done' }); buzz(16); });
+  wire('#tab-build', () => { tab = 'build'; buzz(10); paintShop(); });
+  wire('#tab-tech', () => { tab = 'tech'; buzz(10); paintShop(); });
 
   /* ---------------------------------------------------------------- HUD --- */
 
@@ -168,8 +172,13 @@ export function createController({ send }) {
     $('#sel-sub').textContent =
       `${describe(spec)} Facing ${DIR_NAME[m.d]} · ${rate.toFixed(2)}/s${state}`;
     const upc = upgradeCost(fake);
-    $('#btn-up').disabled = m.l >= MAX_LEVEL || (view.c < upc);
-    $('#btn-up').textContent = m.l >= MAX_LEVEL ? 'MAX' : `UPGRADE $${upc}`;
+    // The ceiling is a research question: without Overclocking, machines stop at 2.
+    const cap = view.lc ?? MAX_LEVEL;
+    const capped = m.l >= cap;
+    $('#btn-up').disabled = capped || (view.c < upc);
+    $('#btn-up').textContent = capped
+      ? (cap < MAX_LEVEL ? 'NEEDS OVERCLOCKING' : 'MAX')
+      : `UPGRADE $${upc}`;
     $('#btn-scrap').disabled = false;
     $('#btn-scrap').textContent = `SCRAP +$${scrapValue(fake)}`;
     $('#btn-rot').disabled = false;
@@ -252,10 +261,16 @@ export function createController({ send }) {
     for (const k of ROUTE_KINDS) {
       const b = $(ROUTE_BTN[k]);
       if (!b) continue;
-      const cost = prices[k] ?? 0;
+      // A routing machine that research has not opened yet is simply not on the
+      // shelf — the host only prices what it would actually sell.
+      const cost = prices[k];
+      b.hidden = cost == null;
+      if (cost == null) continue;
       b.textContent = `+ ${ROUTE_NAME[k]} · $${cost}`;
       b.disabled = view.c < cost || hud?.ph === 'over';
     }
+    const shown = ROUTE_KINDS.filter(k => prices[k] != null).length;
+    $('#pad-route').style.gridTemplateColumns = shown > 2 ? '1.3fr 1fr 1fr' : '1.4fr 1fr';
     const rn = $('#route-note');
     if (rn) {
       rn.textContent = left > 0
@@ -283,7 +298,7 @@ export function createController({ send }) {
     const t = Math.max(0, Math.ceil(hud.tm));
     const phaseLabel = {
       plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY',
-      shop: 'WORKSHOP', over: 'FINISHED', lobby: 'LOBBY',
+      shop: 'BUILD', over: 'FINISHED', lobby: 'LOBBY',
     }[hud.ph] || hud.ph;
     $('#pad-phase').textContent = hud.ph === 'over'
       ? 'MATCH OVER'
@@ -309,7 +324,8 @@ export function createController({ send }) {
     $('#pad-hint').textContent = hud.ph === 'plan'
       ? `Your ${claim}x${claim} plot and everything on it is yours to keep. Extend the line, claim more land, then ready up.`
       : hud.ph === 'run' ? 'Keep building — the floor stays live.'
-        : hud.ph === 'shop' ? 'Buy one machine, then hit READY.'
+        : hud.ph === 'shop'
+          ? `Buy what you can fit, spend science, then hit READY. ${hud.science || 0} science banked.`
           : hud.ph === 'tally'
             ? (hud.gotBonus ? `Order filled — $${view.n} plus $${hud.gotBonus} bonus.`
               : `Round income $${view.n}. Order was $${tgt}.`)
@@ -332,33 +348,74 @@ export function createController({ send }) {
 
   function paintShop() {
     const wrap = $('#shop');
-    // Once a player is done, the sheet gets out of the way: the rest of the
-    // workshop window is for re-routing the floor.
+    // Once a player is done, the sheet gets out of the way: the rest of the build
+    // window is for laying out what they just bought.
     if (!shop || hud.ph !== 'shop' || shop.done) { wrap.hidden = true; return; }
     wrap.hidden = false;
-    $('#shop-title').textContent = `WORKSHOP · ${Math.max(0, Math.ceil(hud.tm))}s`;
-    $('#shop-reroll').textContent = `REROLL $${shop.reroll}`;
-    $('#shop-reroll').disabled = view.c < shop.reroll || shop.done;
+    $('#shop-title').textContent = `BUILD & RESEARCH · ${Math.max(0, Math.ceil(hud.tm))}s`;
+    $('#sci-count').textContent = shop.science ?? 0;
     $('#shop-done').textContent = shop.done ? 'WAITING…' : 'READY';
     $('#shop-done').disabled = shop.done;
 
+    $('#tab-build').setAttribute('aria-pressed', tab === 'build' ? 'true' : 'false');
+    $('#tab-tech').setAttribute('aria-pressed', tab === 'tech' ? 'true' : 'false');
+    $('#shop-build').hidden = tab !== 'build';
+    $('#shop-tech').hidden = tab !== 'tech';
+
+    if (tab === 'build') paintCatalogue();
+    else paintTech();
+  }
+
+  /** Everything research has opened up, at this round's prices. */
+  function paintCatalogue() {
     const list = $('#shop-cards');
     list.innerHTML = '';
     shop.opts.forEach((o, i) => {
-      const card = document.createElement('div');
-      card.className = 'shop-card';
-      if (o.tint) card.style.setProperty('--tint', o.tint);
-      else card.style.setProperty('--tint', KINDS[o.kind].trim);
-      card.innerHTML =
-        `<h4></h4><p></p><button class="buy"></button>`;
-      card.querySelector('h4').textContent = o.name;
-      card.querySelector('p').textContent = o.desc;
-      const btn = card.querySelector('.buy');
-      btn.textContent = shop.bought ? 'BOUGHT ONE' : `BUY $${o.cost}`;
-      btn.disabled = shop.bought || view.c < o.cost;
+      const row = document.createElement('div');
+      row.className = 'cat-row';
+      row.style.setProperty('--tint', o.tint || KINDS[o.kind].trim);
+      row.innerHTML = '<div><b></b><small></small></div><button class="buy"></button>';
+      row.querySelector('b').textContent = o.name;
+      row.querySelector('small').textContent = o.desc;
+      const btn = row.querySelector('.buy');
+      btn.textContent = `BUY $${o.cost}`;
+      btn.disabled = view.c < o.cost;
       btn.addEventListener('click', () => { send({ t: 'buy', i }); buzz(18); });
-      list.appendChild(card);
+      list.appendChild(row);
     });
+  }
+
+  /**
+   * The tech tree. Ordered as the list in machines.js declares it, which is roughly
+   * cheapest first, and each row says plainly why it cannot be bought yet — no
+   * science, or no prerequisite.
+   */
+  function paintTech() {
+    const list = $('#tech-list');
+    list.innerHTML = '';
+    const sci = shop.science ?? 0;
+    for (const t of shop.tech || []) {
+      const row = document.createElement('div');
+      const state = t.done ? 'done' : t.open ? 'open' : 'locked';
+      row.className = 'tech-row';
+      row.dataset.state = state;
+      row.innerHTML = '<div class="row"><b></b><span class="tech-cost"></span>'
+        + '<button></button></div><small></small>';
+      row.querySelector('b').textContent = t.name;
+      row.querySelector('.tech-cost').textContent = t.done ? 'DONE' : `${t.cost} sci`;
+      row.querySelector('small').textContent = t.done
+        ? t.blurb
+        : t.open ? t.blurb : `${t.blurb} Needs ${t.needs.join(' and ')} first.`;
+      const btn = row.querySelector('button');
+      if (t.done) {
+        btn.remove();
+      } else {
+        btn.textContent = !t.open ? 'LOCKED' : sci < t.cost ? `NEED ${t.cost - sci}` : 'RESEARCH';
+        btn.disabled = !t.open || sci < t.cost;
+        btn.addEventListener('click', () => { send({ t: 'research', id: t.id }); buzz(22); });
+      }
+      list.appendChild(row);
+    }
   }
 
   /* --------------------------------------------------------------- state --- */

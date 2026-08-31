@@ -211,11 +211,27 @@ setTimeout(function () {
   <button class="ghost pad-howto" data-howto>HOW TO PLAY</button>
 
   <div id="shop" hidden>
-    <h3 id="shop-title">WORKSHOP</h3>
-    <p class="fine">One machine per round. It lands in an open slot, or in your crate.</p>
-    <div id="shop-cards"></div>
+    <h3 id="shop-title">BUILD &amp; RESEARCH</h3>
+    <div id="shop-tabs" class="row">
+      <button id="tab-build" class="ghost" aria-pressed="true">BUILD</button>
+      <button id="tab-tech" class="ghost" aria-pressed="false">RESEARCH</button>
+      <span id="sci-pill" class="pill">SCIENCE <b id="sci-count">0</b></span>
+    </div>
+
+    <div id="shop-build">
+      <p class="fine">Everything you have unlocked. Buy as many as you can afford —
+        slots are the only limit. Each lands in an open slot, or in your crate.</p>
+      <div id="shop-cards"></div>
+    </div>
+
+    <div id="shop-tech" hidden>
+      <p class="fine">Science comes from gizmos pushed into the Lab, on the north face
+        beside your vault. A gizmo is worth the same there as it is at the vault — the
+        only cost of research is the money you did not take.</p>
+      <div id="tech-list"></div>
+    </div>
+
     <div class="row end">
-      <button id="shop-reroll" class="ghost">REROLL</button>
       <button id="shop-done" class="primary">READY</button>
     </div>
   </div>

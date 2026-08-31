@@ -56,6 +56,14 @@ for (const spec of [{ kind: 'dup' }, { kind: 'mut', mut: 4 }, { kind: 'asm', mut
     + `   all-in ${pad($(inv), 7)}   scrap back ${$(M.scrapValue({ ...spec, level: 3 }))}`);
 }
 
+console.log('\n=== RESEARCH (science, which is production not cash) ===');
+for (const t of M.TECH) {
+  const needs = (t.needs || []).map(n => M.TECH.find(x => x.id === n)?.name).join(', ') || '-';
+  console.log(pad(t.name, 16) + pad(t.cost + ' sci', 10) + '   after ' + needs);
+}
+console.log(pad('total tree', 16) + pad(M.TECH.reduce((s2, t) => s2 + t.cost, 0) + ' sci', 10)
+  + '   = the same number of dollars not taken');
+
 console.log('\n=== WHAT A ROUND EARNS, for reference ===');
 const perRound = 90 / M.producerCycle(1) * 2;
 console.log(`starter kit at 90s: ${$(perRound)}   (producer L1, one Doubler, Scrap at $1)`);

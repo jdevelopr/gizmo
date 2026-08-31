@@ -379,6 +379,41 @@ input::placeholder { color: #414a68; }
 }
 .buy-row:disabled { color: var(--dim); border-color: var(--line); background: var(--plate); }
 
+/* Build catalogue and tech tree share the sheet, one tab at a time. */
+#shop-tabs { align-items: center; gap: 6px; margin-bottom: 8px; }
+#shop-tabs button[aria-pressed="true"] { color: var(--gold-lit); border-color: var(--gold); }
+#sci-pill { margin-left: auto; }
+#sci-pill b { color: #a8dcff; }
+
+.cat-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  border-left: 3px solid var(--tint, var(--line));
+  background: var(--plate);
+  padding: 8px 10px;
+  margin-bottom: 5px;
+}
+.cat-row b { font-size: 10px; letter-spacing: .04em; }
+.cat-row small { display: block; color: var(--dim); font-size: 9px; line-height: 1.5; }
+.cat-row button { font-size: 9px; padding: 8px 10px; white-space: nowrap; }
+
+.tech-row {
+  border-left: 3px solid var(--line);
+  background: var(--plate);
+  padding: 8px 10px;
+  margin-bottom: 5px;
+}
+.tech-row[data-state="open"] { border-left-color: #41a6f6; }
+.tech-row[data-state="done"] { border-left-color: var(--lime); opacity: .6; }
+.tech-row .row { align-items: center; gap: 8px; }
+.tech-row b { font-size: 10px; letter-spacing: .04em; }
+.tech-row small { display: block; color: var(--dim); font-size: 9px; line-height: 1.5; }
+.tech-row button { font-size: 9px; padding: 7px 10px; margin-left: auto; white-space: nowrap; }
+.tech-cost { color: #a8dcff; font-size: 9px; }
+.tech-lock { color: var(--dim); font-size: 9px; }
+
 /* The routing shelf: three purchases that are all plumbing, so they read as one
    group rather than as three unrelated buttons. */
 #pad-route { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 6px; }

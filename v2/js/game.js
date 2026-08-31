@@ -7,13 +7,13 @@
 
 import {
   createFactory, starterKit, stepFactory, beginRound, endRound,
-  expandFloor, applyAction, giveMachine, viewOf, drainFx,
+  expandFloor, research, applyAction, giveMachine, viewOf, drainFx,
 } from './sim.js';
 import {
-  rollShop, rng, price, label, describe, setGridSize, GRID,
-  routeCost, moverFree, ROUTE_KINDS, KINDS, TYPES, DIR_NAME,
+  price, label, describe, setGridSize, GRID,
+  routeCost, moverFree, routeKindsFor, KINDS, TYPES, DIR_NAME,
   CLAIM_START, expandCost, firstOrder, nextOrder, orderBonus, SECOND_VAULT_CLAIM,
-  RECIPES, RESIN_CLAIM,
+  RECIPES, RESIN_CLAIM, catalogue, TECH, techOpen, levelCap,
 } from './machines.js';
 
 /**
@@ -32,7 +32,6 @@ export const DEFAULT_CFG = {
   gridSize: 7,        // the full plot; you start owning 3x3 of it and buy the rest
   tallySecs: 3.5,
   cash: 200,           // enough to open with a machine and a ring of land, not both twice
-  rerollBase: 15,
 };
 
 export function createEngine(cfgIn = {}) {
@@ -43,7 +42,6 @@ export function createEngine(cfgIn = {}) {
 
   /** @type {Map<number, any>} seat -> player record */
   const players = new Map();
-  const rnd = rng(Date.now() & 0xffffffff);
 
   let phase = 'lobby';
   let timer = 0;
@@ -153,10 +151,10 @@ export function createEngine(cfgIn = {}) {
         break;
       case 'shop':
         timer = cfg.shopSecs;
-        for (const p of players.values()) {
-          p.shop = { opts: rollShop(rnd, round), bought: false, rerolls: 0, done: false };
-        }
-        announce = 'WORKSHOP';
+        // No longer a hand of cards. The catalogue is whatever research has opened
+        // up, and you buy as much of it as you can afford and fit.
+        for (const p of players.values()) p.shop = { done: false };
+        announce = 'BUILD & RESEARCH';
         break;
       case 'over':
         timer = 0;
@@ -230,7 +228,7 @@ export function createEngine(cfgIn = {}) {
   }
 
   /** What the next routing machine of each kind costs this player, right now. */
-  const routePrices = p => Object.fromEntries(ROUTE_KINDS.map(k => [
+  const routePrices = p => Object.fromEntries(routeKindsFor(p?.f?.done || []).map(k => [
     k, routeCost(k, Math.max(1, round), p?.movers || 0, p?.f?.claim ?? CLAIM_START),
   ]));
   const nextMover = p => routePrices(p).pipe;
@@ -263,22 +261,24 @@ export function createEngine(cfgIn = {}) {
     }
 
     if (msg.t === 'buy') {
-      if (phase !== 'shop' || !p.shop) return note(p, 'Shop is closed');
-      if (p.shop.bought) return note(p, 'One machine per round');
-      const spec = p.shop.opts[msg.i];
+      if (phase !== 'shop' || !p.shop) return note(p, 'The catalogue is closed');
+      const spec = catalogue(p.f.done, round)[msg.i];
       if (!spec) return;
       const cost = spec.cost ?? price(spec);
       if (p.f.cash < cost) return note(p, `Need $${cost}`);
-      p.f.cash -= cost;
-      p.shop.bought = true;
       const dest = giveMachine(p.f, spec);
-      if (dest.where === 'none') {           // floor and crate both full: nothing sold
-        p.f.cash += cost;
-        p.shop.bought = false;
-        return note(p, 'No room anywhere');
-      }
+      if (dest.where === 'none') return note(p, 'No room anywhere');
+      p.f.cash -= cost;
       note(p, dest.where === 'grid' ? `${label(spec)} installed` : `${label(spec)} to crate`);
       p.f.fx.push({ k: 'up', cell: dest.where === 'grid' ? dest.idx : 4 });
+      return;
+    }
+
+    /** Spend the science the floor has made. Permanent, and never taken away. */
+    if (msg.t === 'research') {
+      if (phase !== 'shop') return note(p, 'Research between rounds');
+      const r = research(p.f, String(msg.id || ''));
+      note(p, r.msg || '');
       return;
     }
 
@@ -290,7 +290,7 @@ export function createEngine(cfgIn = {}) {
     if (msg.t === 'mover' || msg.t === 'route') {
       if (phase === 'lobby' || phase === 'over') return;
       const kind = msg.t === 'mover' ? 'pipe' : String(msg.k || 'pipe');
-      if (!ROUTE_KINDS.includes(kind)) return;
+      if (!routeKindsFor(p.f.done).includes(kind)) return note(p, 'Not researched yet');
       const cost = routePrices(p)[kind];
       const name = KINDS[kind].name;
       if (p.f.cash < cost) return note(p, `${name} costs $${cost}`);
@@ -323,16 +323,6 @@ export function createEngine(cfgIn = {}) {
       note(p, n === RESIN_CLAIM ? `${n}x${n} — a Resin feed opened`
         : n === SECOND_VAULT_CLAIM ? `${n}x${n} — a second vault opened`
           : `${n}x${n} — the vault moved out`);
-      return;
-    }
-
-    if (msg.t === 'reroll') {
-      if (phase !== 'shop' || !p.shop) return;
-      const cost = cfg.rerollBase + p.shop.rerolls * 3;
-      if (p.f.cash < cost) return note(p, `Reroll costs $${cost}`);
-      p.f.cash -= cost;
-      p.shop.rerolls++;
-      p.shop.opts = rollShop(rnd, round);
       return;
     }
 
@@ -370,15 +360,20 @@ export function createEngine(cfgIn = {}) {
   function shopView(p) {
     if (!p.shop) return null;
     return {
-      opts: p.shop.opts.map(s => ({
+      opts: catalogue(p.f.done, round).map(s => ({
         kind: s.kind, mut: s.mut, dir: s.dir,
         name: label(s), desc: describe(s), cost: s.cost ?? price(s),
         tint: s.kind === 'mut' ? TYPES[s.mut].color
           : s.kind === 'asm' ? TYPES[RECIPES[s.mut ?? 0].out].color : null,
       })),
-      bought: p.shop.bought,
+      tech: TECH.map(t => ({
+        id: t.id, name: t.name, cost: t.cost, blurb: t.blurb,
+        done: p.f.done.includes(t.id),
+        open: techOpen(t, p.f.done),
+        needs: (t.needs || []).map(n => TECH.find(x => x.id === n)?.name).filter(Boolean),
+      })),
+      science: Math.round(p.f.science),
       done: p.shop.done,
-      reroll: cfg.rerollBase + p.shop.rerolls * 3,
     };
   }
 
@@ -399,6 +394,7 @@ export function createEngine(cfgIn = {}) {
         routes: routePrices(p),
         moverLeft: Math.max(0, moverFree(p.f.claim) - (p.movers || 0)),
         claim: p.f.claim, plot: GRID,
+        science: Math.round(p.f.science), levelCap: levelCap(p.f.done),
         expand: p.f.claim < GRID ? expandCost(p.f.claim) : 0,
         order: { target: p.order?.target ?? 0, bonus: p.order?.bonus ?? 0 },
         met: !!p.metOrder, gotBonus: p.orderBonus || 0,

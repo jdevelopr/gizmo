@@ -180,7 +180,11 @@ export function createController({ send }) {
   function paintUtil() {
     const mv = $('#btn-mover');
     const cost = hud?.mover ?? 10;
-    mv.textContent = `+ CONVEYOR · $${cost}`;
+    const left = hud?.moverLeft ?? 0;
+    // The cheap belts are the safety net, so say plainly how many are left in it.
+    mv.textContent = left > 0
+      ? `+ CONVEYOR · $${cost} · ${left} AT THIS PRICE`
+      : `+ CONVEYOR · $${cost}`;
     mv.disabled = view.c < cost || hud?.ph === 'over';
 
     const pc = producerCost(view.pl), sc = sellerCost(view.sl);

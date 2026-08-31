@@ -10,8 +10,8 @@ import {
   setSellerSpots, applyAction, giveMachine, viewOf, drainFx,
 } from './sim.js';
 import {
-  rollShop, rng, price, label, describe, shopCost, setGridSize, GRID,
-  TYPES, DIR_NAME,
+  rollShop, rng, price, label, describe, setGridSize, GRID,
+  moverCost, moverFree, TYPES, DIR_NAME,
 } from './machines.js';
 
 /** The one machine you can always buy: it moves gizmos and nothing else. */
@@ -24,8 +24,8 @@ export const DEFAULT_CFG = {
   planSecs: 120,      // planning phase: rearrange freely, ready up to start early
   gridSize: 3,        // slots per side, always square, 3 to 7
   tallySecs: 3.5,
-  cash: 40,
-  rerollBase: 6,
+  cash: 120,
+  rerollBase: 18,
 };
 
 export function createEngine(cfgIn = {}) {
@@ -62,7 +62,7 @@ export function createEngine(cfgIn = {}) {
     p = {
       seat, name: name || `Player ${seat + 1}`, color: color ?? seat,
       f, shop: null, connected: true, note: null, noteT: 0, outbox: [],
-      lastIncome: 0, bestIncome: 0,
+      lastIncome: 0, bestIncome: 0, movers: 0,
     };
     // Joining mid-match: adopt the room's vaults rather than the starter kit's.
     if (sellerSpots) { setSellerSpots(p.f, sellerSpots); p.sellerSpots = sellerSpots; }
@@ -116,6 +116,7 @@ export function createEngine(cfgIn = {}) {
           p.shop = null;
           p.sellerSpots = sellerSpots;
           p.planReady = false;
+          p.movers = 0;              // belts bought this round, for the price ladder
         }
         announce = `ROUND ${round}`;
         newSeller = opening;
@@ -162,6 +163,7 @@ export function createEngine(cfgIn = {}) {
       starterKit(p.f);
       p.lastIncome = 0;
       p.bestIncome = 0;
+      p.movers = 0;
     }
     go('plan');
   }
@@ -208,7 +210,8 @@ export function createEngine(cfgIn = {}) {
     }
   }
 
-  const moverCost = () => shopCost(MOVER, Math.max(1, round));
+  /** What the next belt costs this player, right now. */
+  const nextMover = p => moverCost(Math.max(1, round), p?.movers || 0);
 
   /** True when every connected player satisfies the test (and there is at least one). */
   function everyone(test) {
@@ -264,12 +267,16 @@ export function createEngine(cfgIn = {}) {
      */
     if (msg.t === 'mover') {
       if (phase === 'lobby' || phase === 'over') return;
-      const cost = moverCost();
+      const cost = nextMover(p);
       if (p.f.cash < cost) return note(p, `Conveyor costs $${cost}`);
       const dest = giveMachine(p.f, MOVER);
       if (dest.where === 'none') return note(p, 'No room anywhere');
       p.f.cash -= cost;
-      note(p, dest.where === 'grid' ? 'Conveyor installed' : 'Conveyor to crate');
+      p.movers = (p.movers || 0) + 1;
+      const left = Math.max(0, moverFree() - p.movers);
+      note(p, dest.where === 'grid'
+        ? (left ? `Conveyor installed · ${left} more at $${cost}` : 'Conveyor installed')
+        : 'Conveyor to crate');
       p.f.fx.push({ k: 'up', cell: dest.where === 'grid' ? dest.idx : 4 });
       return;
     }
@@ -340,7 +347,8 @@ export function createEngine(cfgIn = {}) {
         n: GRID,
         an: announce, board: board(), note: p.note,
         ready: !!p.planReady,
-        mover: moverCost(),
+        mover: nextMover(p),
+        moverLeft: Math.max(0, moverFree() - (p.movers || 0)),
         waiting: [...players.values()].filter(x => x.connected && !x.planReady).length,
         seat, color: p.color, name: p.name,
         spots: (p.sellerSpots || []).map(v => DIR_NAME[v.dir]),

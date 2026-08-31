@@ -42,14 +42,14 @@ export const KINDS = {
   pipe: {
     name: 'Conveyor', short: 'CONVEYOR',
     desc: 'Carries a gizmo one slot along. Room for one. Aims itself when you set it down.',
-    price: 10, cycle: 0.26, cap: 1, hold: 1, travel: 0.26,
+    price: 15, cycle: 0.26, cap: 1, hold: 1, travel: 0.26,
     body: '#2f4a63', trim: '#6ea2d8', lit: '#a8dcff',
   },
   store: {
     name: 'Storage', short: 'STORAGE',
     desc: 'Carries a gizmo one slot along like a belt, but holds a crowd while it waits. '
       + 'The cure for a line that keeps backing up.',
-    price: 28, cycle: 0.35, cap: 1, hold: 6, travel: 0.26,
+    price: 84, cycle: 0.35, cap: 1, hold: 6, travel: 0.26,
     body: '#20443f', trim: '#5fc9ae', lit: '#a7f0dc',
   },
   dup: {
@@ -57,19 +57,19 @@ export const KINDS = {
     // Deliberately the slowest multiplier on the floor: it is the one that needs no
     // routing, so it pays for that convenience in seconds. A Splitter is 1.9x faster.
     desc: 'Holds an original, copies it, and pushes both out front. Slow. A copy is never copied again.',
-    price: 32, cycle: 1.8, cap: 1, hold: 2, travel: 0.52,
+    price: 96, cycle: 1.8, cap: 1, hold: 2, travel: 0.52,
     body: '#27552f', trim: '#5fbf6a', lit: '#a7f070',
   },
   split: {
     name: 'Splitter', short: 'SPLITTER',
     desc: 'Holds one, then sends the original ahead and a copy right. Copies leave one at a time, alternating.',
-    price: 26, cycle: 0.96, cap: 1, hold: 2, travel: 0.52,
+    price: 78, cycle: 0.96, cap: 1, hold: 2, travel: 0.52,
     body: '#5c4a1e', trim: '#c9a23f', lit: '#ffcd75',
   },
   trident: {
     name: 'Trident', short: 'TRIDENT',
     desc: 'Holds one, then fires the original three ways. Copies leave one at a time, in turn.',
-    price: 62, cycle: 1.7, cap: 1, hold: 2, travel: 0.52,
+    price: 186, cycle: 1.7, cap: 1, hold: 2, travel: 0.52,
     body: '#5c2a49', trim: '#b55088', lit: '#ff9ad0',
   },
   mut: {
@@ -81,13 +81,13 @@ export const KINDS = {
   fuse: {
     name: 'Fuser', short: 'FUSER',
     desc: 'Holds two gizmos and melts them into one of the next tier. Two originals make an original.',
-    price: 50, cycle: 1.9, cap: 2, hold: 3, travel: 0.52,
+    price: 150, cycle: 1.9, cap: 2, hold: 3, travel: 0.52,
     body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
   },
 };
 
 /** Mutators are priced by the tier they output. */
-export const MUT_PRICE = [0, 24, 34, 48, 64, 88, 124, 170];
+export const MUT_PRICE = [0, 72, 102, 144, 192, 264, 372, 510];
 
 export const KIND_LIST = Object.keys(KINDS);
 
@@ -124,14 +124,51 @@ export function describe(spec) {
   return KINDS[spec.kind].desc;
 }
 
+/* ------------------------------------------------------------------ costs --- */
+
+/*
+ * Everything a floor earns multiplies: machine level times producer rate times
+ * seller take, each one scaling the last. Costs used to add. That is why a good
+ * line used to out-earn the entire shop in a single round and every decision after
+ * round three stopped being a decision. So the prices multiply now too — each
+ * level of anything costs four times the last, and the shop marks up by half again
+ * every round. You buy one more thing per round, not everything.
+ */
+
+/** Each level costs UP_STEP times the last. */
+export const UP_BASE = 2;
+export const UP_STEP = 4;
+
+/** Producer and Seller levels climb on the same ladder. */
+export const UTIL_STEP = 4;
+
+/** Workshop markup, compounding per round. */
+export const SHOP_STEP = 1.55;
+
+/**
+ * Belts bought at base price each round before the ladder starts: one row's worth,
+ * so a bigger floor gets the longer runs it actually needs. A 3x3 gets three, a 7x7
+ * gets seven. This is the guarantee that you can always reconnect to a vault.
+ */
+export const moverFree = () => GRID;
+export const MOVER_STEP = 1.9;
+
+/** What is refunded when a machine is scrapped, of everything paid for it. */
+export const SCRAP_RATE = 0.3;
+
 export function upgradeCost(m) {
-  return Math.round(price(m) * 0.75 * m.level);
+  return Math.round(price(m) * UP_BASE * Math.pow(UP_STEP, (m.level || 1) - 1));
+}
+
+/** Everything this machine has cost so far: the purchase plus every level bought. */
+export function investedIn(m) {
+  let paid = price(m);
+  for (let l = 1; l < (m.level || 1); l++) paid += upgradeCost({ ...m, level: l });
+  return paid;
 }
 
 export function scrapValue(m) {
-  let paid = price(m);
-  for (let l = 1; l < m.level; l++) paid += Math.round(price(m) * 0.75 * l);
-  return Math.max(2, Math.round(paid * 0.5));
+  return Math.max(2, Math.round(investedIn(m) * SCRAP_RATE));
 }
 
 /**
@@ -276,9 +313,9 @@ function nextExit(m, dirs) {
 /* --------------------------------------------------------- producer/seller --- */
 
 export const producerCycle = lvl => 2.7 * Math.pow(0.78, lvl - 1);
-export const producerCost = lvl => Math.round(34 * Math.pow(lvl, 1.45));
+export const producerCost = lvl => Math.round(102 * Math.pow(UTIL_STEP, lvl - 1));
 export const sellerMult = lvl => 1 + 0.3 * (lvl - 1);
-export const sellerCost = lvl => Math.round(40 * Math.pow(lvl, 1.45));
+export const sellerCost = lvl => Math.round(120 * Math.pow(UTIL_STEP, lvl - 1));
 
 /* ---------------------------------------------------------------- geometry --- */
 
@@ -351,9 +388,24 @@ export function rollSpec(rnd, round) {
   return spec;
 }
 
-/** Shop prices drift up with the rounds, so a purchase always costs something real. */
-export const costMult = round => 1 + 0.5 * Math.max(0, round - 1);
+/** Shop prices compound with the rounds, so a late purchase is a real commitment. */
+export const costMult = round => Math.pow(SHOP_STEP, Math.max(0, round - 1));
 export const shopCost = (spec, round) => Math.max(4, Math.round(price(spec) * costMult(round)));
+
+/**
+ * What the next conveyor costs. The first few each round go for base price whatever
+ * the round, because a player who cannot reach a vault cannot score at all and that
+ * is not a game. Past those, each belt in the same round costs nearly double the
+ * last on top of the round's markup — sprawl is a luxury, reconnecting is a right.
+ * @param {number} round
+ * @param {number} bought how many have already been bought this round
+ */
+export function moverCost(round, bought = 0) {
+  const base = KINDS.pipe.price;
+  const free = moverFree();
+  if (bought < free) return base;
+  return Math.round(base * costMult(round) * Math.pow(MOVER_STEP, bought - free + 1));
+}
 
 /** Three distinct-ish options for one player's shop. */
 export function rollShop(rnd, round, n = 3) {

@@ -11,6 +11,7 @@
 import {
   KINDS, TYPES, MUT_PRICE, MAX_LEVEL, MAX_UTIL, DIR_NAME,
   cycleTime, upgradeCost, scrapValue, outputs, capacity, EMPTY_HOLD,
+  moverCost, moverFree, SCRAP_RATE, UP_STEP, UTIL_STEP, SHOP_STEP,
   producerCycle, producerCost, sellerMult, sellerCost, shopCost, costMult,
 } from './machines.js';
 
@@ -157,8 +158,10 @@ function build() {
   /* --- machines ---------------------------------------------------------- */
   const mach = section('MACHINES',
     'Rate is how many gizmos a machine takes in per second — the ceiling on everything '
-    + 'downstream of it. Upgrades and scrap refunds are worked out from the base price, so '
-    + 'unlike shop prices they never inflate as the match goes on.');
+    + `downstream of it. Each level costs ${UP_STEP}x the one before, worked out from the base price, `
+    + 'so unlike shop prices upgrades never inflate as the match goes on. Scrapping returns '
+    + `${Math.round(SCRAP_RATE * 100)}% of everything you paid for a machine, levels included — enough to rework a floor, `
+    + 'not enough to churn one.');
   const grid = el('div', 'ht-grid');
 
   for (const kind of BUILDABLE) {
@@ -263,9 +266,10 @@ function build() {
 
   /* --- shop -------------------------------------------------------------- */
   const shop = section('WHAT THE SHOP CHARGES',
-    'Workshop prices drift up by half the base price each round. Conveyors are the '
-    + 'exception: base price, any phase, as many as you can pay for, and they never count '
-    + 'against the one machine a round.');
+    `Everything a floor earns multiplies — machine level times producer rate times seller `
+    + `take — so the prices multiply too. Each level of anything costs ${UTIL_STEP}x the last, and the `
+    + `workshop marks up ${Math.round((SHOP_STEP - 1) * 100)}% every round, compounding. Buy one more thing a round, not `
+    + `everything.`);
   shop.appendChild(table(['Round', 'Markup', 'Conveyor', 'Storage', 'Doubler', 'Fuser', 'Cobalt Mut'],
     [1, 2, 3, 4, 5, 6, 7, 8].map(r => ['R' + r, 'x' + r2(costMult(r)),
       { v: money(shopCost({ kind: 'pipe' }, r)), cls: 'ht-buy' },
@@ -273,6 +277,16 @@ function build() {
       { v: money(shopCost({ kind: 'dup' }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'fuse' }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'mut', mut: 4 }, r)), cls: 'ht-buy' }])));
+  shop.appendChild(el('p', 'ht-custody',
+    `Conveyors are the exception, because a player who cannot reach a vault cannot score `
+    + `at all. The first ${moverFree()} you buy each round go for base price whatever the round it is — `
+    + `one row's worth, so a bigger floor gets the longer runs it needs. Past those, each `
+    + `belt in the same round costs nearly double the last on top of the round's markup. `
+    + `Sprawl is a luxury; reconnecting is a right. They still never count against the one `
+    + `machine a round from the workshop.`));
+  shop.appendChild(table(['Round', '1st belt', '2nd', '3rd', '4th', '5th', '6th'],
+    [1, 4, 8].map(r => ['R' + r, ...[0, 1, 2, 3, 4, 5].map(n =>
+      ({ v: money(moverCost(r, n)), cls: n < moverFree() ? 'ht-sell' : 'ht-buy' }))])));
   body.appendChild(shop);
 
   /* --- ladder ------------------------------------------------------------ */

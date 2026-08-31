@@ -20,7 +20,7 @@ const MAX_SELLERS = 2;
 /** Hard ceiling on live gizmos: enough to fill a floor, few enough to send 15x a second. */
 const maxGizmos = () => Math.min(400, 24 * GRID * GRID + 60);
 
-export function createFactory({ cash = 40 } = {}) {
+export function createFactory({ cash = 120 } = {}) {
   const f = {
     n: GRID,
     grid: new Array(GRID * GRID).fill(null),

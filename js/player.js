@@ -129,7 +129,7 @@ export function createController({ send }) {
     if (!m) {
       box.dataset.on = 'off';
       $('#sel-name').textContent = 'Tap a machine';
-      $('#sel-sub').textContent = 'then tap an empty slot to move it';
+      $('#sel-sub').textContent = 'then tap a slot to move it — belts aim themselves';
       $('#btn-up').textContent = 'UPGRADE';
       $('#btn-scrap').textContent = 'SCRAP';
       $('#btn-up').disabled = true;
@@ -208,7 +208,7 @@ export function createController({ send }) {
     $('#pad-phase').dataset.ph = hud.ph;
     const spot = hud.spot ? `Seller: ${hud.spot.toLowerCase()} face.` : 'Seller moved.';
     $('#pad-hint').textContent = hud.ph === 'plan'
-      ? `${spot} Lay conveyors to reach it, then ready up.`
+      ? `${spot} Lay conveyors to reach it — they aim themselves. Then ready up.`
       : hud.ph === 'run' ? 'Keep re-routing — the floor stays live.'
         : hud.ph === 'shop' ? 'Buy one machine, then hit READY.'
           : hud.ph === 'tally' ? `Round income $${view.n}.` : '';

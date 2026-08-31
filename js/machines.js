@@ -41,7 +41,7 @@ export const MAX_TYPE = TYPES.length - 1;
 export const KINDS = {
   pipe: {
     name: 'Conveyor', short: 'CONVEYOR',
-    desc: 'Slides a gizmo one slot along, quickly.',
+    desc: 'Slides a gizmo one slot along, quickly. Aims itself when you set it down.',
     price: 10, cycle: 0.13, cap: 1, travel: 0.13,
     body: '#2f4a63', trim: '#6ea2d8', lit: '#a8dcff',
   },
@@ -207,6 +207,24 @@ export function outputs(m, inputs) {
 
     default:
       return [];
+  }
+}
+
+/**
+ * Every direction a machine can fire into, in world space. Routers are read at
+ * their current level, so a level 3 splitter reports its third exit. Used by the
+ * conveyor auto-facing heuristic to tell a hand-off from a head-on collision.
+ * @returns {number[]} distinct directions, 0 = east
+ */
+export function exitDirs(m) {
+  const d = m.dir | 0;
+  switch (m.kind) {
+    case 'split':
+      return m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, (d + 1) % 4];
+    case 'trident':
+      return [d, (d + 1) % 4, (d + 3) % 4];
+    default:
+      return [d];
   }
 }
 

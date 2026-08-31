@@ -8,7 +8,7 @@
 import {
   GRID, DIRS, TYPES, MAX_TYPE, KINDS, MAX_LEVEL, MAX_UTIL,
   makeMachine, price, upgradeCost, scrapValue, cycleTime, travelTime,
-  intake, outputs, producerCycle, producerCost, sellerMult, sellerCost,
+  intake, outputs, exitDirs, producerCycle, producerCost, sellerMult, sellerCost,
   cellOf, cx, cy, inGrid, PRODUCER_PORT, SELLER_SPOTS,
 } from './machines.js';
 
@@ -207,13 +207,87 @@ export function moveSeller(f, rnd = Math.random) {
   return pick;
 }
 
+/* ----------------------------------------------------------- auto-facing --- */
+
+/**
+ * Conveyors are plumbing, and nobody enjoys plumbing. A belt dropped on the
+ * floor points itself down the line so the common case — lay a run of conveyors
+ * from the machines to wherever the seller jumped — costs taps instead of a
+ * rotate on every single slot. ROTATE still overrides it; this only ever fires
+ * the moment a belt lands on a slot.
+ *
+ * The pick is the best-scoring of the four directions:
+ *   +  carries the gizmo nearer the seller (and out of its window, if we are on it)
+ *   +  continues the flow of whatever already feeds this slot
+ *   +  hands off to a neighbouring machine rather than the bare floor
+ *   -  fires back into the machine feeding us, or head-on into one facing us
+ *   -  spills off the edge of the floor anywhere but the seller's window
+ */
+export function smartDir(f, i) {
+  const m = f.grid[i];
+  if (!m || m.kind !== 'pipe') return null;
+
+  const x = cx(i), y = cy(i);
+  const s = f.seller;
+  const gap = (ax, ay) => Math.abs(ax - cx(s.cell)) + Math.abs(ay - cy(s.cell));
+  const here = gap(x, y);
+
+  // Directions we are fed from: the neighbour that way aims at us. The producer
+  // is bolted to the floor's edge and counts as a feeder too.
+  const fed = new Set();
+  if (i === PRODUCER_PORT.cell) fed.add(PRODUCER_PORT.dir);
+  for (let d = 0; d < 4; d++) {
+    const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+    if (!inGrid(nx, ny)) continue;
+    const nm = f.grid[cellOf(nx, ny)];
+    if (nm && exitDirs(nm).includes((d + 2) % 4)) fed.add(d);
+  }
+
+  // When the seller sits off both axes, walk the longer leg first so an L-shaped
+  // run reads as one straight line with a single corner.
+  const longLeg = Math.abs(x - cx(s.cell)) >= Math.abs(y - cy(s.cell)) ? 'x' : 'y';
+
+  let best = m.dir, bestScore = -Infinity;
+  for (let d = 0; d < 4; d++) {
+    const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+    let score = 0;
+
+    if (!inGrid(nx, ny)) {
+      // Off the floor is a loss, unless it is the seller's window.
+      score += (s.cell === i && s.dir === d) ? 100 : -100;
+    } else {
+      const closer = here - gap(nx, ny);
+      score += closer * 10;
+      const nm = f.grid[cellOf(nx, ny)];
+      if (nm) score += exitDirs(nm).includes((d + 2) % 4) ? -14 : 6;
+      if (closer > 0 && (DIRS[d][0] !== 0 ? 'x' : 'y') === longLeg) score += 2;
+    }
+
+    if (fed.has(d)) score -= 30;                 // never shove it back at the feeder
+    if (fed.has((d + 2) % 4)) score += 8;        // keep the existing flow straight
+    if (d === m.dir) score += 1;                 // ties keep whatever it already had
+
+    if (score > bestScore) { bestScore = score; best = d; }
+  }
+  return best;
+}
+
+/** Face a freshly landed conveyor down the line. No-op for anything else. */
+function autoFace(f, i) {
+  const d = smartDir(f, i);
+  if (d != null && d !== f.grid[i].dir) {
+    f.grid[i].dir = d;
+    f.fx.push({ k: 'rot', cell: i });
+  }
+}
+
 /* ---------------------------------------------------------------- actions --- */
 
 /** Drop a bought machine onto the floor, or into the crate if the floor is full. */
 export function giveMachine(f, spec) {
   const m = makeMachine(spec, f.nid++);
   const slot = f.grid.indexOf(null);
-  if (slot >= 0) { f.grid[slot] = m; return { where: 'grid', idx: slot }; }
+  if (slot >= 0) { f.grid[slot] = m; autoFace(f, slot); return { where: 'grid', idx: slot }; }
   if (f.inv.length < INV_CAP) { f.inv.push(m); return { where: 'inv', idx: f.inv.length - 1 }; }
   return { where: 'none', idx: -1 };
 }
@@ -256,6 +330,9 @@ export function applyAction(f, a) {
       setRef(f, from, b1 || null);
       setRef(f, to, a1);
       compactInv(f);
+      // Both ends of a swap just landed on new ground: re-face any belt among them.
+      if (to.zone === 'grid') autoFace(f, to.idx);
+      if (from.zone === 'grid' && b1) autoFace(f, from.idx);
       f.fx.push({ k: 'move', cell: to.zone === 'grid' ? to.idx : -1 });
       return yes();
     }

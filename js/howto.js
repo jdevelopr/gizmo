@@ -103,7 +103,7 @@ function build() {
   const loop = section('HOW A ROUND GOES');
   const ol = el('ol', 'ht-steps');
   [
-    ['PLANNING', 'The floor is stopped and the seller has jumped to a new face. Move, rotate and upgrade, then tap READY. The round starts as soon as everyone is ready.'],
+    ['PLANNING', 'The floor is stopped and the seller has jumped to a new face. Move, rotate and upgrade, then tap READY. A conveyor aims itself whenever it lands on a slot — down the line it is already fed, or toward the seller — so laying a route is a row of taps. ROTATE always overrides it. The round starts as soon as everyone is ready.'],
     ['SHIPPING', 'The producer runs and money lands. You can keep rearranging the whole time — a live floor is a fair way to play, and sometimes the only way to unclog one.'],
     ['TALLY', 'What the round earned.'],
     ['WORKSHOP', 'Three machines offered, buy one. Reroll for a fee. What you buy gets placed in the next planning phase.'],

@@ -150,6 +150,20 @@ cool blue corner ticks mean STARVED (standing idle, fix the feed behind).
 
 ---
 
+## Playing alone
+
+Solo runs the whole match on one device with no phones and no networking, and it is
+reachable from everywhere — including from inside the join flow. A phone that scanned
+a code is never stuck because the room filled up, the floor screen closed, or the
+person simply wants to play now: **PLAY SOLO INSTEAD** sits in the phone lobby and on
+the connection-failure screen, and both tear the peer connection down before starting.
+
+On a wide screen solo draws the floor view beside the pad, which is how you preview a
+board size before putting it in front of people. On a phone the floor view is hidden
+entirely — it and the pad draw the same factory, so showing both spends half a
+390-pixel screen saying the same thing twice — and the pad announces the rounds
+itself instead.
+
 ## The phone
 
 The pad is an app shell, not a page. One status line, the board taking every pixel

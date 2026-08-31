@@ -231,6 +231,7 @@ input::placeholder { color: #414a68; }
   background: rgba(9, 10, 18, .86);
   display: flex; align-items: center; justify-content: center;
   padding: 20px; z-index: 20;
+  overflow-y: auto;
 }
 .modal[hidden] { display: none; }
 .modal-box {
@@ -239,6 +240,11 @@ input::placeholder { color: #414a68; }
   box-shadow: 8px 8px 0 var(--ink2);
   padding: 20px;
   width: min(360px, 100%);
+  /* Setup is five dropdowns tall, which is most of a small phone. Let it scroll
+     inside itself rather than running off the top where nothing can reach it. */
+  max-height: 100%;
+  overflow-y: auto;
+  margin: auto;
 }
 .modal-box label { font-size: 10px; color: var(--dim); }
 
@@ -331,6 +337,28 @@ input::placeholder { color: #414a68; }
   overflow: hidden;
 }
 #pad-stage { touch-action: none; }
+/* The round announcement, for solo play where there is no floor screen to shout. */
+#pad-banner {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 4px;
+  text-align: center;
+  background: color-mix(in srgb, var(--ink) 62%, transparent);
+  pointer-events: none;
+  animation: bannerIn .18s steps(3);
+}
+#pad-banner[hidden] { display: none; }
+#pad-banner b {
+  font-size: 24px;
+  color: var(--gold);
+  letter-spacing: .1em;
+  text-shadow: 3px 3px 0 var(--ink2);
+}
+#pad-banner small { font-size: 10px; color: var(--lime); letter-spacing: .1em; }
+@keyframes bannerIn { from { opacity: 0; } to { opacity: 1; } }
+
 #pad-note {
   position: absolute;
   left: 50%;
@@ -529,16 +557,21 @@ input::placeholder { color: #414a68; }
   #floor-timer { font-size: 34px; }
 }
 
-/* ------------------------------------------------------------ practice --- */
-
-body[data-screen="practice"] { overflow-y: auto; }
-body[data-screen="practice"] #floor { height: auto; min-height: 40dvh; }
-/* Stacked practice: the pad still needs a definite height for its one flexible row. */
-body[data-screen="practice"] #pad { height: 78dvh; }
+/* -------------------------------------------------------------- solo --- */
+/*
+ * Solo on a phone is the pad and nothing else. The floor screen and the pad draw
+ * the same factory, so showing both on a 390-pixel-wide device spends half the
+ * screen saying the same thing twice — and pushes the board, again, into a strip.
+ * The floor view is for a television with phones pointed at it; below that width
+ * it simply does not appear.
+ */
+body[data-screen="practice"] { overflow: hidden; }
+body[data-screen="practice"] #floor { display: none; }
+body[data-screen="practice"] #pad { height: 100dvh; }
 
 @media (min-width: 900px) {
   body[data-screen="practice"] { display: grid; grid-template-columns: 1fr 380px; height: 100dvh; overflow: hidden; }
-  body[data-screen="practice"] #floor { height: 100dvh; }
+  body[data-screen="practice"] #floor { display: flex; height: 100dvh; }
   body[data-screen="practice"] #pad { height: 100dvh; overflow: hidden; }
 }
 

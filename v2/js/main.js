@@ -1,8 +1,13 @@
 /**
  * main.js — entry point and screen routing.
  *
- * No room in the URL  -> this device can open a room (floor screen) or practise solo.
+ * No room in the URL  -> this device can open a room (floor screen) or play solo.
  * ?room=ABCD          -> this device is a phone: name, colour, ready, then the pad.
+ *
+ * Solo is reachable from every one of those states, including from inside the join
+ * flow. A phone that scanned a code should never be stuck because the room filled
+ * up, the floor screen closed, or the person simply wants to play now — so the
+ * lobby and the failure screen both offer it, and it runs the identical engine.
  */
 
 import { createClient, roomFromUrl, clientId } from './net.js';
@@ -36,10 +41,7 @@ function bootHome() {
     startHost(show);
   });
 
-  $('#practice-btn').addEventListener('click', () => openSetup({
-    label: 'START PRACTICE',
-    done: cfg => startPractice(cfg),
-  }));
+  $('#practice-btn').addEventListener('click', () => askSolo());
 
   $('#join-form').addEventListener('submit', e => {
     e.preventDefault();
@@ -65,6 +67,17 @@ function bootPhone(room) {
     return;
   }
   connectPhone(room, stored);
+}
+
+/** Open Setup, then run the whole match on this device. */
+function askSolo(bail = null) {
+  openSetup({
+    label: 'START SOLO RUN',
+    done: cfg => {
+      if (bail) bail();
+      startSolo(cfg);
+    },
+  });
 }
 
 function connectPhone(room, name) {
@@ -153,9 +166,20 @@ function connectPhone(room, name) {
   client.on('error', err => {
     $('#connect-note').textContent = err?.message || 'Could not connect.';
     $('#connect-retry').hidden = false;
+    $('#connect-solo').hidden = false;
   });
 
   $('#connect-retry').addEventListener('click', () => location.reload());
+
+  /** Leave the room behind and play alone. Both exits tear the peer down first. */
+  const leaveForSolo = () => {
+    done = true;
+    try { client.send({ t: 'bye' }); } catch {}
+    try { client.destroy(); } catch {}
+    history.replaceState(null, '', location.pathname);
+  };
+  $('#connect-solo').addEventListener('click', () => askSolo(leaveForSolo));
+  $('#solo-btn').addEventListener('click', () => askSolo(leaveForSolo));
 
   /* colour + ready */
   const colorRow = $('#colors');
@@ -218,9 +242,17 @@ function connectPhone(room, name) {
   void clientId();
 }
 
-/* ---------------------------------------------------------- practice --- */
+/* -------------------------------------------------------------- solo --- */
 
-function startPractice(cfg = {}) {
+/**
+ * One player, one device, the same engine the room runs.
+ *
+ * On a wide screen this draws the floor view beside the pad, which is how you
+ * preview a board size before putting it in front of people. On a phone the floor
+ * view is hidden by CSS — it would be the same factory drawn twice — so the pad
+ * takes the whole screen and announces the rounds itself.
+ */
+function startSolo(cfg = {}) {
   const engine = createEngine({ shopSecs: 25, ...cfg });
   engine.addPlayer(0, localStorage.getItem('gizmo-name') || 'YOU', 0);
 
@@ -240,6 +272,8 @@ function startPractice(cfg = {}) {
     if (ph === 'shop') {
       bannerText = 'BUILD & RESEARCH'; bannerSub = 'SPEND CASH AND SCIENCE'; bannerT = 1.8;
     }
+    // The pad says it too, which is the only place it gets said on a phone.
+    ctrl.banner(bannerText, bannerSub, bannerT);
   });
 
   engine.on('fx', (seat, fx) => playFx(stage, fx, stage.floorOrigin(stage.panelRect(0))));
@@ -260,10 +294,10 @@ function startPractice(cfg = {}) {
     const me = (results || [])[0];
     const p0 = engine.players.get(0);
     $('#results-sub').textContent = me
-      ? `Practice over — $${me.earned} shipped on a ${p0.f.claim}x${p0.f.claim} plot, `
-        + `${p0.filled} orders filled.`
-      : 'Practice over.';
-    $('#again-btn').textContent = 'ANOTHER PRACTICE RUN';
+      ? `Solo run over — $${me.earned} shipped on a ${p0.f.claim}x${p0.f.claim} plot, `
+        + `${p0.filled} orders filled, ${p0.f.done.length} research done.`
+      : 'Solo run over.';
+    $('#again-btn').textContent = 'ANOTHER SOLO RUN';
     $('#again-btn').onclick = () => location.reload();
     show('results');
   });
@@ -281,22 +315,26 @@ function startPractice(cfg = {}) {
     engine.step(dt);
     if (bannerT > 0) bannerT -= dt;
 
+    // On a phone the floor view is display:none and has no box to draw into, so
+    // skip it entirely rather than rendering a frame nobody can see.
     const wrap = $('#stage-wrap').getBoundingClientRect();
-    stage.autoFit(1, Math.max(80, wrap.width), Math.max(90, wrap.height));
-    stage.update(dt);
-    stage.begin();
-    const p = engine.players.get(0);
-    drawPanel(stage, engine.viewOfSeat(0), stage.panelRect(0), {
-      name: p.name, color: PLAYER_COLORS[0], earned: Math.round(p.f.earned),
-    });
-    if (bannerT > 0) banner(stage, bannerText, bannerSub);
-    stage.end();
+    if (wrap.width > 1 && wrap.height > 1) {
+      stage.autoFit(1, Math.max(80, wrap.width), Math.max(90, wrap.height));
+      stage.update(dt);
+      stage.begin();
+      const p = engine.players.get(0);
+      drawPanel(stage, engine.viewOfSeat(0), stage.panelRect(0), {
+        name: p.name, color: PLAYER_COLORS[0], earned: Math.round(p.f.earned),
+      });
+      if (bannerT > 0) banner(stage, bannerText, bannerSub);
+      stage.end();
 
-    $('#floor-round').textContent = `ROUND ${engine.round} / ${engine.cfg.rounds}`;
-    $('#floor-phase').textContent = {
-      plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'BUILD',
-    }[engine.phase] || '';
-    $('#floor-timer').textContent = String(Math.max(0, Math.ceil(engine.timer))).padStart(2, '0');
+      $('#floor-round').textContent = `ROUND ${engine.round} / ${engine.cfg.rounds}`;
+      $('#floor-phase').textContent = {
+        plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'BUILD',
+      }[engine.phase] || '';
+      $('#floor-timer').textContent = String(Math.max(0, Math.ceil(engine.timer))).padStart(2, '0');
+    }
 
     ctrl.applyState(engine.stateFor(0));
   }

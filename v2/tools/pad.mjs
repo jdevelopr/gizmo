@@ -171,6 +171,23 @@ push();
   ok($('#dock-tabs button[data-tab="tech"]').dataset.badge, 'tabs badge what is waiting');
 }
 
+/* --- solo is reachable from inside the join flow ---------------------------- */
+{
+  ok(!!$('#solo-btn'), 'the phone lobby offers PLAY SOLO INSTEAD');
+  ok(!!$('#connect-solo'), 'so does the connection-failure screen');
+  ok($('#connect-solo').hidden, 'but only once connecting has actually failed');
+  ok(/SOLO/i.test($('#practice-btn').textContent), 'and the home screen says solo, not practice',
+    $('#practice-btn').textContent);
+
+  // Solo has no floor screen to announce a round, so the pad has to do it.
+  ok(!!$('#pad-banner'), 'the pad has a banner of its own');
+  ctrl.banner('ROUND 3', 'EXTEND · CLAIM · UPGRADE', 5);
+  ok(!$('#pad-banner').hidden, 'and it shows when asked');
+  ok($('#pad-banner').querySelector('b').textContent === 'ROUND 3', 'with the round on it');
+  ctrl.banner('');
+  ok($('#pad-banner').hidden, 'and clears');
+}
+
 /* --- one action button, meaning whatever the round asks --------------------- */
 {
   ok(vis('#dock-action') && /DONE|WAITING/.test($('#dock-action').textContent),

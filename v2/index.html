@@ -62,10 +62,11 @@ setTimeout(function () {
     <button id="host-btn" class="primary wide">OPEN A ROOM ON THIS SCREEN</button>
     <p class="fine">This device becomes the floor: it runs every factory and shows them
       all. It is not a player — everyone joins on a phone.</p>
-    <button id="practice-btn" class="ghost wide">PRACTICE RUN (SOLO, NO PHONES)</button>
+    <button id="practice-btn" class="ghost wide">PLAY SOLO</button>
     <button class="ghost wide" data-howto>HOW TO PLAY</button>
-    <p class="fine">Practice opens the same Setup panel, so you can try a plot size
-      before putting it in front of anyone.</p>
+    <p class="fine">Solo runs the whole match on this device with no phones and no
+      networking — the same Setup panel, so you can try a plot size before putting it
+      in front of anyone.</p>
     <form id="join-form" class="row">
       <label for="join-code">JOIN CODE</label>
       <input id="join-code" maxlength="4" autocomplete="off" autocapitalize="characters"
@@ -91,6 +92,8 @@ setTimeout(function () {
     <h2 class="pulse">CONNECTING</h2>
     <p id="connect-note" class="note"></p>
     <button id="connect-retry" class="ghost" hidden>TRY AGAIN</button>
+    <!-- A dead room should never be a dead end: you can always just play. -->
+    <button id="connect-solo" class="ghost" hidden>PLAY SOLO INSTEAD</button>
   </div>
 </section>
 
@@ -103,6 +106,7 @@ setTimeout(function () {
     <div id="colors" class="colors"></div>
     <button id="ready-btn" class="primary wide" data-on="off">I AM READY</button>
     <button id="rename-btn" class="ghost">CHANGE NAME</button>
+    <button id="solo-btn" class="ghost">PLAY SOLO INSTEAD</button>
     <button class="ghost" data-howto>HOW TO PLAY</button>
     <p id="plobby-note" class="note"></p>
   </div>
@@ -175,6 +179,8 @@ setTimeout(function () {
       <canvas id="pad-stage"></canvas>
       <canvas class="text-layer" aria-hidden="true"></canvas>
     </div>
+    <!-- Solo has no floor screen to announce the round, so the pad does it. -->
+    <div id="pad-banner" hidden><b></b><small></small></div>
     <p id="pad-note" class="toast" hidden></p>
   </div>
 

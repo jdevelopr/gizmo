@@ -559,6 +559,22 @@ export function createController({ send }) {
     if (document.visibilityState === 'visible') { keepAwake(); fit(); }
   });
 
-  // Exposed so the headless pad harness can tap the board without a pointer event.
-  return { applyState, start, destroy, fit, stage, selectCell: tapCell };
+  /**
+   * Announce something over the board. Solo play has no floor screen to shout
+   * ROUND 3 across the room, so the pad does it itself.
+   */
+  let bannerT = 0;
+  function banner(text, sub = '', secs = 2) {
+    const el = $('#pad-banner');
+    if (!el) return;
+    el.querySelector('b').textContent = text || '';
+    el.querySelector('small').textContent = sub || '';
+    el.hidden = !text;
+    clearTimeout(bannerT);
+    if (text) bannerT = setTimeout(() => { el.hidden = true; }, secs * 1000);
+  }
+
+  // selectCell is exposed so the headless pad harness can tap the board without a
+  // pointer event; banner so solo mode can drive announcements.
+  return { applyState, start, destroy, fit, stage, banner, selectCell: tapCell };
 }

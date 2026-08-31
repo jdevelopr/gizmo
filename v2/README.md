@@ -60,6 +60,34 @@ ladder and one counter with conveyors. Each round's cheap allowance is a budget 
 spend how you like — a long belt run, or one Balancer and a Sorter. Conveyors also
 came out of the workshop deck, so a shop card is never wasted on a belt.
 
+**Two feeds, and recipes that need both.** Claiming your first ring of land opens a
+second Producer on the west face, one row below the first, dropping **Resin**. Resin
+is worth almost nothing sold: it exists to be half of a recipe. Fusers climb it —
+two Resin make a Cord, two Cords make a Frame — and an **Assembler** marries a Part
+to an Alloy and makes a Product worth far more than either.
+
+```
+Producer A  Scrap -> [Amber Mutator] --------.
+                                              v
+Producer B  Resin -> [Fuser: Cord] -----> [ASSEMBLER] -> Engine -> vault
+```
+
+There are now three families. **Alloy** is the original Scrap-to-Prism ladder,
+completely unchanged. **Part** is Resin, Cord, Frame. **Product** is Engine, Turbine,
+Reactor — terminal, since nothing mutates or fuses a finished product. Fusers climb
+within a family and never across one.
+
+The Assembler is the first machine whose inputs are not interchangeable, which makes
+it the first that could deadlock — fill both hands with Cord and it waits forever for
+an Amber that can no longer fit. So acceptance became type-aware: a machine now
+refuses a gizmo it cannot use, and the belt feeding it the wrong thing backs up
+visibly instead of poisoning it. Fusers use the same rule to refuse mixing families.
+
+A slot running an Assembler earns roughly three times what a slot running a Mutator
+does, but needs four or five slots behind it to stay fed and twice the raw material.
+Recipes are what you build when the floor has outgrown its feeds, not what you open
+with.
+
 **Ratios are visible.** Every machine reports its rate in jobs per second, and the
 two failure modes are drawn differently because they want opposite fixes: amber all
 round the casing means BACKED UP (holding finished goods, fix the line ahead), four
@@ -69,11 +97,8 @@ cool blue corner ticks mean STARVED (standing idle, fix the feed behind).
 
 ## Still to come
 
-Phases one and two are in. Two left. The design the rest is heading toward:
+Phases one through three are in. One left. The design the rest is heading toward:
 
-- **Phase 3 — recipes.** A second Producer on a different edge emitting a different
-  raw type, and an Assembler with fixed multi-input recipes. The Fuser is already a
-  working two-input machine, so this is largely a re-skin of code that exists.
 - **Phase 4 — research.** A Lab bolted to an edge like the Producer, costing no slot.
   Route gizmos into it for science; science unlocks machine types and levels while
   cash still buys the instances. Duplication — the Doubler and the Trident — moves
@@ -87,14 +112,16 @@ Phases one and two are in. Two left. The design the rest is heading toward:
 Identical in shape to the original. What GIZMO 2 changed:
 
 ```
-js/machines.js    claims, the expansion ladder, vault geometry, the order curve
-js/sim.js         the claim is the edge of the world; growth; starved detection
+js/machines.js    claims, expansion, vault geometry, orders, families, recipes
+js/sim.js         the claim is the edge of the world; growth; starved detection;
+                  two producers; acceptance that knows about type
 js/game.js        per-player orders, land purchases, no seller jump
 js/render.js      unbought land, the fence, the starved badge
 js/player.js      the CLAIM LAND button, the order bar, per-machine rates
 js/howto.js       the manual, still generated from machines.js on open
 tools/lint.mjs    parses every module as a module, the way the browser will
 tools/routing.mjs proves the Balancer divides and the Sorter sorts
+tools/recipes.mjs proves an Assembler cannot deadlock, and the chain runs
 tools/balance.mjs an ordinary-player bot, for calibrating the numbers
 tools/verify.mjs  headless assertions over a whole match
 ```
@@ -108,6 +135,7 @@ is the original, unchanged.
 node tools/lint.mjs       # will every module parse in a browser?
 node tools/verify.mjs     # invariants: nothing on unowned land, vaults on the fence
 node tools/routing.mjs    # the Balancer divides evenly; the Sorter never misroutes
+node tools/recipes.mjs    # two feeds, two lines, one Assembler, no deadlock
 node tools/balance.mjs    # what an ordinary player actually ships, round by round
 ```
 

@@ -14,7 +14,7 @@
  */
 
 import {
-  GRID, CELL, DIRS, TYPES, KINDS, cx, cy, PRODUCER_PORT, CLAIM_START,
+  GRID, CELL, DIRS, TYPES, KINDS, cx, cy, PRODUCER_PORT, CLAIM_START, RECIPES,
 } from './machines.js';
 
 const gridPx = () => GRID * CELL;       // 96 on a 3x3, 224 on a 7x7
@@ -479,7 +479,9 @@ export function drawPanel(st, view, rect, meta = {}) {
   }
 
   const gut = st.gutter || GUTTER;
-  drawProducer(ctx, lctx, o, view, st.t, gut);
+  for (const port of view.pp || [[PRODUCER_PORT.cell, 0, view.pf || 0, view.px || 0]]) {
+    drawProducer(ctx, lctx, o, view, st.t, gut, port);
+  }
   for (const v of view.sv || []) drawSeller(ctx, lctx, o, view, st.t, gut, v);
 
   for (let i = 0; i < GRID * GRID; i++) {
@@ -495,16 +497,19 @@ export function drawPanel(st, view, rect, meta = {}) {
     const gx = R(o.x + g[2] * CELL) - 1, gy = R(o.y + g[3] * CELL) - 1;
     if (gx < rect.x || gx > rect.x + rect.w || gy < rect.y || gy > rect.y + rect.h) continue;
     const t = TYPES[ty] || TYPES[0];
+    // Brightness tracks what a gizmo is worth, not where it sits in TYPES — the
+    // Part and Product families are appended after the ladder, so an index test
+    // would light a $1 Resin like a Prism.
     if (isCopy) {
       px(ctx, gx, gy, GIZ, GIZ, shade(t.color, 0.5));
       px(ctx, gx + 1, gy, 1, 1, t.color);            // one lit corner, so it still reads
-      if (ty >= 4) glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.16);
+      if (t.value >= 30) glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.16);
       continue;
     }
     px(ctx, gx, gy, GIZ, GIZ, t.color);
     px(ctx, gx + 1, gy, 1, 1, t.glow);               // highlight, keeps it from reading flat
-    if (ty >= 5) glowPx(lctx, gx + 1, gy + 1, t.glow, 5, 0.5);
-    else if (ty >= 2) glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.36);
+    if (t.value >= 60) glowPx(lctx, gx + 1, gy + 1, t.glow, 5, 0.5);
+    else if (t.value >= 4) glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.36);
     else glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.2);
   }
 
@@ -655,6 +660,31 @@ function drawMachine(ctx, lctx, x, y, m, t) {
       if (pulse > 0.5) glowPx(lctx, R(cxp) - 1, R(cyp) - 1, core.glow, 4, 0.4 * pulse);
       break;
     }
+    case 'asm': {
+      // Two intakes that are visibly different, because the whole machine is about
+      // two things being different: each mouth is painted in its ingredient's
+      // colour, and the bay in the middle glows the colour of what comes out.
+      const r = RECIPES[m.m ?? 0] || RECIPES[0];
+      const inA = TYPES[r.ins[0]] || TYPES[0];
+      const inB = TYPES[r.ins[1]] || TYPES[0];
+      const out = TYPES[r.out] || TYPES[0];
+      rp(ctx, cxp, cyp, d, -13, -11, 7, 8, '#0e1020');
+      rp(ctx, cxp, cyp, d, -13, 3, 7, 8, '#0e1020');
+      rp(ctx, cxp, cyp, d, -12, -10, 5, 6, inA.color);
+      rp(ctx, cxp, cyp, d, -12, 4, 5, 6, inB.color);
+      // the bay
+      rp(ctx, cxp, cyp, d, -6, -8, 15, 16, '#0b0d16');
+      rp(ctx, cxp, cyp, d, -4, -6, 11, 12, shade(trim, 0.45));
+      const beat = 0.5 + 0.5 * Math.sin(t * 4);
+      rp(ctx, cxp, cyp, d, -2, -4, 7, 8, beat > 0.55 ? out.color : shade(out.color, 0.55));
+      rp(ctx, cxp, cyp, d, 0, -2, 3, 4, beat > 0.55 ? out.glow : out.color);
+      // the arm that swings across the bay
+      const arm = Math.floor((t * 5) % 2) ? -5 : 3;
+      rp(ctx, cxp, cyp, d, -5, arm, 13, 2, shade(trim, 1.15));
+      rp(ctx, cxp, cyp, d, 9, -4, 4, 8, shade(trim, 1.1));     // spout
+      glowPx(lctx, R(cxp), R(cyp), out.glow, 4, 0.3 * beat);
+      break;
+    }
     case 'fuse': {
       rp(ctx, cxp, cyp, d, -12, -10, 6, 7, shade(trim, 0.75));   // two intakes
       rp(ctx, cxp, cyp, d, -12, 3, 6, 7, shade(trim, 0.75));
@@ -764,12 +794,20 @@ function chevronR(ctx, cxp, cyp, dir, side, color) {
 
 /* --------------------------------------------------------- producer/seller --- */
 
-function drawProducer(ctx, lctx, o, view, t, gut = GUTTER) {
-  const cell = PRODUCER_PORT.cell;
+/**
+ * The feeds. A floor may be running one or two; each is drawn in the colour of
+ * whatever it drops, so which line is Scrap and which is Resin is obvious from
+ * across the room without reading a word. `port` is [cell, type, flash, stalled]
+ * as packed by sim.viewOf.
+ */
+function drawProducer(ctx, lctx, o, view, t, gut = GUTTER, port) {
+  const cell = port[0];
+  const ty = TYPES[port[1]] || TYPES[0];
+  const flash = port[2] || 0;
+  const stalled = port[3];
   const y = o.y + cy(cell) * CELL;
-  const flash = view.pf || 0;
 
-  if (gut < 24) return drawSlimProducer(ctx, lctx, o.x - gut + 1, y, flash, t, view);
+  if (gut < 24) return drawSlimProducer(ctx, lctx, o.x - gut + 1, y, flash, t, view, ty, stalled);
 
   const x = o.x - gut + 2;
   px(ctx, x, y + 2, 20, CELL - 4, '#0c0e18');
@@ -781,32 +819,31 @@ function drawProducer(ctx, lctx, o, view, t, gut = GUTTER) {
   px(ctx, x + 4, y + 8, 12, 11, '#161a2a');
   px(ctx, x + 5, y + 9, 10, 2, '#242a3c');
   const bob = Math.floor((t * 6) % 2) * 2;
-  px(ctx, x + 6, y + 12 + bob, 8, 4, flash > 0.3 ? '#ffffff' : '#8b93a8');
-  px(ctx, x + 6, y + 12 + bob, 8, 1, '#c3cbdb');
+  px(ctx, x + 6, y + 12 + bob, 8, 4, flash > 0.3 ? '#ffffff' : shade(ty.color, 0.9));
+  px(ctx, x + 6, y + 12 + bob, 8, 1, ty.glow);
   // gauge: green while it is dropping gizmos, amber when the floor has no room left
-  const stalled = view.px;
   px(ctx, x + 5, y + 22, 4, 3,
     stalled ? ((t * 3) % 1 < 0.5 ? '#ffcd75' : '#6b5a24') : flash > 0.2 ? '#a7f070' : '#3f7a2c');
-  // nozzle into the floor
+  // nozzle into the floor, in the colour of whatever comes out of it
   px(ctx, x + 18, y + 12, 6, 8, '#5a6480');
-  px(ctx, x + 20, y + 14, 4, 4, flash > 0.2 ? '#ffffff' : '#c3cbdb');
-  if (flash > 0.05) glowPx(lctx, x + 21, y + 15, '#c3cbdb', 4, 0.5 * flash);
+  px(ctx, x + 20, y + 14, 4, 4, flash > 0.2 ? '#ffffff' : ty.color);
+  if (flash > 0.05) glowPx(lctx, x + 21, y + 15, ty.glow, 4, 0.5 * flash);
   for (let i = 1; i < (view.pl || 1); i++) px(ctx, x + 3 + (i - 1) * 4, y + CELL - 8, 2, 4, '#ffe9a8');
 }
 
 /** Producer for a narrow gutter: same idea, 18 pixels wide instead of 26. */
-function drawSlimProducer(ctx, lctx, x, y, flash, t, view) {
+function drawSlimProducer(ctx, lctx, x, y, flash, t, view, ty = TYPES[0], stalled = 0) {
   px(ctx, x, y + 4, 14, CELL - 8, '#0c0e18');
   px(ctx, x + 1, y + 6, 12, CELL - 12, '#3a4257');
   px(ctx, x + 1, y + 6, 12, 2, '#5a6480');
   px(ctx, x + 2, y + 10, 10, 8, '#161a2a');
   const bob = Math.floor((t * 6) % 2) * 2;
-  px(ctx, x + 4, y + 12 + bob, 6, 3, flash > 0.3 ? '#ffffff' : '#8b93a8');
+  px(ctx, x + 4, y + 12 + bob, 6, 3, flash > 0.3 ? '#ffffff' : shade(ty.color, 0.9));
   px(ctx, x + 3, y + 20, 3, 2,
-    view.px ? ((t * 3) % 1 < 0.5 ? '#ffcd75' : '#6b5a24') : flash > 0.2 ? '#a7f070' : '#3f7a2c');
+    stalled ? ((t * 3) % 1 < 0.5 ? '#ffcd75' : '#6b5a24') : flash > 0.2 ? '#a7f070' : '#3f7a2c');
   px(ctx, x + 13, y + 13, 5, 6, '#5a6480');
-  px(ctx, x + 15, y + 15, 3, 2, flash > 0.2 ? '#ffffff' : '#c3cbdb');
-  if (flash > 0.05) glowPx(lctx, x + 16, y + 15, '#c3cbdb', 3, 0.5 * flash);
+  px(ctx, x + 15, y + 15, 3, 2, flash > 0.2 ? '#ffffff' : ty.color);
+  if (flash > 0.05) glowPx(lctx, x + 16, y + 15, ty.glow, 3, 0.5 * flash);
   for (let i = 1; i < (view.pl || 1); i++) px(ctx, x + 2 + (i - 1) * 3, y + CELL - 10, 2, 3, '#ffe9a8');
 }
 

@@ -15,6 +15,7 @@ import {
   moverCost, moverFree, SCRAP_RATE, UP_STEP, UTIL_STEP, SHOP_STEP,
   producerCycle, producerCost, sellerMult, sellerCost, shopCost, costMult,
   GRID, CLAIM_START, SECOND_VAULT_CLAIM, expandCost,
+  RECIPES, recipeText, RESIN_CLAIM, FAM_START, FAM_LEN, ALLOY, PART, PRODUCT, price,
   ORDER_GROWTH, ORDER_FLOOR_GROWTH, ORDER_BONUS,
 } from './machines.js';
 
@@ -44,9 +45,11 @@ const LEVELS = {
     'Refuses to downgrade: anything already above its tier passes through untouched.'],
   fuse: ['Two gizmos in, one of the next tier out.', '30% faster.',
     'A matching pair jumps two tiers instead of one.'],
+  asm: ['One of each ingredient in, one product out.', '30% faster.',
+    'Twice the speed of level 1 — the cheapest way to double a recipe line.'],
 };
 
-const BUILDABLE = ['pipe', 'store', 'bal', 'sort', 'dup', 'trident', 'fuse'];
+const BUILDABLE = ['pipe', 'store', 'bal', 'sort', 'dup', 'trident', 'fuse', 'asm'];
 
 /**
  * Exits a machine fires into, in its own frame, facing east. Read from the
@@ -159,11 +162,19 @@ function build() {
     + `level, and the line you built in round one is still the line you are running in round `
     + `eight. At ${SECOND_VAULT_CLAIM} x ${SECOND_VAULT_CLAIM} a second vault opens on the far corner of the same face, `
     + 'and that is the point at which running two arms starts to pay for the slots.'));
-  plot.appendChild(table(['Plot', 'Slots', 'Cost to claim', 'Vaults', 'Cheap belts / round'],
+  plot.appendChild(el('p', 'ht-custody',
+    `Land is also how the factory gets its second half. At ${RESIN_CLAIM} x ${RESIN_CLAIM} a second Producer `
+    + 'bolts onto the west face one row below the first and starts dropping Resin — the '
+    + 'material every recipe needs and nothing else makes. Nine slots is not enough floor '
+    + 'to run two feeds into an Assembler, which is why it waits for the first ring rather '
+    + 'than being there from the start.'));
+  plot.appendChild(table(['Plot', 'Slots', 'Cost to claim', 'Feeds', 'Vaults', 'Cheap routing / round'],
     Array.from({ length: GRID - CLAIM_START + 1 }, (_, i) => {
       const n = CLAIM_START + i;
       return [`${n} x ${n}`, String(n * n),
         { v: n < GRID ? money(expandCost(n)) : 'the fence', cls: n < GRID ? 'ht-buy' : 'ht-dim' },
+        { v: n >= RESIN_CLAIM ? 'Scrap + Resin' : 'Scrap',
+          cls: n >= RESIN_CLAIM ? 'ht-sell' : 'ht-dim' },
         String(n >= SECOND_VAULT_CLAIM ? 2 : 1),
         String(moverFree(n))];
     })));
@@ -180,6 +191,35 @@ function build() {
     + `${Math.round(ORDER_FLOOR_GROWTH * 100 - 100)}%, so standing still stops paying. The bonus is ${Math.round(ORDER_BONUS * 100)}% of the target, which means a `
     + 'bigger factory is chasing a bigger prize.'));
   body.appendChild(ord);
+
+  /* --- recipes ----------------------------------------------------------- */
+  const rec = section('RECIPES',
+    'A Fuser eats two of anything and climbs one rung. An Assembler eats two '
+    + 'specific different things and makes a third — and that is the whole difference '
+    + 'between a floor that is a line and a floor that is a factory. The two '
+    + 'ingredients cannot come from the same place, so two lines have to meet.');
+  rec.appendChild(table(['Assembler', 'Recipe', 'Cycle', 'Output', 'Rate', 'Base'],
+    RECIPES.map((r, i) => [
+      TYPES[r.out].name,
+      recipeText(r),
+      r2(r.cycle) + 's',
+      money(TYPES[r.out].value),
+      { v: r2(TYPES[r.out].value / r.cycle) + '/s',
+        sub: 'ingredients ' + money(TYPES[r.ins[0]].value + TYPES[r.ins[1]].value) },
+      { v: money(price({ kind: 'asm', mut: i })), cls: 'ht-buy' },
+    ])));
+  rec.appendChild(el('p', 'ht-custody',
+    'An Assembler will not take a second of an ingredient it is already holding, and '
+    + 'will not take anything that is not an ingredient at all. That is deliberate: a '
+    + 'machine that swallowed whatever arrived would fill both hands with Cord and wait '
+    + 'forever. Instead the belt feeding it the wrong thing backs up, visibly, which is '
+    + 'the same signal every other jam on the floor gives you.'));
+  rec.appendChild(el('p', 'ht-note',
+    'A slot running an Assembler earns roughly three times what a slot running a Mutator '
+    + 'does. It also needs four or five slots behind it to keep fed, and twice the raw '
+    + 'material — so recipes are what you build when the floor has outgrown the feeds, '
+    + 'not what you open with.'));
+  body.appendChild(rec);
 
   /* --- reading a floor --------------------------------------------------- */
   const read = section('READING A FLOOR',
@@ -310,8 +350,11 @@ function build() {
   const pair = el('div', 'ht-pair');
 
   const prod = el('div', 'ht-panel');
-  prod.appendChild(el('h4', null, 'PRODUCER'));
-  prod.appendChild(el('p', 'ht-note', 'Drops one Scrap into the top-left slot.'));
+  prod.appendChild(el('h4', null, 'PRODUCERS'));
+  prod.appendChild(el('p', 'ht-note',
+    `Producer A drops Scrap into the top-left slot from the first round. Producer B drops `
+    + `Resin one row below it once your plot is ${RESIN_CLAIM} x ${RESIN_CLAIM}. One level runs both, so this `
+    + `upgrade is worth roughly twice as much once the second feed is open.`));
   prod.appendChild(table(['Lv', 'Cycle', 'Rate', 'Upgrade'],
     Array.from({ length: MAX_UTIL }, (_, i) => {
       const l = i + 1, c = producerCycle(l);
@@ -369,20 +412,39 @@ function build() {
     + `A conveyor in round 8 past the allowance runs to ${money(moverCost(8, moverFree(CLAIM_START) + 2, CLAIM_START))}.`));
   body.appendChild(shop);
 
-  /* --- ladder ------------------------------------------------------------ */
-  const lad = section('GIZMO LADDER',
-    'What the seller pays per gizmo, before its own multiplier. Each tier is worth a '
-    + 'little more than two of the tier below, which is what makes fusing pay.');
-  const ul = el('ul', 'ht-ladder');
-  TYPES.forEach(t => {
-    const li = el('li');
-    li.style.setProperty('--c', t.color);
-    li.appendChild(el('span', 'ht-chip'));
-    li.appendChild(el('b', null, t.name));
-    li.appendChild(el('span', 'ht-val', money(t.value)));
-    ul.appendChild(li);
-  });
-  lad.appendChild(ul);
+  /* --- families ---------------------------------------------------------- */
+  const lad = section('THE THREE FAMILIES',
+    'What a vault pays per gizmo, before its own multiplier. Fusers climb within a '
+    + 'family and never across one; Mutators only print Alloy.');
+  const FAMS = [
+    [ALLOY, 'ALLOY', 'From Producer A. Each rung is worth a little more than two of the '
+      + 'rung below, which is what makes fusing pay. Mutators print any rung of it.'],
+    [PART, 'PART', `From Producer B, which opens at ${RESIN_CLAIM} x ${RESIN_CLAIM}. Worth almost nothing sold on `
+      + 'its own — a Part exists to be half of a recipe. Fusers climb it: two Resin make a '
+      + 'Cord, two Cords make a Frame.'],
+    [PRODUCT, 'PRODUCT', 'From an Assembler, and from nothing else. Nothing mutates or '
+      + 'fuses a Product; it goes to a vault. This is where the money is.'],
+  ];
+  const fams = el('div', 'ht-fams');
+  for (const [fam, name, note] of FAMS) {
+    const panel = el('div', 'ht-panel');
+    panel.appendChild(el('h4', null, name));
+    panel.appendChild(el('p', 'ht-note', note));
+    const ul = el('ul', 'ht-ladder');
+    for (let k = 0; k < FAM_LEN[fam]; k++) {
+      const ty = FAM_START[fam] + k;
+      const t = TYPES[ty];
+      const li = el('li');
+      li.style.setProperty('--c', t.color);
+      li.appendChild(el('span', 'ht-chip'));
+      li.appendChild(el('b', null, t.name));
+      li.appendChild(el('span', 'ht-val', money(t.value)));
+      ul.appendChild(li);
+    }
+    panel.appendChild(ul);
+    fams.appendChild(panel);
+  }
+  lad.appendChild(fams);
   body.appendChild(lad);
 
   void DIR_NAME;

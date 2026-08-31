@@ -13,6 +13,7 @@ import {
   rollShop, rng, price, label, describe, setGridSize, GRID,
   routeCost, moverFree, ROUTE_KINDS, KINDS, TYPES, DIR_NAME,
   CLAIM_START, expandCost, firstOrder, nextOrder, orderBonus, SECOND_VAULT_CLAIM,
+  RECIPES, RESIN_CLAIM,
 } from './machines.js';
 
 /**
@@ -319,9 +320,9 @@ export function createEngine(cfgIn = {}) {
       p.f.cash -= cost;
       const n = expandFloor(p.f);
       p.sellerSpots = p.f.seller.spots.map(v => ({ cell: v.cell, dir: v.dir }));
-      note(p, n === SECOND_VAULT_CLAIM
-        ? `${n}x${n} — a second vault opened`
-        : `${n}x${n} — the vault moved out`);
+      note(p, n === RESIN_CLAIM ? `${n}x${n} — a Resin feed opened`
+        : n === SECOND_VAULT_CLAIM ? `${n}x${n} — a second vault opened`
+          : `${n}x${n} — the vault moved out`);
       return;
     }
 
@@ -372,7 +373,8 @@ export function createEngine(cfgIn = {}) {
       opts: p.shop.opts.map(s => ({
         kind: s.kind, mut: s.mut, dir: s.dir,
         name: label(s), desc: describe(s), cost: s.cost ?? price(s),
-        tint: s.kind === 'mut' ? TYPES[s.mut].color : null,
+        tint: s.kind === 'mut' ? TYPES[s.mut].color
+          : s.kind === 'asm' ? TYPES[RECIPES[s.mut ?? 0].out].color : null,
       })),
       bought: p.shop.bought,
       done: p.shop.done,

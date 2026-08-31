@@ -10,7 +10,7 @@ import { Stage, drawPanel, playFx, PLAYER_COLORS } from './render.js';
 import {
   KINDS, DIR_NAME, MAX_LEVEL, MAX_UTIL, GRID, setGridSize,
   upgradeCost, scrapValue, producerCost, sellerCost, label,
-  cycleTime, claimed, TYPES, ROUTE_KINDS,
+  cycleTime, claimed, describe, TYPES, ROUTE_KINDS,
 } from './machines.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -163,8 +163,10 @@ export function createController({ send }) {
     // than one path through it, and a number beats a feeling every time.
     const rate = m.r || (1 / (cycleTime(fake) || 1));
     const state = m.x ? ' · BACKED UP' : m.s ? ' · STARVED' : '';
+    // describe() knows what a configurable machine is actually set to, which for an
+    // Assembler is the whole point: the recipe is what the machine is.
     $('#sel-sub').textContent =
-      `${kind.desc} Facing ${DIR_NAME[m.d]} · ${rate.toFixed(2)}/s${state}`;
+      `${describe(spec)} Facing ${DIR_NAME[m.d]} · ${rate.toFixed(2)}/s${state}`;
     const upc = upgradeCost(fake);
     $('#btn-up').disabled = m.l >= MAX_LEVEL || (view.c < upc);
     $('#btn-up').textContent = m.l >= MAX_LEVEL ? 'MAX' : `UPGRADE $${upc}`;

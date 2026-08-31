@@ -9,10 +9,10 @@ import {
   GRID, DIRS, TYPES, MAX_TYPE, KINDS, MAX_LEVEL, MAX_UTIL,
   makeMachine, price, upgradeCost, scrapValue, cycleTime, travelTime,
   intake, outputs, exitDirs, sizeOf, capacity, EMPTY_HOLD,
-  balDirs, REROUTES, TYPED,
   producerCycle, producerCost, sellerMult, sellerCost,
   cellOf, cx, cy, inClaim, claimed, claimCells,
-  CLAIM_START, sellerSpotsFor, expandCost, PRODUCER_PORT,
+  CLAIM_START, sellerSpotsFor, expandCost, PRODUCER_PORT, activePorts,
+  balDirs, REROUTES, wants,
 } from './machines.js';
 
 const INV_CAP = 8;
@@ -31,7 +31,9 @@ export function createFactory({ cash = 120, claim = CLAIM_START } = {}) {
     claim: Math.max(CLAIM_START, Math.min(GRID, claim)),
     grid: new Array(GRID * GRID).fill(null),
     inv: [],
-    producer: { level: 1, t: 0 },
+    // One level, one or more feeds. Producer A drops Scrap from the first round;
+    // Producer B drops Resin once the claim is wide enough to route two lines.
+    producer: { level: 1, ts: [0, 0], flash: [0, 0], stall: [0, 0] },
     // One shared level, one or more vaults, welded to the east face of the claim.
     // They ride outward when you buy land and never move otherwise.
     seller: { level: 1, spots: [] },
@@ -134,10 +136,20 @@ function slotLoad(f, i) {
   return (f.load[i] || 0) + (m ? machineLoad(m) : 0);
 }
 
-/** Is there room at slot `i` for one gizmo of this type? */
+/**
+ * Will slot `i` take one gizmo of this type — is there room, and does whatever is
+ * standing there want it? An Assembler that already holds a Cord says no to a
+ * second one, and the belt behind it backs up rather than jamming it shut.
+ */
 function canAccept(f, i, ty) {
+  const m = f.grid[i];
+  if (m && !wants(m, ty)) return false;
   return slotLoad(f, i) + sizeOf(ty) <= slotCap(f, i) + EPS;
 }
+
+/** The same question asked of a machine directly, for a gizmo already on its slot. */
+const machineTakes = (m, ty) =>
+  wants(m, ty) && machineLoad(m) + sizeOf(ty) <= capacity(m) + EPS;
 
 /** Recount what is resting on or flying to every slot. One pass per tick. */
 function retally(f) {
@@ -154,17 +166,21 @@ export function stepFactory(f, dt) {
   retally(f);
 
   if (f.running) {
-    f.producer.t -= dt;
-    if (f.producer.t <= 0) {
-      // The far end of the jam. With nowhere to put the next gizmo the producer
-      // simply waits at the gate rather than shovelling into a full floor.
-      if (canAccept(f, PRODUCER_PORT.cell, 0)) {
-        f.producer.t += producerCycle(f.producer.level);
-        f.producer.stall = 0;
-        spawnFromProducer(f);
+    const ports = activePorts(f.claim);
+    for (let k = 0; k < ports.length; k++) {
+      const port = ports[k];
+      f.producer.ts[k] -= dt;
+      if (f.producer.ts[k] > 0) continue;
+      // The far end of the jam. With nowhere to put the next gizmo a producer
+      // simply waits at the gate rather than shovelling into a full floor. Each
+      // feed stalls on its own, so a blocked Resin line never stops the Scrap.
+      if (canAccept(f, port.cell, port.ty)) {
+        f.producer.ts[k] += producerCycle(f.producer.level);
+        f.producer.stall[k] = 0;
+        spawnFromProducer(f, port, k);
       } else {
-        f.producer.t = 0;
-        f.producer.stall = 1;
+        f.producer.ts[k] = 0;
+        f.producer.stall[k] = 1;
       }
     }
     for (let i = 0; i < f.grid.length; i++) {
@@ -190,26 +206,28 @@ export function stepFactory(f, dt) {
       g.y = g.sy + (g.ey - g.sy) * g.p;
     } else if (g.st === 'idle') {
       const m = f.grid[g.cell];
-      if (m && machineLoad(m) + sizeOf(g.ty) <= capacity(m) + EPS) absorb(f, m, g, k);
+      if (m && machineTakes(m, g.ty)) absorb(f, m, g, k);
     }
   }
 
   for (const m of f.grid) if (m && m.flash > 0) m.flash = Math.max(0, m.flash - dt * 5);
-  if (f.producer.flash > 0) f.producer.flash = Math.max(0, f.producer.flash - dt * 5);
+  for (let k = 0; k < f.producer.flash.length; k++) {
+    if (f.producer.flash[k] > 0) f.producer.flash[k] = Math.max(0, f.producer.flash[k] - dt * 5);
+  }
   for (const v of f.seller.spots) if (v.flash > 0) v.flash = Math.max(0, v.flash - dt * 4);
 }
 
-function spawnFromProducer(f) {
+function spawnFromProducer(f, port, k) {
   if (f.gizmos.length >= maxGizmos()) return;
-  f.producer.flash = 1;
-  const { cell } = PRODUCER_PORT;
+  f.producer.flash[k] = 1;
+  const { cell, ty } = port;
   const ex = cx(cell) + 0.5, ey = cy(cell) + 0.5;
   f.gizmos.push({
-    id: f.nid++, ty: 0, cp: 0, st: 'fly',
+    id: f.nid++, ty, cp: 0, st: 'fly',
     sx: ex - 1, sy: ey, ex, ey, x: ex - 1, y: ey,
     p: 0, dur: 0.6, cell, from: -1, exit: null,
   });
-  f.fx.push({ k: 'spawn', cell });
+  f.fx.push({ k: 'spawn', cell, ty });
 }
 
 /**
@@ -335,7 +353,7 @@ function arrive(f, g, k) {
   }
 
   const m = f.grid[g.cell];
-  if (m && machineLoad(m) + sizeOf(g.ty) <= capacity(m) + EPS) { absorb(f, m, g, k); return; }
+  if (m && machineTakes(m, g.ty)) { absorb(f, m, g, k); return; }
 
   // Nothing on the floor is ever destroyed: it rests on the slot, counts against
   // that slot's room, and so turns the machine behind it away.
@@ -368,8 +386,8 @@ export function beginRound(f) {
     m.buf.length = 0; m.work.length = 0; m.out = null; m.t = 0; m.flash = 0; m.blocked = 0;
   }
   retally(f);
-  f.producer.t = 0.7;
-  f.producer.stall = 0;
+  f.producer.ts = f.producer.ts.map(() => 0.7);
+  f.producer.stall = f.producer.stall.map(() => 0);
   f.income = 0;
   f.sold = 0;
   f.lost = 0;
@@ -382,7 +400,7 @@ export function endRound(f) {
   for (const m of f.grid) if (m) {
     m.buf.length = 0; m.work.length = 0; m.out = null; m.t = 0; m.blocked = 0;
   }
-  f.producer.stall = 0;
+  f.producer.stall = f.producer.stall.map(() => 0);
   retally(f);
 }
 
@@ -584,7 +602,8 @@ export function applyAction(f, a) {
       if (f.cash < c) return no(`Need $${c}`);
       f.cash -= c;
       f.producer.level++;
-      f.producer.flash = 1;
+      // One level runs every feed, so every feed lights up.
+      f.producer.flash = f.producer.flash.map(() => 1);
       f.fx.push({ k: 'upprod' });
       return yes();
     }
@@ -651,7 +670,11 @@ export function viewOf(f) {
     }),
     v: f.inv.map(m => ({ k: m.kind, d: m.dir, l: m.level, m: m.mut })),
     z: f.gizmos.map(g => [g.id, g.ty, r2(g.x), r2(g.y), g.cp | 0]),
-    pl: f.producer.level, pf: r2(f.producer.flash || 0), px: f.producer.stall ? 1 : 0,
+    pl: f.producer.level,
+    // One entry per running feed: [cell, gizmo type, flash, stalled]
+    pp: activePorts(f.claim).map((port, k) => [
+      port.cell, port.ty, r2(f.producer.flash[k] || 0), f.producer.stall[k] ? 1 : 0,
+    ]),
     sl: f.seller.level,
     sv: f.seller.spots.map(v => [v.cell, v.dir, r2(v.flash || 0)]),
     c: Math.round(f.cash), e: Math.round(f.earned), n: Math.round(f.income),

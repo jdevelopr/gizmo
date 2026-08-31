@@ -33,18 +33,61 @@ export const DIR_NAME = ['East', 'South', 'West', 'North'];
 
 /* ------------------------------------------------------------------ gizmos --- */
 
-/** Tier ladder. Each gizmo is drawn as a single pixel in its own color. */
+/**
+ * Everything a gizmo can be, in three families.
+ *
+ * ALLOY (fam 0) is the original ladder and is untouched: Producer A drops Scrap,
+ * Mutators print any rung of it, Fusers climb it. Value roughly doubles each rung
+ * while the machine that prints it runs half as fast, so every Mutator earns about
+ * the same per slot — that equilibrium, around 4.5 $/s per production slot, is the
+ * anchor every other number in this file is set against.
+ *
+ * PART (fam 1) is what Producer B drops and what Fusers make of it. Parts are worth
+ * little on their own. They exist to be one half of a recipe.
+ *
+ * PRODUCT (fam 2) is what an Assembler makes from a Part and an Alloy. Products are
+ * terminal — nothing mutates or fuses them — and they are where the money is.
+ */
+export const ALLOY = 0, PART = 1, PRODUCT = 2;
+
 export const TYPES = [
-  { name: 'Scrap',  color: '#8b93a8', glow: '#c3cbdb', value: 1 },
-  { name: 'Copper', color: '#e08a3c', glow: '#ffc07a', value: 3 },
-  { name: 'Amber',  color: '#ffcd75', glow: '#fff0b8', value: 7 },
-  { name: 'Bloom',  color: '#a7f070', glow: '#dcffb0', value: 15 },
-  { name: 'Cobalt', color: '#41a6f6', glow: '#a8dcff', value: 32 },
-  { name: 'Void',   color: '#b55088', glow: '#ff9ad0', value: 70 },
-  { name: 'Ember',  color: '#ff5d4a', glow: '#ffb09a', value: 150 },
-  { name: 'Prism',  color: '#ffffff', glow: '#ffffff', value: 320 },
+  // --- alloy: the ladder, from Producer A ---
+  { name: 'Scrap',   color: '#8b93a8', glow: '#c3cbdb', value: 1,   fam: ALLOY, tier: 0 },
+  { name: 'Copper',  color: '#e08a3c', glow: '#ffc07a', value: 3,   fam: ALLOY, tier: 1 },
+  { name: 'Amber',   color: '#ffcd75', glow: '#fff0b8', value: 7,   fam: ALLOY, tier: 2 },
+  { name: 'Bloom',   color: '#a7f070', glow: '#dcffb0', value: 15,  fam: ALLOY, tier: 3 },
+  { name: 'Cobalt',  color: '#41a6f6', glow: '#a8dcff', value: 32,  fam: ALLOY, tier: 4 },
+  { name: 'Void',    color: '#b55088', glow: '#ff9ad0', value: 70,  fam: ALLOY, tier: 5 },
+  { name: 'Ember',   color: '#ff5d4a', glow: '#ffb09a', value: 150, fam: ALLOY, tier: 6 },
+  { name: 'Prism',   color: '#ffffff', glow: '#ffffff', value: 320, fam: ALLOY, tier: 7 },
+  // --- part: from Producer B, climbed with Fusers ---
+  { name: 'Resin',   color: '#2fb98f', glow: '#8ff0d0', value: 1,   fam: PART, tier: 0 },
+  { name: 'Cord',    color: '#4fd8bb', glow: '#b6fff0', value: 4,   fam: PART, tier: 1 },
+  { name: 'Frame',   color: '#7fe8ff', glow: '#d6f7ff', value: 12,  fam: PART, tier: 2 },
+  // --- product: from Assemblers, and nothing else ---
+  { name: 'Engine',  color: '#ff9d3c', glow: '#ffd9a0', value: 34,  fam: PRODUCT, tier: 0 },
+  { name: 'Turbine', color: '#ff6fae', glow: '#ffc4de', value: 132, fam: PRODUCT, tier: 1 },
+  { name: 'Reactor', color: '#c8a2ff', glow: '#e8dcff', value: 430, fam: PRODUCT, tier: 2 },
 ];
 export const MAX_TYPE = TYPES.length - 1;
+
+/** Where each family starts in TYPES, and how many rungs it has. */
+export const FAM_START = [0, 8, 11];
+export const FAM_LEN = [8, 3, 3];
+export const LADDER_MAX = FAM_LEN[ALLOY] - 1;
+
+export const famOf = ty => TYPES[ty]?.fam ?? ALLOY;
+export const tierOf = ty => TYPES[ty]?.tier ?? 0;
+
+/** The rung `step` above this one, within its own family. Clamped at the top. */
+export function upFam(ty, step = 1) {
+  const t = TYPES[ty];
+  if (!t) return ty;
+  return FAM_START[t.fam] + Math.min(FAM_LEN[t.fam] - 1, t.tier + step);
+}
+
+/** Raw feedstock: loose stuff, and the only types a Producer ever drops. */
+export const RAW = [0, 8];
 
 /* ---------------------------------------------------------------- machines --- */
 
@@ -100,6 +143,18 @@ export const KINDS = {
     price: 0, cycle: 1.04, cap: 1, hold: 2, travel: 0.52,
     body: '#3b2f5e', trim: '#7a63bf', lit: '#b58cff',
   },
+  asm: {
+    name: 'Assembler', short: 'ASSEMBLER',
+    // The machine the whole game was missing. A Fuser eats two of anything and
+    // climbs one rung; an Assembler eats two SPECIFIC different things and makes a
+    // third. That difference is what turns a floor from a tree into a graph: the
+    // two ingredients cannot come from the same place, so two lines have to meet.
+    desc: 'Holds one of each ingredient and builds a product. It will not accept a '
+      + 'second of an ingredient it already has, so a line feeding it the wrong thing '
+      + 'backs up instead of jamming it shut.',
+    price: 0, cycle: 2.4, cap: 2, hold: 3, travel: 0.52,
+    body: '#4a3a10', trim: '#d8a83f', lit: '#ffe08a',
+  },
   fuse: {
     name: 'Fuser', short: 'FUSER',
     desc: 'Holds two gizmos and melts them into one of the next tier. Two originals make an original.',
@@ -110,6 +165,27 @@ export const KINDS = {
 
 /** Mutators are priced by the tier they output. */
 export const MUT_PRICE = [0, 72, 102, 144, 192, 264, 372, 510];
+
+/**
+ * Assembler recipes. `mut` on an Assembler is the index into this list.
+ *
+ * Each one costs more raw material than climbing the ladder with the same Alloy
+ * would, and pays back far more per slot — an Assembler is roughly three times a
+ * Mutator's $/s. That is the trade: recipes are the best use of a slot in the game
+ * and the worst use of a Producer, so they are what you build once the floor is
+ * bigger than the raw feeding it.
+ */
+export const RECIPES = [
+  { ins: [9, 2], out: 11, cycle: 2.4, price: 190 },    // Cord  + Amber  -> Engine
+  { ins: [10, 4], out: 12, cycle: 3.6, price: 430 },   // Frame + Cobalt -> Turbine
+  { ins: [10, 6], out: 13, cycle: 4.8, price: 880 },   // Frame + Ember  -> Reactor
+];
+
+export const recipeOf = m => RECIPES[m?.mut ?? 0] || RECIPES[0];
+
+/** A recipe written out, for the shop card and the manual. */
+export const recipeText = r =>
+  `${TYPES[r.ins[0]].name} + ${TYPES[r.ins[1]].name} \u2192 ${TYPES[r.out].name}`;
 
 export const KIND_LIST = Object.keys(KINDS);
 
@@ -134,18 +210,27 @@ export function makeMachine(spec, id) {
 }
 
 export function price(spec) {
-  return spec.kind === 'mut' ? MUT_PRICE[spec.mut] : KINDS[spec.kind].price;
+  if (spec.kind === 'mut') return MUT_PRICE[spec.mut];
+  if (spec.kind === 'asm') return (RECIPES[spec.mut ?? 0] || RECIPES[0]).price;
+  return KINDS[spec.kind].price;
 }
 
-/** Machines whose `mut` field names a gizmo type rather than a tier to print. */
+/**
+ * `mut` is every configurable machine's one configuration number, read differently
+ * depending on the kind: the tier a Mutator prints, the type a Sorter filters, the
+ * recipe an Assembler builds. One field keeps it on the wire, in the shop card and
+ * in makeMachine without three parallel code paths.
+ */
 export const TYPED = { mut: 'Mutator', sort: 'Sorter' };
 
 export function label(spec) {
+  if (spec.kind === 'asm') return `${TYPES[recipeOf(spec).out].name} Assembler`;
   const t = TYPED[spec.kind];
   return t ? `${TYPES[spec.mut ?? 1].name} ${t}` : KINDS[spec.kind].name;
 }
 
 export function describe(spec) {
+  if (spec.kind === 'asm') return `${recipeText(recipeOf(spec))}. Both ingredients, every time.`;
   if (spec.kind === 'mut') return `Rewrites any gizmo into ${TYPES[spec.mut].name}.`;
   if (spec.kind === 'sort') {
     return `${TYPES[spec.mut ?? 1].name} goes out to the side; everything else goes straight ahead.`;
@@ -281,7 +366,9 @@ export function scrapValue(m) {
  * the economy on round two.
  */
 export function cycleTime(m) {
-  const base = m.kind === 'mut' ? MUT_CYCLE[m.mut ?? 1] : KINDS[m.kind].cycle;
+  const base = m.kind === 'mut' ? MUT_CYCLE[m.mut ?? 1]
+    : m.kind === 'asm' ? recipeOf(m).cycle
+      : KINDS[m.kind].cycle;
   // A Storage level buys capacity instead, so its pace never changes.
   if (m.kind === 'store') return base;
   return base * Math.pow(0.7, m.level - 1);
@@ -308,7 +395,7 @@ export function intake(m) {
  * space of one finished gizmo, so the front of a line flows freely and the squeeze
  * only starts once something has been made of it.
  */
-export const sizeOf = ty => (ty === 0 ? 0.5 : 1);
+export const sizeOf = ty => (RAW.includes(ty) ? 0.5 : 1);
 
 /**
  * Total room inside a machine, in gizmo units: everything in its hands plus
@@ -380,10 +467,12 @@ export function outputs(m, inputs) {
     }
 
     case 'mut': {
-      // A level 3 mutator refuses to downgrade what it is given. Rewriting a copy
-      // does not make it an original — only fusing does that.
-      const ty = (m.level >= 3 && a > m.mut) ? a : m.mut;
-      return [{ ty, dir: d, cp: copy }];
+      // A level 3 mutator refuses to downgrade what it is given. That comparison
+      // only means anything within the ladder: a Part or a Product is not "above"
+      // Cobalt, it is somewhere else entirely, and feeding one in rewrites it. That
+      // is a legitimate, lossy use of a Part — a second raw feed for the ladder.
+      const higher = m.level >= 3 && famOf(a) === ALLOY && a > (m.mut ?? 1);
+      return [{ ty: higher ? a : (m.mut ?? 1), dir: d, cp: copy }];
     }
 
     case 'fuse': {
@@ -393,12 +482,58 @@ export function outputs(m, inputs) {
       // Without this, a fuser would launder copies back into copyable stock and
       // the doubler chain would compound all over again.
       const cp = (inputs[0]?.cp || inputs[1]?.cp) ? 1 : 0;
-      return [{ ty: Math.min(MAX_TYPE, Math.max(a, b) + step), dir: d, cp }];
+      // A Fuser climbs whichever family it was fed — Scrap up the ladder, Resin up
+      // to Cord and Frame. It only ever holds one family at a time, because `wants`
+      // turns the other one away at the mouth.
+      const top = tierOf(a) >= tierOf(b) ? a : b;
+      return [{ ty: upFam(top, step), dir: d, cp }];
+    }
+
+    case 'asm': {
+      // Both ingredients are already in hand — `wants` made sure of it — so the
+      // only question left is where the product goes.
+      const r = recipeOf(m);
+      const cp = (inputs[0]?.cp && inputs[1]?.cp) ? 1 : 0;
+      return [{ ty: r.out, dir: d, cp }];
     }
 
     default:
       return [];
   }
+}
+
+/**
+ * Will this machine take one more gizmo of this type right now?
+ *
+ * Room is not the only question any more. An Assembler that accepted a second Cord
+ * before its Amber arrived would fill both hands with the same ingredient and sit
+ * there forever, so it refuses an ingredient it already has and refuses anything
+ * that is not an ingredient at all. A Fuser refuses to mix families for the same
+ * reason. Everything else takes whatever fits.
+ *
+ * The line feeding a machine that says no simply backs up, which is the behaviour
+ * the whole simulation is built on — a wrongly-aimed belt now stalls visibly
+ * instead of poisoning a machine.
+ *
+ * @param {object} m the machine, whose `buf` is the queue at its mouth
+ * @param {number} ty gizmo type arriving
+ */
+export function wants(m, ty) {
+  if (!m) return true;
+  if (m.kind === 'asm') {
+    const need = recipeOf(m).ins.slice();
+    for (const g of m.buf) {
+      const k = need.indexOf(g.ty);
+      if (k >= 0) need.splice(k, 1);
+    }
+    return need.includes(ty);
+  }
+  if (m.kind === 'fuse') {
+    if (famOf(ty) === PRODUCT) return false;      // products are terminal
+    if (!m.buf.length) return true;
+    return famOf(m.buf[0].ty) === famOf(ty);
+  }
+  return true;
 }
 
 /**
@@ -481,8 +616,27 @@ export function sellerSpotsFor(claim) {
   return spots;
 }
 
-/** The producer bolts onto the west face of the top-left slot. */
-export const PRODUCER_PORT = { cell: 0, dir: 2 };
+/**
+ * The producers bolt onto the west face of the floor. A drops Scrap into the
+ * top-left slot and is there from the first round. B drops Resin one row down and
+ * opens when you claim your first ring of land — nine slots is not enough floor to
+ * run two feeds into a recipe, and the round-one game should still be the simple
+ * one. Both run at the same level: one PRODUCER upgrade speeds up both, which is
+ * what makes that upgrade worth its price once B is running.
+ */
+export const PRODUCER_PORT = { cell: 0, dir: 2, ty: 0 };
+export const RESIN_CLAIM = 4;
+export const PRODUCERS = [
+  PRODUCER_PORT,
+  { cell: 0, dir: 2, ty: 8, row: 1, claim: RESIN_CLAIM },
+];
+
+/** The producer ports actually running at this claim, with their cells resolved. */
+export function activePorts(claim) {
+  return PRODUCERS
+    .filter(p => claim >= (p.claim || 0))
+    .map(p => ({ ...p, cell: cellOf(0, p.row || 0) }));
+}
 
 /** Every point where a gizmo can leave the floor: { cell, dir }. */
 export let EXITS = [];
@@ -537,9 +691,10 @@ export function rollSpec(rnd, round) {
     ['store', 22],
     ['dup', 24],
     ['mut', 30],
-    ['fuse', 12 + round * 2],
+    ['fuse', 14 + round * 2],
+    ['asm', round >= 3 ? 10 + round * 3 : 0],
     ['trident', 6 + round],
-  ]).filter(r => !TECH_LOCKED.has(r[0]));
+  ]).filter(r => r[1] > 0 && !TECH_LOCKED.has(r[0]));
   const total = table.reduce((s, r) => s + r[1], 0);
   let n = rnd() * total;
   let kind = 'pipe';
@@ -549,6 +704,11 @@ export function rollSpec(rnd, round) {
   if (kind === 'mut') {
     const ceiling = Math.min(4, 1 + Math.floor(round / 2));
     spec.mut = 1 + Math.floor(rnd() * ceiling);
+  }
+  if (kind === 'asm') {
+    // Later rounds put the heavier recipes on the table; the Engine is always there.
+    const ceiling = Math.min(RECIPES.length, 1 + Math.floor((round - 2) / 2));
+    spec.mut = Math.floor(rnd() * ceiling);
   }
   return spec;
 }

@@ -78,6 +78,7 @@ js/game.js        per-player orders, land purchases, no seller jump
 js/render.js      unbought land, the fence, the starved badge
 js/player.js      the CLAIM LAND button, the order bar, per-machine rates
 js/howto.js       the manual, still generated from machines.js on open
+tools/lint.mjs    parses every module as a module, the way the browser will
 tools/balance.mjs an ordinary-player bot, for calibrating the numbers
 tools/verify.mjs  headless assertions over a whole match
 ```
@@ -88,11 +89,16 @@ is the original, unchanged.
 ## Checking it
 
 ```bash
+node tools/lint.mjs       # will every module parse in a browser?
 node tools/verify.mjs     # invariants: nothing on unowned land, vaults on the fence
 node tools/balance.mjs    # what an ordinary player actually ships, round by round
 ```
 
-Run both after touching any number in `machines.js`.
+Run the linter after any edit and the other two after touching a number in
+`machines.js`. The linter exists because `node --check` parses a file as CommonJS,
+where a template literal closed with the wrong quote slips through and then breaks
+the page on load — it copies each file to `.mjs` first so the parse matches the
+browser's.
 
 ## Running it
 

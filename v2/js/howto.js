@@ -171,7 +171,7 @@ function build() {
     `The target is not a fixed number — it is ${Math.round(ORDER_GROWTH * 100 - 100)}% more than your own best round so far. `
     + 'That means it asks a first-timer and a veteran the same question in their own terms: '
     + 'is your factory shipping more than it ever has? Even a flat round raises the bar by '
-    + `${Math.round(ORDER_FLOOR_GROWTH * 100 - 100)}%, so standing still stops paying. The bonus is ${Math.round(ORDER_BONUS * 100)}% of the target, which means a '
+    + `${Math.round(ORDER_FLOOR_GROWTH * 100 - 100)}%, so standing still stops paying. The bonus is ${Math.round(ORDER_BONUS * 100)}% of the target, which means a `
     + 'bigger factory is chasing a bigger prize.'));
   body.appendChild(ord);
 

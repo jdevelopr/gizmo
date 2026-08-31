@@ -173,7 +173,11 @@ export function startHost(show) {
 
   engine.on('phase', (ph, info) => {
     const t = engine.timer;
-    if (ph === 'plan') say(`ROUND ${info.round}`, info.round > 1 ? 'THE SELLER HAS MOVED' : 'PLAN YOUR LINE', 2.6);
+    if (ph === 'plan') {
+      const sub = info.newSeller ? 'A SECOND VAULT HAS OPENED'
+        : info.round > 1 ? 'THE SELLERS HAVE MOVED' : 'PLAN YOUR LINE';
+      say(`ROUND ${info.round}`, sub, info.newSeller ? 3.4 : 2.6);
+    }
     if (ph === 'run') { say('SHIP IT', '', 1.2); stage.shake(4); }
     if (ph === 'tally') say('ROUND OVER', '', 2);
     if (ph === 'shop') say('WORKSHOP', 'ONE MACHINE EACH', 2);

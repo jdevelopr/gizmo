@@ -187,7 +187,10 @@ export function createController({ send }) {
     const bp = $('#btn-prod'), bs = $('#btn-sell');
     bp.textContent = view.pl >= MAX_UTIL ? 'PRODUCER MAX' : `PRODUCER L${view.pl} · $${pc}`;
     bp.disabled = view.pl >= MAX_UTIL || view.c < pc;
-    bs.textContent = view.sl >= MAX_UTIL ? 'SELLER MAX' : `SELLER L${view.sl} · $${sc}`;
+    const vaults = (view.sv || []).length;
+    bs.textContent = view.sl >= MAX_UTIL
+      ? (vaults > 1 ? 'SELLERS MAX' : 'SELLER MAX')
+      : `${vaults > 1 ? 'SELLERS' : 'SELLER'} L${view.sl} · $${sc}`;
     bs.disabled = view.sl >= MAX_UTIL || view.c < sc;
   }
 
@@ -206,9 +209,15 @@ export function createController({ send }) {
       ? 'MATCH OVER'
       : `R${hud.r}/${hud.rs} · ${phaseLabel} · ${t}s`;
     $('#pad-phase').dataset.ph = hud.ph;
-    const spot = hud.spot ? `Seller: ${hud.spot.toLowerCase()} face.` : 'Seller moved.';
+    const faces = (hud.spots || []).map(d => d.toLowerCase());
+    const where = !faces.length ? 'Sellers moved.'
+      : faces.length === 1 ? `Seller: ${faces[0]} face.`
+        : `Sellers: ${faces.join(' and ')} faces.`;
+    const plan = hud.newSeller
+      ? `${where} A second vault just opened — feed both. Belts aim themselves.`
+      : `${where} Lay conveyors to reach ${faces.length > 1 ? 'them' : 'it'} — they aim themselves. Then ready up.`;
     $('#pad-hint').textContent = hud.ph === 'plan'
-      ? `${spot} Lay conveyors to reach it — they aim themselves. Then ready up.`
+      ? plan
       : hud.ph === 'run' ? 'Keep re-routing — the floor stays live.'
         : hud.ph === 'shop' ? 'Buy one machine, then hit READY.'
           : hud.ph === 'tally' ? `Round income $${view.n}.` : '';

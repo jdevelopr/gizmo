@@ -14,6 +14,7 @@ import {
 
 const MAX_IDLE_PER_CELL = 10;   // a full slot starts destroying arrivals
 const INV_CAP = 8;
+const MAX_SELLERS = 2;
 
 /** Hard ceiling on live gizmos: enough to fill a floor, few enough to send 15x a second. */
 const maxGizmos = () => Math.min(400, 24 * GRID * GRID + 60);
@@ -24,7 +25,9 @@ export function createFactory({ cash = 40 } = {}) {
     grid: new Array(GRID * GRID).fill(null),
     inv: [],
     producer: { level: 1, t: 0 },
-    seller: { level: 1, cell: 2, dir: 0 },
+    // One shared level, one or more vaults. A second vault opens halfway through
+    // the match, which is the point at which routing to two places is worth a Splitter.
+    seller: { level: 1, spots: [{ cell: 2, dir: 0, flash: 0 }] },
     gizmos: [],
     cash,
     earned: 0,
@@ -46,7 +49,7 @@ export function createFactory({ cash = 40 } = {}) {
 export function starterKit(f) {
   place(f, makeMachine({ kind: 'dup', dir: 0 }, f.nid++), 0);
   for (let i = 1; i < GRID; i++) place(f, makeMachine({ kind: 'pipe', dir: 0 }, f.nid++), i);
-  f.seller = { level: 1, cell: GRID - 1, dir: 0 };
+  f.seller.spots = [{ cell: GRID - 1, dir: 0, flash: 0 }];
 }
 
 function place(f, m, i) { f.grid[i] = m; }
@@ -85,7 +88,7 @@ export function stepFactory(f, dt) {
 
   for (const m of f.grid) if (m && m.flash > 0) m.flash = Math.max(0, m.flash - dt * 5);
   if (f.producer.flash > 0) f.producer.flash = Math.max(0, f.producer.flash - dt * 5);
-  if (f.seller.flash > 0) f.seller.flash = Math.max(0, f.seller.flash - dt * 4);
+  for (const v of f.seller.spots) if (v.flash > 0) v.flash = Math.max(0, v.flash - dt * 4);
 }
 
 function spawnFromProducer(f) {
@@ -96,7 +99,7 @@ function spawnFromProducer(f) {
   f.gizmos.push({
     id: f.nid++, ty: 0, cp: 0, st: 'fly',
     sx: ex - 1, sy: ey, ex, ey, x: ex - 1, y: ey,
-    p: 0, dur: 0.3, cell, from: -1, exit: null,
+    p: 0, dur: 0.6, cell, from: -1, exit: null,
   });
   f.fx.push({ k: 'spawn', cell });
 }
@@ -138,8 +141,8 @@ function emit(f, from, out, dur, n, total) {
 
 function arrive(f, g, k) {
   if (g.exit !== null) {
-    const s = f.seller;
-    if (s.cell === g.from && s.dir === g.exit) sell(f, g);
+    const vault = f.seller.spots.find(v => v.cell === g.from && v.dir === g.exit);
+    if (vault) sell(f, g, vault);
     else {
       f.lost++;
       f.fx.push({ k: 'lost', ty: g.ty, x: g.ex, y: g.ey });
@@ -170,14 +173,14 @@ function absorb(f, m, g, k) {
   f.gizmos.splice(k, 1);
 }
 
-function sell(f, g) {
+function sell(f, g, vault) {
   const v = Math.max(1, Math.round(TYPES[g.ty].value * sellerMult(f.seller.level)));
   f.cash += v;
   f.earned += v;
   f.income += v;
   f.sold++;
-  f.seller.flash = 1;
-  f.fx.push({ k: 'sell', v, ty: g.ty, cell: f.seller.cell, dir: f.seller.dir, x: g.ex, y: g.ey });
+  vault.flash = 1;
+  f.fx.push({ k: 'sell', v, ty: g.ty, cell: vault.cell, dir: vault.dir, x: g.ex, y: g.ey });
 }
 
 /* ----------------------------------------------------------------- rounds --- */
@@ -185,7 +188,7 @@ function sell(f, g) {
 export function beginRound(f) {
   f.gizmos.length = 0;
   for (const m of f.grid) if (m) { m.buf.length = 0; m.t = 0; m.flash = 0; }
-  f.producer.t = 0.35;
+  f.producer.t = 0.7;
   f.income = 0;
   f.sold = 0;
   f.lost = 0;
@@ -198,13 +201,46 @@ export function endRound(f) {
   for (const m of f.grid) if (m) m.buf.length = 0;
 }
 
-/** Jump the seller to a different face of the floor. Returns the new spot. */
+const key = s => `${s.cell}:${s.dir}`;
+const draw = (pool, rnd) => pool[Math.floor(rnd() * pool.length) % pool.length];
+
+/**
+ * Jump every vault to a face it was not on last round. With two vaults open they
+ * are pushed onto different edges where possible, so the round's problem is
+ * genuinely "feed two places at once" rather than "feed two adjacent slots".
+ * @returns {Array<{cell:number,dir:number}>} the new spots, in vault order
+ */
 export function moveSeller(f, rnd = Math.random) {
-  const spots = SELLER_SPOTS.filter(s => !(s.cell === f.seller.cell && s.dir === f.seller.dir));
-  const pick = spots[Math.floor(rnd() * spots.length) % spots.length];
-  f.seller.cell = pick.cell;
-  f.seller.dir = pick.dir;
-  return pick;
+  const was = new Set(f.seller.spots.map(key));
+  const taken = new Set();
+  const dirs = new Set();
+
+  for (const v of f.seller.spots) {
+    const free = SELLER_SPOTS.filter(o => !taken.has(key(o)));
+    const fresh = free.filter(o => !was.has(key(o)));
+    const spread = fresh.filter(o => !dirs.has(o.dir));
+    const pick = draw(spread.length ? spread : fresh.length ? fresh : free, rnd);
+    v.cell = pick.cell;
+    v.dir = pick.dir;
+    taken.add(key(pick));
+    dirs.add(pick.dir);
+  }
+  return f.seller.spots.map(v => ({ cell: v.cell, dir: v.dir }));
+}
+
+/**
+ * Open one more vault, on a different edge from the ones already trading.
+ * @returns {{cell:number,dir:number}|null} null if the floor already has it
+ */
+export function addSeller(f, rnd = Math.random) {
+  if (f.seller.spots.length >= MAX_SELLERS) return null;
+  const taken = new Set(f.seller.spots.map(key));
+  const dirs = new Set(f.seller.spots.map(v => v.dir));
+  const free = SELLER_SPOTS.filter(o => !taken.has(key(o)));
+  const spread = free.filter(o => !dirs.has(o.dir));
+  const pick = draw(spread.length ? spread : free, rnd);
+  f.seller.spots.push({ cell: pick.cell, dir: pick.dir, flash: 0 });
+  return { cell: pick.cell, dir: pick.dir };
 }
 
 /* ----------------------------------------------------------- auto-facing --- */
@@ -228,8 +264,11 @@ export function smartDir(f, i) {
   if (!m || m.kind !== 'pipe') return null;
 
   const x = cx(i), y = cy(i);
-  const s = f.seller;
-  const gap = (ax, ay) => Math.abs(ax - cx(s.cell)) + Math.abs(ay - cy(s.cell));
+  // With two vaults open, a belt aims at whichever one is nearer to it. That is
+  // what makes a split line settle into two arms instead of one long detour.
+  const dist = (ax, ay, v) => Math.abs(ax - cx(v.cell)) + Math.abs(ay - cy(v.cell));
+  const s = f.seller.spots.reduce((a, b) => (dist(x, y, b) < dist(x, y, a) ? b : a));
+  const gap = (ax, ay) => dist(ax, ay, s);
   const here = gap(x, y);
 
   // Directions we are fed from: the neighbour that way aims at us. The producer
@@ -253,8 +292,8 @@ export function smartDir(f, i) {
     let score = 0;
 
     if (!inGrid(nx, ny)) {
-      // Off the floor is a loss, unless it is the seller's window.
-      score += (s.cell === i && s.dir === d) ? 100 : -100;
+      // Off the floor is a loss, unless it is some vault's window.
+      score += f.seller.spots.some(v => v.cell === i && v.dir === d) ? 100 : -100;
     } else {
       const closer = here - gap(nx, ny);
       score += closer * 10;
@@ -380,7 +419,7 @@ export function applyAction(f, a) {
       if (f.cash < c) return no(`Need $${c}`);
       f.cash -= c;
       f.seller.level++;
-      f.seller.flash = 1;
+      for (const v of f.seller.spots) v.flash = 1;
       f.fx.push({ k: 'upsell' });
       return yes();
     }
@@ -431,7 +470,8 @@ export function viewOf(f) {
     v: f.inv.map(m => ({ k: m.kind, d: m.dir, l: m.level, m: m.mut })),
     z: f.gizmos.map(g => [g.id, g.ty, r2(g.x), r2(g.y), g.cp | 0]),
     pl: f.producer.level, pf: r2(f.producer.flash || 0),
-    sl: f.seller.level, sc: f.seller.cell, sd: f.seller.dir, sf: r2(f.seller.flash || 0),
+    sl: f.seller.level,
+    sv: f.seller.spots.map(v => [v.cell, v.dir, r2(v.flash || 0)]),
     c: Math.round(f.cash), e: Math.round(f.earned), n: Math.round(f.income),
   };
 }
@@ -442,4 +482,4 @@ export function drainFx(f, cap = 24) {
   return out;
 }
 
-export { MAX_IDLE_PER_CELL, INV_CAP, maxGizmos };
+export { MAX_IDLE_PER_CELL, INV_CAP, MAX_SELLERS, maxGizmos };

@@ -19,6 +19,7 @@ import {
 
 const gridPx = () => GRID * CELL;       // 96 on a 3x3, 224 on a 7x7
 const GUTTER = 24;                      // room outside the floor for producer/seller
+const GIZ = 3;                          // gizmo sprite, in pixel units on a 32px slot
 const HEADER = 20;
 const NOTE_H = 16;
 const FONT = 16;                        // art pixels; always a multiple of 8
@@ -445,30 +446,32 @@ export function drawPanel(st, view, rect, meta = {}) {
 
   const gut = st.gutter || GUTTER;
   drawProducer(ctx, lctx, o, view, st.t, gut);
-  drawSeller(ctx, lctx, o, view, st.t, gut);
+  for (const v of view.sv || []) drawSeller(ctx, lctx, o, view, st.t, gut, v);
 
   for (let i = 0; i < GRID * GRID; i++) {
     const m = view.g[i];
     if (m) drawMachine(ctx, lctx, o.x + cx(i) * CELL, o.y + cy(i) * CELL, m, st.t);
   }
 
-  // Gizmos: one grid unit each, colour by type, glow by tier. Copies are drawn
-  // dimmer and unlit, because a copy cannot be copied and that is worth seeing.
+  // Gizmos, drawn 3x3 and centred on their true position so a moving line of them
+  // is legible at arm's length on a phone. Copies are dimmer and unlit, because a
+  // copy cannot be copied and that is worth seeing at a glance.
   for (const g of view.z) {
     const ty = g[1], isCopy = g[4];
-    const gx = R(o.x + g[2] * CELL), gy = R(o.y + g[3] * CELL);
+    const gx = R(o.x + g[2] * CELL) - 1, gy = R(o.y + g[3] * CELL) - 1;
     if (gx < rect.x || gx > rect.x + rect.w || gy < rect.y || gy > rect.y + rect.h) continue;
     const t = TYPES[ty] || TYPES[0];
     if (isCopy) {
-      px(ctx, gx, gy, 2, 2, shade(t.color, 0.55));
-      px(ctx, gx + 1, gy, 1, 1, t.color);
-      if (ty >= 4) glowPx(lctx, gx, gy, t.glow, 2, 0.14);
+      px(ctx, gx, gy, GIZ, GIZ, shade(t.color, 0.5));
+      px(ctx, gx + 1, gy, 1, 1, t.color);            // one lit corner, so it still reads
+      if (ty >= 4) glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.16);
       continue;
     }
-    px(ctx, gx, gy, 2, 2, t.color);
-    if (ty >= 5) glowPx(lctx, gx, gy, t.glow, 4, 0.5);
-    else if (ty >= 2) glowPx(lctx, gx, gy, t.glow, 2, 0.34);
-    else glowPx(lctx, gx, gy, t.glow, 2, 0.16);
+    px(ctx, gx, gy, GIZ, GIZ, t.color);
+    px(ctx, gx + 1, gy, 1, 1, t.glow);               // highlight, keeps it from reading flat
+    if (ty >= 5) glowPx(lctx, gx + 1, gy + 1, t.glow, 5, 0.5);
+    else if (ty >= 2) glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.36);
+    else glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.2);
   }
 
   if (meta.note && st.shape.note) {
@@ -574,9 +577,9 @@ function drawMachine(ctx, lctx, x, y, m, t) {
   // held gizmos, sitting in the intake
   for (let i = 0; i < (m.b || []).length && i < 3; i++) {
     const ty = TYPES[m.b[i]] || TYPES[0];
-    const gx = x + 7 + i * 6, gy = y + CELL - 10;
-    px(ctx, gx, gy, 2, 2, ty.color);
-    glowPx(lctx, gx, gy, ty.glow, 2, 0.3);
+    const gx = x + 7 + i * 6, gy = y + CELL - 11;
+    px(ctx, gx, gy, GIZ, GIZ, ty.color);
+    glowPx(lctx, gx + 1, gy + 1, ty.glow, 3, 0.3);
   }
 
   // charge bar
@@ -656,8 +659,9 @@ function drawSlimProducer(ctx, lctx, x, y, flash, t, view) {
   for (let i = 1; i < (view.pl || 1); i++) px(ctx, x + 2 + (i - 1) * 3, y + CELL - 10, 2, 3, '#ffe9a8');
 }
 
-function drawSeller(ctx, lctx, o, view, t, gut = GUTTER) {
-  const cell = view.sc, dir = view.sd;
+/** One vault. `spot` is [cell, dir, flash] as packed by sim.viewOf. */
+function drawSeller(ctx, lctx, o, view, t, gut = GUTTER, spot) {
+  const cell = spot[0], dir = spot[1];
   const [dx, dy] = DIRS[dir];
   const bx = o.x + cx(cell) * CELL + dx * CELL;
   const by = o.y + cy(cell) * CELL + dy * CELL;
@@ -665,7 +669,7 @@ function drawSeller(ctx, lctx, o, view, t, gut = GUTTER) {
   const x = bx + (dx > 0 ? 2 : dx < 0 ? back : 2);
   const y = by + (dy > 0 ? 2 : dy < 0 ? back : 2);
   const w = dx !== 0 ? 16 : CELL - 4, h = dy !== 0 ? 16 : CELL - 4;
-  const flash = view.sf || 0;
+  const flash = spot[2] || 0;
   const mx = x + Math.floor(w / 2), my = y + Math.floor(h / 2);
 
   px(ctx, x - 2, y - 2, w + 4, h + 4, '#0c0e18');

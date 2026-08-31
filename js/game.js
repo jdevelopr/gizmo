@@ -6,7 +6,7 @@
  */
 
 import {
-  createFactory, starterKit, stepFactory, beginRound, endRound, moveSeller,
+  createFactory, starterKit, stepFactory, beginRound, endRound, moveSeller, addSeller,
   applyAction, giveMachine, viewOf, drainFx,
 } from './sim.js';
 import {
@@ -19,7 +19,7 @@ const MOVER = { kind: 'pipe', dir: 0 };
 
 export const DEFAULT_CFG = {
   rounds: 8,
-  roundSecs: 45,
+  roundSecs: 90,
   shopSecs: 30,
   planSecs: 120,      // planning phase: rearrange freely, ready up to start early
   gridSize: 3,        // slots per side, always square, 3 to 7
@@ -42,6 +42,10 @@ export function createEngine(cfgIn = {}) {
   let timer = 0;
   let round = 0;
   let announce = '';
+  let newSeller = false;
+
+  /** The round the second vault opens: the first round of the back half. */
+  const secondSellerRound = () => Math.floor(cfg.rounds / 2) + 1;
 
   function addPlayer(seat, name, color) {
     let p = players.get(seat);
@@ -78,21 +82,28 @@ export function createEngine(cfgIn = {}) {
 
   function go(next) {
     phase = next;
+    newSeller = false;
     switch (next) {
       case 'plan': {
         timer = cfg.planSecs;
+        const opening = round === secondSellerRound();
         for (const p of players.values()) {
           // Round one leaves the seller where the starter kit already points, so
           // the first round teaches the loop instead of punishing it.
-          const spot = round <= 1
-            ? { cell: p.f.seller.cell, dir: p.f.seller.dir }
+          const spots = round <= 1
+            ? p.f.seller.spots.map(v => ({ cell: v.cell, dir: v.dir }))
             : moveSeller(p.f);
+          // Halfway through, a second vault opens for good. It jumps every round
+          // from here like the first, so the back half of the match is about
+          // feeding two places at once.
+          if (opening) { const v = addSeller(p.f); if (v) spots.push(v); }
           p.f.running = false;
           p.shop = null;
-          p.sellerSpot = spot;
+          p.sellerSpots = spots;
           p.planReady = false;
         }
         announce = `ROUND ${round}`;
+        newSeller = opening;
         break;
       }
       case 'run':
@@ -122,11 +133,12 @@ export function createEngine(cfgIn = {}) {
         emit('over', results());
         break;
     }
-    emit('phase', phase, { round, announce });
+    emit('phase', phase, { round, announce, newSeller });
   }
 
   function startGame() {
     round = 1;
+    newSeller = false;
     // Resize before any factory is built: every floor in the match is this size.
     setGridSize(cfg.gridSize);
     for (const p of players.values()) {
@@ -150,7 +162,7 @@ export function createEngine(cfgIn = {}) {
       p.lastIncome = 0;
       p.bestIncome = 0;
     }
-    emit('phase', phase, { round, announce: '' });
+    emit('phase', phase, { round, announce: '', newSeller: false });
   }
 
   /* --------------------------------------------------------------- step --- */
@@ -314,7 +326,8 @@ export function createEngine(cfgIn = {}) {
         mover: moverCost(),
         waiting: [...players.values()].filter(x => x.connected && !x.planReady).length,
         seat, color: p.color, name: p.name,
-        spot: p.sellerSpot ? DIR_NAME[p.sellerSpot.dir] : null,
+        spots: (p.sellerSpots || []).map(v => DIR_NAME[v.dir]),
+        newSeller,
       },
       shop: shopView(p),
     };

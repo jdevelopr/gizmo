@@ -42,37 +42,39 @@ export const KINDS = {
   pipe: {
     name: 'Conveyor', short: 'CONVEYOR',
     desc: 'Slides a gizmo one slot along, quickly. Aims itself when you set it down.',
-    price: 10, cycle: 0.13, cap: 1, travel: 0.13,
+    price: 10, cycle: 0.26, cap: 1, travel: 0.26,
     body: '#2f4a63', trim: '#6ea2d8', lit: '#a8dcff',
   },
   dup: {
     name: 'Doubler', short: 'DOUBLER',
-    desc: 'Copies an original and pushes both out front. A copy is never copied again.',
-    price: 32, cycle: 0.6, cap: 1, travel: 0.26,
+    // Deliberately the slowest multiplier on the floor: it is the one that needs no
+    // routing, so it pays for that convenience in seconds. A Splitter is 1.9x faster.
+    desc: 'Copies an original and pushes both out front, slowly. A copy is never copied again.',
+    price: 32, cycle: 1.8, cap: 1, travel: 0.52,
     body: '#27552f', trim: '#5fbf6a', lit: '#a7f070',
   },
   split: {
     name: 'Splitter', short: 'SPLITTER',
     desc: 'Splits an original ahead and right. Copies leave one at a time, alternating.',
-    price: 26, cycle: 0.48, cap: 1, travel: 0.26,
+    price: 26, cycle: 0.96, cap: 1, travel: 0.52,
     body: '#5c4a1e', trim: '#c9a23f', lit: '#ffcd75',
   },
   trident: {
     name: 'Trident', short: 'TRIDENT',
     desc: 'Fires an original three ways. Copies leave one at a time, in turn.',
-    price: 62, cycle: 0.85, cap: 1, travel: 0.26,
+    price: 62, cycle: 1.7, cap: 1, travel: 0.52,
     body: '#5c2a49', trim: '#b55088', lit: '#ff9ad0',
   },
   mut: {
     name: 'Mutator', short: 'MUTATOR',
     desc: 'Rewrites whatever it eats into one fixed type.',
-    price: 0, cycle: 0.52, cap: 1, travel: 0.26,
+    price: 0, cycle: 1.04, cap: 1, travel: 0.52,
     body: '#3b2f5e', trim: '#7a63bf', lit: '#b58cff',
   },
   fuse: {
     name: 'Fuser', short: 'FUSER',
     desc: 'Melts two gizmos into one of the next tier. Two originals make an original.',
-    price: 50, cycle: 0.95, cap: 2, travel: 0.26,
+    price: 50, cycle: 1.9, cap: 2, travel: 0.52,
     body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
   },
 };
@@ -137,7 +139,7 @@ export function cycleTime(m) {
  * mutator earns about the same per slot. Tier is a choice about feedstock for
  * doublers and fusers, not a straight upgrade you buy your way past.
  */
-export const MUT_CYCLE = [0, 0.42, 0.86, 1.76, 3.6, 7.4, 15.2, 31];
+export const MUT_CYCLE = [0, 0.84, 1.72, 3.52, 7.2, 14.8, 30.4, 62];
 
 export function travelTime(m) {
   return KINDS[m.kind].travel * (m.kind === 'pipe' ? Math.pow(0.78, m.level - 1) : 1);
@@ -236,7 +238,7 @@ function nextExit(m, dirs) {
 
 /* --------------------------------------------------------- producer/seller --- */
 
-export const producerCycle = lvl => 1.35 * Math.pow(0.78, lvl - 1);
+export const producerCycle = lvl => 2.7 * Math.pow(0.78, lvl - 1);
 export const producerCost = lvl => Math.round(34 * Math.pow(lvl, 1.45));
 export const sellerMult = lvl => 1 + 0.3 * (lvl - 1);
 export const sellerCost = lvl => Math.round(40 * Math.pow(lvl, 1.45));

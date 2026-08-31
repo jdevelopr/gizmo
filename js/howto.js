@@ -115,10 +115,13 @@ function build() {
   });
   loop.appendChild(ol);
   loop.appendChild(el('p', 'ht-note',
-    'The Producer drops a raw Scrap gizmo into the top-left slot. The Seller pays for '
+    'The Producer drops a raw Scrap gizmo into the top-left slot. A Seller pays for '
     + 'anything pushed out of the floor at its face — anything pushed off any other edge '
-    + 'is lost. Most earned at the end wins, and money you spend still counts, so buying '
-    + 'is never a penalty. The nine slots are.'));
+    + 'is lost. Halfway through the match a second vault opens on another edge and stays '
+    + 'open, so the back half is about feeding two places at once: that is the round a '
+    + 'Splitter or Trident starts paying for itself. Both vaults share one SELLER upgrade. '
+    + 'Most earned at the end wins, and money you spend still counts, so buying is never a '
+    + 'penalty. The slots are.'));
   body.appendChild(loop);
 
   /* --- the two rules ----------------------------------------------------- */

@@ -524,6 +524,41 @@ function drawMachine(ctx, lctx, x, y, m, t) {
       }
       break;
     }
+    case 'store': {
+      // A belt with a tank bolted over it. The belt rotates with the machine so you
+      // can read its facing; the tank gauge and the corner crates do not, so how full
+      // it is reads the same whichever way the thing is turned.
+      rp(ctx, cxp, cyp, d, -13, -5, 26, 10, '#0e1526');
+      rp(ctx, cxp, cyp, d, -13, -6, 26, 1, shade(trim, 0.5));
+      rp(ctx, cxp, cyp, d, -13, 5, 26, 1, shade(trim, 0.5));
+      const soff = Math.floor(t * 22) % 8;
+      for (let i = -1; i < 4; i++) {
+        const bf = -13 + i * 8 + soff;
+        if (bf > -13 && bf < 11) rp(ctx, cxp, cyp, d, bf, -3, 3, 6, shade(trim, 0.9));
+      }
+
+      // corner crates, so a Storage is recognisable at a glance in a busy floor
+      const crate = shade(trim, 0.7);
+      px(ctx, x + 6, y + 6, 4, 4, crate);
+      px(ctx, x + CELL - 10, y + 6, 4, 4, crate);
+      px(ctx, x + 6, y + CELL - 10, 4, 4, crate);
+      px(ctx, x + CELL - 10, y + CELL - 10, 4, 4, crate);
+
+      // tank gauge across the top: how full, out of how much
+      const gw = CELL - 14;
+      px(ctx, x + 7, y + 4, gw, 3, '#0b0d16');
+      const fill = Math.max(0, Math.min(1, (m.q || 0) / (m.c || 1)));
+      const fw = Math.round(fill * gw);
+      if (fw > 0) {
+        px(ctx, x + 7, y + 4, fw, 3, fill > 0.99 ? '#ffcd75' : lit);
+        if (fill > 0.85) glowPx(lctx, x + 7 + fw - 1, y + 5, lit, 3, 0.35);
+      }
+      // one tick per four units of room, so a bigger tank looks bigger
+      for (let u = 4; u < (m.c || 1); u += 4) {
+        px(ctx, x + 7 + Math.round((u / (m.c || 1)) * gw), y + 4, 1, 3, '#0b0d16');
+      }
+      break;
+    }
     case 'dup': {
       rp(ctx, cxp, cyp, d, -11, -10, 12, 12, shade(trim, 0.6));
       rp(ctx, cxp, cyp, d, -9, -8, 8, 8, shade(trim, 0.85));
@@ -574,17 +609,53 @@ function drawMachine(ctx, lctx, x, y, m, t) {
     }
   }
 
-  // held gizmos, sitting in the intake
-  for (let i = 0; i < (m.b || []).length && i < 3; i++) {
-    const ty = TYPES[m.b[i]] || TYPES[0];
-    const gx = x + 7 + i * 6, gy = y + CELL - 11;
-    px(ctx, gx, gy, GIZ, GIZ, ty.color);
-    glowPx(lctx, gx + 1, gy + 1, ty.glow, 3, 0.3);
+  /*
+   * The cargo readout. A machine takes custody of what it eats for the whole
+   * cycle, so this strip is the honest answer to "what is in there right now":
+   * the gizmos in its hands drawn bright and lit, then anything still queued at
+   * the mouth drawn small and dim behind them. Past the halfway mark the held
+   * gizmos become what the machine has made, so a Fuser shows two going in and
+   * one hotter one waiting to come out.
+   */
+  const held = m.h || [], queued = m.b || [];
+  const all = [...held.map(ty => [ty, 1]), ...queued.map(ty => [ty, 0])];
+  const cargo = all.slice(0, 4);
+  const over = all.length - cargo.length;
+  if (cargo.length) {
+    const cw = cargo.length * 5 - 2 + (over > 0 ? 3 : 0);
+    let gx = R(cxp - cw / 2), gy = y + CELL - 13;
+    px(ctx, gx - 2, gy - 2, cw + 4, GIZ + 4, '#070911');
+    for (const [ty, inHand] of cargo) {
+      const t = TYPES[ty] || TYPES[0];
+      if (inHand) {
+        px(ctx, gx, gy, GIZ, GIZ, t.color);
+        px(ctx, gx + 1, gy, 1, 1, t.glow);
+        glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.45);
+      } else {
+        px(ctx, gx, gy + 1, 2, 2, shade(t.color, 0.55));
+      }
+      gx += 5;
+    }
+    // "...and more behind these" — a Storage can be holding a dozen.
+    if (over > 0) { px(ctx, gx, gy, 1, GIZ, shade(lit, 0.8)); px(ctx, gx, gy + 1, 2, 1, shade(lit, 0.8)); }
   }
 
-  // charge bar
+  // Charge bar: how far through the current job. Empty means empty-handed. A jammed
+  // machine sits at full and turns amber — the bar is the fastest way to read a floor
+  // and find the slot that everything upstream is waiting on.
+  const jam = m.x ? '#ffcd75' : null;
   const w = Math.max(0, Math.min(1, m.p || 0)) * (CELL - 14);
-  if (w > 1) px(ctx, x + 7, y + CELL - 6, w, 2, shade(lit, 0.9));
+  if (w > 1) px(ctx, x + 7, y + CELL - 6, w, 2, jam || shade(lit, 0.9));
+
+  if (jam) {
+    const beat = (t * 3) % 1 < 0.55;
+    const c = beat ? jam : shade(jam, 0.45);
+    px(ctx, x + 1, y + 1, CELL - 2, 2, c);
+    px(ctx, x + 1, y + CELL - 3, CELL - 2, 2, c);
+    px(ctx, x + 1, y + 1, 2, CELL - 2, c);
+    px(ctx, x + CELL - 3, y + 1, 2, CELL - 2, c);
+    if (beat) glowPx(lctx, R(cxp), R(cyp), jam, 4, 0.18);
+  }
 
   // facing chevron, kept inside the casing
   chevron(ctx, cxp, cyp, m.d, flash > 0.2 ? '#ffffff' : lit, 7);
@@ -635,8 +706,10 @@ function drawProducer(ctx, lctx, o, view, t, gut = GUTTER) {
   const bob = Math.floor((t * 6) % 2) * 2;
   px(ctx, x + 6, y + 12 + bob, 8, 4, flash > 0.3 ? '#ffffff' : '#8b93a8');
   px(ctx, x + 6, y + 12 + bob, 8, 1, '#c3cbdb');
-  // gauge
-  px(ctx, x + 5, y + 22, 4, 3, flash > 0.2 ? '#a7f070' : '#3f7a2c');
+  // gauge: green while it is dropping gizmos, amber when the floor has no room left
+  const stalled = view.px;
+  px(ctx, x + 5, y + 22, 4, 3,
+    stalled ? ((t * 3) % 1 < 0.5 ? '#ffcd75' : '#6b5a24') : flash > 0.2 ? '#a7f070' : '#3f7a2c');
   // nozzle into the floor
   px(ctx, x + 18, y + 12, 6, 8, '#5a6480');
   px(ctx, x + 20, y + 14, 4, 4, flash > 0.2 ? '#ffffff' : '#c3cbdb');
@@ -652,7 +725,8 @@ function drawSlimProducer(ctx, lctx, x, y, flash, t, view) {
   px(ctx, x + 2, y + 10, 10, 8, '#161a2a');
   const bob = Math.floor((t * 6) % 2) * 2;
   px(ctx, x + 4, y + 12 + bob, 6, 3, flash > 0.3 ? '#ffffff' : '#8b93a8');
-  px(ctx, x + 3, y + 20, 3, 2, flash > 0.2 ? '#a7f070' : '#3f7a2c');
+  px(ctx, x + 3, y + 20, 3, 2,
+    view.px ? ((t * 3) % 1 < 0.5 ? '#ffcd75' : '#6b5a24') : flash > 0.2 ? '#a7f070' : '#3f7a2c');
   px(ctx, x + 13, y + 13, 5, 6, '#5a6480');
   px(ctx, x + 15, y + 15, 3, 2, flash > 0.2 ? '#ffffff' : '#c3cbdb');
   if (flash > 0.05) glowPx(lctx, x + 16, y + 15, '#c3cbdb', 3, 0.5 * flash);

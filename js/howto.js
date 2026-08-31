@@ -10,7 +10,7 @@
 
 import {
   KINDS, TYPES, MUT_PRICE, MAX_LEVEL, MAX_UTIL, DIR_NAME,
-  cycleTime, upgradeCost, scrapValue, outputs,
+  cycleTime, upgradeCost, scrapValue, outputs, capacity, EMPTY_HOLD,
   producerCycle, producerCost, sellerMult, sellerCost, shopCost, costMult,
 } from './machines.js';
 
@@ -27,6 +27,8 @@ const r2 = n => Math.round(n * 100) / 100;
 /* What a level actually buys, per machine. */
 const LEVELS = {
   pipe: ['Base speed.', '30% faster.', 'Fastest belt in the game.'],
+  store: ['Room for six gizmos, or a dozen Scrap.', 'Room for ten.',
+    'Room for fourteen — a whole round\u2019s surge, parked.'],
   dup: ['The original plus one copy.', 'Three out: the original and two copies.',
     'Four out: the original and three copies.'],
   split: ['Original ahead, copy to the right.', '30% faster, still two exits.',
@@ -38,7 +40,7 @@ const LEVELS = {
     'A matching pair jumps two tiers instead of one.'],
 };
 
-const BUILDABLE = ['pipe', 'dup', 'split', 'trident', 'fuse'];
+const BUILDABLE = ['pipe', 'store', 'dup', 'split', 'trident', 'fuse'];
 
 /** Exits a machine fires into, in its own frame, facing east. */
 function exitDirs(kind, level) {
@@ -114,6 +116,21 @@ function build() {
     ol.appendChild(li);
   });
   loop.appendChild(ol);
+  loop.appendChild(el('p', 'ht-custody',
+    'A machine takes custody of what it eats. It pulls the gizmo in, holds it for its '
+    + 'whole cycle — you can see it sitting in the machine\u2019s window, and halfway '
+    + 'through it becomes whatever the machine is making — and only then pushes the '
+    + 'result out.'));
+  loop.appendChild(el('p', 'ht-custody',
+    'Every machine has room for only so much, counting what is in its hands and what '
+    + 'is queued at its mouth. A machine with no room turns arrivals away, so the one '
+    + 'feeding it has to keep holding what it made — its bar sits full and turns amber. '
+    + 'That stall walks back up the line, and when it reaches the Producer, the Producer '
+    + `stops. Nothing is ever destroyed on the floor: a bare slot holds ${EMPTY_HOLD} and then backs `
+    + 'up too. Only a gizmo pushed off an edge that is not a vault is truly lost. '
+    + 'Raw Scrap is loose stuff and packs two to the space of one finished gizmo, so the '
+    + 'squeeze always starts after the first machine that makes something. A Conveyor has '
+    + 'room for one. Storage has room for six, and its levels buy more.'));
   loop.appendChild(el('p', 'ht-note',
     'The Producer drops a raw Scrap gizmo into the top-left slot. A Seller pays for '
     + 'anything pushed out of the floor at its face — anything pushed off any other edge '
@@ -155,7 +172,9 @@ function build() {
     const titles = el('div');
     titles.appendChild(el('h4', null, k.name));
     const price = el('p', 'ht-price', money(k.price));
-    price.appendChild(el('span', 'ht-dim', ' base · holds ' + k.cap));
+    const room = [1, 2, 3].map(l => capacity({ kind, level: l }));
+    const roomText = room[0] === room[2] ? `room ${room[0]}` : `room ${room.join(' / ')}`;
+    price.appendChild(el('span', 'ht-dim', ` base · takes ${k.cap} at a time · ${roomText}`));
     titles.appendChild(price);
     head.appendChild(titles);
     card.appendChild(head);
@@ -247,9 +266,10 @@ function build() {
     'Workshop prices drift up by half the base price each round. Conveyors are the '
     + 'exception: base price, any phase, as many as you can pay for, and they never count '
     + 'against the one machine a round.');
-  shop.appendChild(table(['Round', 'Markup', 'Conveyor', 'Doubler', 'Fuser', 'Cobalt Mut'],
+  shop.appendChild(table(['Round', 'Markup', 'Conveyor', 'Storage', 'Doubler', 'Fuser', 'Cobalt Mut'],
     [1, 2, 3, 4, 5, 6, 7, 8].map(r => ['R' + r, 'x' + r2(costMult(r)),
       { v: money(shopCost({ kind: 'pipe' }, r)), cls: 'ht-buy' },
+      { v: money(shopCost({ kind: 'store' }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'dup' }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'fuse' }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'mut', mut: 4 }, r)), cls: 'ht-buy' }])));

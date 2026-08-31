@@ -640,3 +640,14 @@ body[data-screen="practice"] #pad { min-height: auto; }
 .ht-ladder .ht-val { color: var(--gold); }
 
 .pad-howto { font-size: 10px; min-height: 40px; padding: 8px 12px; align-self: center; }
+
+/* The custody rule gets its own plate in the manual: it is the one mechanic that
+   explains why the floor looks the way it does. */
+.ht-custody {
+  margin: 10px 0 6px;
+  padding: 9px 11px;
+  border-left: 3px solid #6ea2d8;
+  background: #141827;
+  color: #c3cbdb;
+  line-height: 1.5;
+}

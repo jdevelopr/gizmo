@@ -7,7 +7,7 @@
 
 import {
   createFactory, starterKit, stepFactory, beginRound, endRound, moveSeller, addSeller,
-  applyAction, giveMachine, viewOf, drainFx,
+  setSellerSpots, applyAction, giveMachine, viewOf, drainFx,
 } from './sim.js';
 import {
   rollShop, rng, price, label, describe, shopCost, setGridSize, GRID,
@@ -43,6 +43,8 @@ export function createEngine(cfgIn = {}) {
   let round = 0;
   let announce = '';
   let newSeller = false;
+  /** Where this round's vaults sit. Shared by every player in the room. */
+  let sellerSpots = null;
 
   /** The round the second vault opens: the first round of the back half. */
   const secondSellerRound = () => Math.floor(cfg.rounds / 2) + 1;
@@ -62,6 +64,8 @@ export function createEngine(cfgIn = {}) {
       f, shop: null, connected: true, note: null, noteT: 0, outbox: [],
       lastIncome: 0, bestIncome: 0,
     };
+    // Joining mid-match: adopt the room's vaults rather than the starter kit's.
+    if (sellerSpots) { setSellerSpots(p.f, sellerSpots); p.sellerSpots = sellerSpots; }
     players.set(seat, p);
     return p;
   }
@@ -87,19 +91,30 @@ export function createEngine(cfgIn = {}) {
       case 'plan': {
         timer = cfg.planSecs;
         const opening = round === secondSellerRound();
-        for (const p of players.values()) {
+        const live = [...players.values()];
+
+        // ONE draw for the whole room. Every floor starts a round identical, so
+        // where the vaults land has to be identical too — otherwise a player wins
+        // on a kinder roll rather than a better line. The lead factory does the
+        // drawing (its spots are everyone's spots) and the rest are stamped to match.
+        if (live.length) {
+          const lead = live[0].f;
           // Round one leaves the seller where the starter kit already points, so
           // the first round teaches the loop instead of punishing it.
-          const spots = round <= 1
-            ? p.f.seller.spots.map(v => ({ cell: v.cell, dir: v.dir }))
-            : moveSeller(p.f);
+          sellerSpots = round <= 1
+            ? lead.seller.spots.map(v => ({ cell: v.cell, dir: v.dir }))
+            : moveSeller(lead, rnd);
           // Halfway through, a second vault opens for good. It jumps every round
           // from here like the first, so the back half of the match is about
           // feeding two places at once.
-          if (opening) { const v = addSeller(p.f); if (v) spots.push(v); }
+          if (opening) { const v = addSeller(lead, rnd); if (v) sellerSpots.push(v); }
+        }
+
+        for (const p of live) {
+          setSellerSpots(p.f, sellerSpots);
           p.f.running = false;
           p.shop = null;
-          p.sellerSpots = spots;
+          p.sellerSpots = sellerSpots;
           p.planReady = false;
         }
         announce = `ROUND ${round}`;
@@ -139,6 +154,7 @@ export function createEngine(cfgIn = {}) {
   function startGame() {
     round = 1;
     newSeller = false;
+    sellerSpots = null;
     // Resize before any factory is built: every floor in the match is this size.
     setGridSize(cfg.gridSize);
     for (const p of players.values()) {
@@ -154,6 +170,7 @@ export function createEngine(cfgIn = {}) {
     phase = 'lobby';
     round = 0;
     timer = 0;
+    sellerSpots = null;
     setGridSize(cfg.gridSize);
     for (const p of players.values()) {
       p.f = createFactory({ cash: cfg.cash });

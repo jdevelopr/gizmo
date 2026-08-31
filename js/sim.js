@@ -8,12 +8,13 @@
 import {
   GRID, DIRS, TYPES, MAX_TYPE, KINDS, MAX_LEVEL, MAX_UTIL,
   makeMachine, price, upgradeCost, scrapValue, cycleTime, travelTime,
-  intake, outputs, exitDirs, producerCycle, producerCost, sellerMult, sellerCost,
+  intake, outputs, exitDirs, sizeOf, capacity, EMPTY_HOLD,
+  producerCycle, producerCost, sellerMult, sellerCost,
   cellOf, cx, cy, inGrid, PRODUCER_PORT, SELLER_SPOTS,
 } from './machines.js';
 
-const MAX_IDLE_PER_CELL = 10;   // a full slot starts destroying arrivals
 const INV_CAP = 8;
+const EPS = 1e-6;
 const MAX_SELLERS = 2;
 
 /** Hard ceiling on live gizmos: enough to fill a floor, few enough to send 15x a second. */
@@ -29,6 +30,7 @@ export function createFactory({ cash = 40 } = {}) {
     // the match, which is the point at which routing to two places is worth a Splitter.
     seller: { level: 1, spots: [{ cell: 2, dir: 0, flash: 0 }] },
     gizmos: [],
+    load: new Float64Array(GRID * GRID),   // gizmo units resting on or flying to each slot
     cash,
     earned: 0,
     income: 0,      // this round only
@@ -54,22 +56,96 @@ export function starterKit(f) {
 
 function place(f, m, i) { f.grid[i] = m; }
 
+/* ---------------------------------------------------------------- capacity --- */
+
+/**
+ * Nothing on this floor is ever destroyed. A machine that cannot hand its results
+ * on keeps holding them, which fills it, which turns its own feeder away, and so on
+ * back up the line until the producer itself has nowhere to drop a gizmo and stops.
+ * That is the whole mechanic; these three functions are all of it.
+ */
+
+/**
+ * What a machine is physically holding right now. For the first half of a cycle
+ * that is what went in; past halfway the work is done and it is holding the result.
+ * The accounting and the picture on screen read from this same function, so what
+ * you see in a machine's window is exactly what is taking up its room.
+ */
+function contents(m) {
+  if (!m.work.length) return [];
+  if (!m.out?.length) return m.work;
+  const cyc = cycleTime(m) || 1;
+  return (1 - Math.max(0, m.t) / cyc) >= 0.5 ? m.out : m.work;
+}
+
+/** Units inside one machine — in its hands and queued at its mouth. */
+function machineLoad(m) {
+  let n = 0;
+  for (const g of contents(m)) n += sizeOf(g.ty);
+  for (const g of m.buf) n += sizeOf(g.ty);
+  return n;
+}
+
+/** Units a slot can take: the machine's room, or bare floor if there is none. */
+function slotCap(f, i) {
+  const m = f.grid[i];
+  return m ? capacity(m) : EMPTY_HOLD;
+}
+
+/**
+ * Units already spoken for at a slot: what the machine holds, plus everything
+ * resting on it or already in the air toward it. Counting gizmos in flight is what
+ * stops two machines from both firing into the last free space.
+ */
+function slotLoad(f, i) {
+  const m = f.grid[i];
+  return (f.load[i] || 0) + (m ? machineLoad(m) : 0);
+}
+
+/** Is there room at slot `i` for one gizmo of this type? */
+function canAccept(f, i, ty) {
+  return slotLoad(f, i) + sizeOf(ty) <= slotCap(f, i) + EPS;
+}
+
+/** Recount what is resting on or flying to every slot. One pass per tick. */
+function retally(f) {
+  if (f.load.length !== f.grid.length) f.load = new Float64Array(f.grid.length);
+  else f.load.fill(0);
+  for (const g of f.gizmos) if (g.cell >= 0) f.load[g.cell] += sizeOf(g.ty);
+}
+
 /* -------------------------------------------------------------------- step --- */
 
 export function stepFactory(f, dt) {
   if (dt > 0.1) dt = 0.1;   // a backgrounded tab must not fast-forward the floor
 
+  retally(f);
+
   if (f.running) {
     f.producer.t -= dt;
     if (f.producer.t <= 0) {
-      f.producer.t += producerCycle(f.producer.level);
-      spawnFromProducer(f);
+      // The far end of the jam. With nowhere to put the next gizmo the producer
+      // simply waits at the gate rather than shovelling into a full floor.
+      if (canAccept(f, PRODUCER_PORT.cell, 0)) {
+        f.producer.t += producerCycle(f.producer.level);
+        f.producer.stall = 0;
+        spawnFromProducer(f);
+      } else {
+        f.producer.t = 0;
+        f.producer.stall = 1;
+      }
     }
     for (let i = 0; i < f.grid.length; i++) {
       const m = f.grid[i];
       if (!m) continue;
-      m.t -= dt;
-      if (m.t <= 0) fire(f, m, i);
+      if (m.work.length) {
+        m.t -= dt;
+        if (m.t <= 0) release(f, m, i);
+      }
+      // A machine that just let go can pick the next job up in the same tick, so
+      // a fed line still runs at one job per cycle. It is never empty-handed for
+      // long — it is the gizmo that is slower now, not the floor.
+      if (!m.work.length) startJob(f, m, i);
     }
   }
 
@@ -82,7 +158,7 @@ export function stepFactory(f, dt) {
       g.y = g.sy + (g.ey - g.sy) * g.p;
     } else if (g.st === 'idle') {
       const m = f.grid[g.cell];
-      if (m && m.buf.length < intake(m)) absorb(f, m, g, k);
+      if (m && machineLoad(m) + sizeOf(g.ty) <= capacity(m) + EPS) absorb(f, m, g, k);
     }
   }
 
@@ -104,19 +180,67 @@ function spawnFromProducer(f) {
   f.fx.push({ k: 'spawn', cell });
 }
 
-function fire(f, m, i) {
+/**
+ * Take custody. The machine pulls its intake off the queue and holds it — the
+ * gizmos are off the floor and inside the casing until the cycle is done. What
+ * the job will produce is decided here, at the start, so a router's round-robin
+ * cursor advances once per job rather than once per look.
+ */
+function startJob(f, m, i) {
   const need = intake(m);
   if (m.buf.length < need) { m.t = 0; return; }
 
-  const inputs = m.buf.splice(0, need);
-  const outs = outputs(m, inputs);
+  m.work = m.buf.splice(0, need);
+  m.out = outputs(m, m.work);
   m.t = cycleTime(m);
-  m.flash = 1;
-  f.fx.push({ k: 'fire', cell: i, kind: m.kind, ty: outs[0]?.ty ?? inputs[0].ty, n: outs.length });
-
-  const dur = travelTime(m);
-  outs.forEach((o, n) => emit(f, i, o, dur, n, outs.length));
 }
+
+/**
+ * Let go — but only of what the far side has room for. Anything the next slot
+ * cannot take stays in the machine's hands and is offered again next tick, so the
+ * machine sits there visibly full instead of forcing gizmos into a jam. Outputs are
+ * offered one at a time, so a Splitter with one blocked exit still works the other.
+ */
+function release(f, m, i) {
+  const outs = m.out || [];
+  const stay = [];
+  const sent = [];
+
+  for (const o of outs) {
+    const nx = cx(i) + DIRS[o.dir][0], ny = cy(i) + DIRS[o.dir][1];
+    if (inGrid(nx, ny)) {
+      const to = cellOf(nx, ny);
+      if (!canAccept(f, to, o.ty)) { stay.push(o); continue; }
+      f.load[to] += sizeOf(o.ty);        // claim the space now, before it flies
+    }
+    sent.push(o);
+  }
+
+  if (sent.length) {
+    m.flash = 1;
+    f.fx.push({
+      k: 'fire', cell: i, kind: m.kind,
+      ty: sent[0].ty, n: sent.length,
+    });
+    const dur = travelTime(m);
+    sent.forEach((o, n) => emit(f, i, o, dur, n, sent.length));
+  }
+
+  m.t = 0;
+  if (stay.length) {
+    // Blocked. Keep holding, and say so once rather than every frame.
+    if (!m.blocked) f.fx.push({ k: 'clog', cell: i });
+    m.blocked = 1;
+    m.out = stay;
+    return;
+  }
+  m.blocked = 0;
+  m.work = [];
+  m.out = null;
+}
+
+/** The held cargo, as types, for the renderer. */
+const heldTypes = m => contents(m).map(g => g.ty);
 
 function emit(f, from, out, dur, n, total) {
   if (f.gizmos.length >= maxGizmos()) { f.fx.push({ k: 'clog', cell: from }); return; }
@@ -152,16 +276,10 @@ function arrive(f, g, k) {
   }
 
   const m = f.grid[g.cell];
-  if (m && m.buf.length < intake(m)) { absorb(f, m, g, k); return; }
+  if (m && machineLoad(m) + sizeOf(g.ty) <= capacity(m) + EPS) { absorb(f, m, g, k); return; }
 
-  let idle = 0;
-  for (const o of f.gizmos) if (o.st === 'idle' && o.cell === g.cell) idle++;
-  if (idle >= MAX_IDLE_PER_CELL) {
-    f.fx.push({ k: 'clog', cell: g.cell });
-    f.gizmos.splice(k, 1);
-    return;
-  }
-
+  // Nothing on the floor is ever destroyed: it rests on the slot, counts against
+  // that slot's room, and so turns the machine behind it away.
   g.st = 'idle';
   g.p = 0;
   g.x = cx(g.cell) + 0.22 + Math.random() * 0.56;
@@ -187,8 +305,12 @@ function sell(f, g, vault) {
 
 export function beginRound(f) {
   f.gizmos.length = 0;
-  for (const m of f.grid) if (m) { m.buf.length = 0; m.t = 0; m.flash = 0; }
+  for (const m of f.grid) if (m) {
+    m.buf.length = 0; m.work.length = 0; m.out = null; m.t = 0; m.flash = 0; m.blocked = 0;
+  }
+  retally(f);
   f.producer.t = 0.7;
+  f.producer.stall = 0;
   f.income = 0;
   f.sold = 0;
   f.lost = 0;
@@ -198,7 +320,11 @@ export function beginRound(f) {
 export function endRound(f) {
   f.running = false;
   f.gizmos.length = 0;
-  for (const m of f.grid) if (m) m.buf.length = 0;
+  for (const m of f.grid) if (m) {
+    m.buf.length = 0; m.work.length = 0; m.out = null; m.t = 0; m.blocked = 0;
+  }
+  f.producer.stall = 0;
+  retally(f);
 }
 
 const key = s => `${s.cell}:${s.dir}`;
@@ -226,6 +352,18 @@ export function moveSeller(f, rnd = Math.random) {
     dirs.add(pick.dir);
   }
   return f.seller.spots.map(v => ({ cell: v.cell, dir: v.dir }));
+}
+
+/**
+ * Force a floor's vaults to sit exactly where these spots say. The engine draws the
+ * round's spots once and stamps them onto every player, so a match is the same
+ * puzzle for everyone — nobody wins on a kinder roll.
+ */
+export function setSellerSpots(f, spots) {
+  if (!spots?.length) return;
+  f.seller.spots = spots.map((v, i) => ({
+    cell: v.cell, dir: v.dir, flash: f.seller.spots[i]?.flash || 0,
+  }));
 }
 
 /**
@@ -261,7 +399,7 @@ export function addSeller(f, rnd = Math.random) {
  */
 export function smartDir(f, i) {
   const m = f.grid[i];
-  if (!m || m.kind !== 'pipe') return null;
+  if (!m || (m.kind !== 'pipe' && m.kind !== 'store')) return null;
 
   const x = cx(i), y = cy(i);
   // With two vaults open, a belt aims at whichever one is nearer to it. That is
@@ -311,7 +449,7 @@ export function smartDir(f, i) {
   return best;
 }
 
-/** Face a freshly landed conveyor down the line. No-op for anything else. */
+/** Face a freshly landed belt or Storage down the line. No-op for anything else. */
 function autoFace(f, i) {
   const d = smartDir(f, i);
   if (d != null && d !== f.grid[i].dir) {
@@ -463,13 +601,16 @@ export function viewOf(f) {
   return {
     g: f.grid.map(m => m && {
       k: m.kind, d: m.dir, l: m.level, m: m.mut,
-      b: m.buf.map(x => x.ty),
-      p: r2(1 - Math.max(0, m.t) / cycleTime(m)),
+      b: m.buf.map(x => x.ty),                                  // queued at the mouth
+      h: heldTypes(m),                                          // in hand right now
+      q: r2(machineLoad(m)), c: capacity(m),                    // how full, out of how much
+      x: m.blocked ? 1 : 0,                                     // holding, nowhere to put it
+      p: m.work.length ? r2(1 - Math.max(0, m.t) / cycleTime(m)) : 0,
       f: r2(m.flash),
     }),
     v: f.inv.map(m => ({ k: m.kind, d: m.dir, l: m.level, m: m.mut })),
     z: f.gizmos.map(g => [g.id, g.ty, r2(g.x), r2(g.y), g.cp | 0]),
-    pl: f.producer.level, pf: r2(f.producer.flash || 0),
+    pl: f.producer.level, pf: r2(f.producer.flash || 0), px: f.producer.stall ? 1 : 0,
     sl: f.seller.level,
     sv: f.seller.spots.map(v => [v.cell, v.dir, r2(v.flash || 0)]),
     c: Math.round(f.cash), e: Math.round(f.earned), n: Math.round(f.income),
@@ -482,4 +623,4 @@ export function drainFx(f, cap = 24) {
   return out;
 }
 
-export { MAX_IDLE_PER_CELL, INV_CAP, MAX_SELLERS, maxGizmos };
+export { INV_CAP, MAX_SELLERS, maxGizmos };

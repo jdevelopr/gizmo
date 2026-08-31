@@ -41,40 +41,47 @@ export const MAX_TYPE = TYPES.length - 1;
 export const KINDS = {
   pipe: {
     name: 'Conveyor', short: 'CONVEYOR',
-    desc: 'Slides a gizmo one slot along, quickly. Aims itself when you set it down.',
-    price: 10, cycle: 0.26, cap: 1, travel: 0.26,
+    desc: 'Carries a gizmo one slot along. Room for one. Aims itself when you set it down.',
+    price: 10, cycle: 0.26, cap: 1, hold: 1, travel: 0.26,
     body: '#2f4a63', trim: '#6ea2d8', lit: '#a8dcff',
+  },
+  store: {
+    name: 'Storage', short: 'STORAGE',
+    desc: 'Carries a gizmo one slot along like a belt, but holds a crowd while it waits. '
+      + 'The cure for a line that keeps backing up.',
+    price: 28, cycle: 0.35, cap: 1, hold: 6, travel: 0.26,
+    body: '#20443f', trim: '#5fc9ae', lit: '#a7f0dc',
   },
   dup: {
     name: 'Doubler', short: 'DOUBLER',
     // Deliberately the slowest multiplier on the floor: it is the one that needs no
     // routing, so it pays for that convenience in seconds. A Splitter is 1.9x faster.
-    desc: 'Copies an original and pushes both out front, slowly. A copy is never copied again.',
-    price: 32, cycle: 1.8, cap: 1, travel: 0.52,
+    desc: 'Holds an original, copies it, and pushes both out front. Slow. A copy is never copied again.',
+    price: 32, cycle: 1.8, cap: 1, hold: 2, travel: 0.52,
     body: '#27552f', trim: '#5fbf6a', lit: '#a7f070',
   },
   split: {
     name: 'Splitter', short: 'SPLITTER',
-    desc: 'Splits an original ahead and right. Copies leave one at a time, alternating.',
-    price: 26, cycle: 0.96, cap: 1, travel: 0.52,
+    desc: 'Holds one, then sends the original ahead and a copy right. Copies leave one at a time, alternating.',
+    price: 26, cycle: 0.96, cap: 1, hold: 2, travel: 0.52,
     body: '#5c4a1e', trim: '#c9a23f', lit: '#ffcd75',
   },
   trident: {
     name: 'Trident', short: 'TRIDENT',
-    desc: 'Fires an original three ways. Copies leave one at a time, in turn.',
-    price: 62, cycle: 1.7, cap: 1, travel: 0.52,
+    desc: 'Holds one, then fires the original three ways. Copies leave one at a time, in turn.',
+    price: 62, cycle: 1.7, cap: 1, hold: 2, travel: 0.52,
     body: '#5c2a49', trim: '#b55088', lit: '#ff9ad0',
   },
   mut: {
     name: 'Mutator', short: 'MUTATOR',
-    desc: 'Rewrites whatever it eats into one fixed type.',
-    price: 0, cycle: 1.04, cap: 1, travel: 0.52,
+    desc: 'Holds whatever it eats and rewrites it into one fixed type.',
+    price: 0, cycle: 1.04, cap: 1, hold: 2, travel: 0.52,
     body: '#3b2f5e', trim: '#7a63bf', lit: '#b58cff',
   },
   fuse: {
     name: 'Fuser', short: 'FUSER',
-    desc: 'Melts two gizmos into one of the next tier. Two originals make an original.',
-    price: 50, cycle: 1.9, cap: 2, travel: 0.52,
+    desc: 'Holds two gizmos and melts them into one of the next tier. Two originals make an original.',
+    price: 50, cycle: 1.9, cap: 2, hold: 3, travel: 0.52,
     body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
   },
 };
@@ -94,10 +101,13 @@ export function makeMachine(spec, id) {
     dir: spec.dir ?? 0,
     mut: spec.mut ?? 1,
     level: 1,
-    buf: [],   // gizmos being held: { id, ty, cp }
-    t: 0,      // seconds left in the current cycle
-    flip: 0,   // round-robin cursor, used when routing copies
-    flash: 0,  // render-only pulse, set when it fires
+    buf: [],    // queued at the intake, waiting their turn: { id, ty, cp }
+    work: [],   // in the machine's hands right now, for the whole cycle
+    out: null,  // what this job will release, decided the moment it starts
+    t: 0,       // seconds left in the current job (0 = idle and empty-handed)
+    blocked: 0, // holding finished goods with nowhere to put them
+    flip: 0,    // round-robin cursor, used when routing copies
+    flash: 0,   // render-only pulse, set when it lets go
   };
 }
 
@@ -131,6 +141,8 @@ export function scrapValue(m) {
  */
 export function cycleTime(m) {
   const base = m.kind === 'mut' ? MUT_CYCLE[m.mut ?? 1] : KINDS[m.kind].cycle;
+  // A Storage level buys capacity instead, so its pace never changes.
+  if (m.kind === 'store') return base;
   return base * Math.pow(0.7, m.level - 1);
 }
 
@@ -149,6 +161,30 @@ export function travelTime(m) {
 export function intake(m) {
   return KINDS[m.kind].cap;
 }
+
+/**
+ * How much room a gizmo takes up. Raw Scrap is loose swarf and packs two to the
+ * space of one finished gizmo, so the front of a line flows freely and the squeeze
+ * only starts once something has been made of it.
+ */
+export const sizeOf = ty => (ty === 0 ? 0.5 : 1);
+
+/**
+ * Total room inside a machine, in gizmo units: everything in its hands plus
+ * everything queued at its mouth has to fit. A full machine turns arrivals away,
+ * which is what makes a jam travel back up the line instead of vanishing.
+ * Storage is the one machine whose levels buy room rather than speed.
+ */
+export function capacity(m) {
+  const base = KINDS[m.kind].hold ?? 1;
+  return m.kind === 'store' ? base + STORE_STEP * ((m.level || 1) - 1) : base;
+}
+
+/** Extra units a Storage level buys. */
+export const STORE_STEP = 4;
+
+/** Room on a bare slot with no machine on it. Gizmos rest here; they are never destroyed. */
+export const EMPTY_HOLD = 2;
 
 /**
  * What comes out when the machine fires.
@@ -170,6 +206,7 @@ export function outputs(m, inputs) {
 
   switch (m.kind) {
     case 'pipe':
+    case 'store':
       return [{ ty: a, dir: d, cp: copy }];
 
     case 'dup': {
@@ -294,6 +331,7 @@ export function setGridSize(n) {
 export function rollSpec(rnd, round) {
   const table = [
     ['pipe', 30],
+    ['store', 15],
     ['dup', 20],
     ['split', 16],
     ['mut', 22],

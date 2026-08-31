@@ -600,12 +600,39 @@ function drawMachine(ctx, lctx, x, y, m, t) {
       rp(ctx, cxp, cyp, d, -1, 0, 8, 8, lit);
       break;
     }
-    case 'split': {
-      rp(ctx, cxp, cyp, d, -12, -2, 22, 4, trim);       // straight through
-      rp(ctx, cxp, cyp, d, -2, -2, 4, 13, trim);        // branch to its right
-      rp(ctx, cxp, cyp, d, -5, -5, 10, 10, shade(trim, 0.55));
-      rp(ctx, cxp, cyp, d, -3, -3, 6, 6, lit);
-      chevronR(ctx, cxp, cyp, d, 1, lit);               // right-hand arrow
+    case 'bal': {
+      // A junction, not a machine: two belts leaving one throat. The lamp alternates
+      // with the round-robin cursor, so you can watch it take turns.
+      rp(ctx, cxp, cyp, d, -13, -3, 26, 6, '#0e1526');
+      rp(ctx, cxp, cyp, d, -2, -3, 6, 14, '#0e1526');
+      if (m.l >= 3) rp(ctx, cxp, cyp, d, -2, -13, 6, 11, '#0e1526');
+      rp(ctx, cxp, cyp, d, -13, -2, 22, 4, trim);        // straight through
+      rp(ctx, cxp, cyp, d, -1, -2, 4, 12, trim);         // branch right
+      if (m.l >= 3) rp(ctx, cxp, cyp, d, -1, -12, 4, 12, trim);
+      rp(ctx, cxp, cyp, d, -6, -6, 12, 12, shade(trim, 0.5));
+      const side = (m.q || 0) > 0 ? ((m.fl | 0) % 2) : ((Math.floor(t * 2)) % 2);
+      rp(ctx, cxp, cyp, d, -3, -3, 6, 6, side ? lit : shade(lit, 0.5));
+      chevronR(ctx, cxp, cyp, d, 1, lit);
+      if (m.l >= 3) chevronR(ctx, cxp, cyp, d, 3, lit);
+      break;
+    }
+    case 'sort': {
+      // Same junction, with a gem in the throat showing what it is looking for.
+      const want = TYPES[m.m ?? 1] || TYPES[1];
+      rp(ctx, cxp, cyp, d, -13, -3, 26, 6, '#0e1526');
+      rp(ctx, cxp, cyp, d, -2, -3, 6, 14, '#0e1526');
+      if (m.l >= 3) rp(ctx, cxp, cyp, d, -2, -13, 6, 11, '#0e1526');
+      rp(ctx, cxp, cyp, d, -13, -2, 22, 4, shade(trim, 0.8));
+      rp(ctx, cxp, cyp, d, -1, -2, 4, 12, want.color);
+      if (m.l >= 3) rp(ctx, cxp, cyp, d, -1, -12, 4, 12, want.color);
+      // the gate: a lens in the filtered type's colour
+      rp(ctx, cxp, cyp, d, -6, -7, 12, 14, '#0b1220');
+      rp(ctx, cxp, cyp, d, -4, -5, 8, 10, shade(want.color, 0.7));
+      rp(ctx, cxp, cyp, d, -2, -3, 4, 6, want.color);
+      rp(ctx, cxp, cyp, d, -1, -2, 2, 2, want.glow);
+      chevronR(ctx, cxp, cyp, d, 1, want.glow);
+      if (m.l >= 3) chevronR(ctx, cxp, cyp, d, 3, want.glow);
+      glowPx(lctx, R(cxp), R(cyp), want.glow, 3, 0.22);
       break;
     }
     case 'trident': {
@@ -726,7 +753,7 @@ function drawMachine(ctx, lctx, x, y, m, t) {
   }
 }
 
-/** Small arrow on the splitter's side output. */
+/** Small arrow on a router's side output. */
 function chevronR(ctx, cxp, cyp, dir, side, color) {
   const d = (dir + side + 4) % 4;
   for (let i = 0; i < 4; i += 2) {

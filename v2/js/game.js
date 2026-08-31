@@ -11,12 +11,17 @@ import {
 } from './sim.js';
 import {
   rollShop, rng, price, label, describe, setGridSize, GRID,
-  moverCost, moverFree, TYPES, DIR_NAME,
+  routeCost, moverFree, ROUTE_KINDS, KINDS, TYPES, DIR_NAME,
   CLAIM_START, expandCost, firstOrder, nextOrder, orderBonus, SECOND_VAULT_CLAIM,
 } from './machines.js';
 
-/** The one machine you can always buy: it moves gizmos and nothing else. */
-const MOVER = { kind: 'pipe', dir: 0 };
+/**
+ * The machines you can always buy. None of them makes a gizmo worth more — they
+ * only decide where it goes — so they sit outside the workshop's one-a-round limit
+ * and share a single price ladder. See ROUTE_KINDS in machines.js.
+ */
+const ROUTE_SPEC = { pipe: { kind: 'pipe', dir: 0 }, bal: { kind: 'bal', dir: 0 },
+  sort: { kind: 'sort', dir: 0, mut: 1 } };
 
 export const DEFAULT_CFG = {
   rounds: 8,
@@ -223,8 +228,11 @@ export function createEngine(cfgIn = {}) {
     }
   }
 
-  /** What the next belt costs this player, right now. */
-  const nextMover = p => moverCost(Math.max(1, round), p?.movers || 0, p?.f?.claim ?? CLAIM_START);
+  /** What the next routing machine of each kind costs this player, right now. */
+  const routePrices = p => Object.fromEntries(ROUTE_KINDS.map(k => [
+    k, routeCost(k, Math.max(1, round), p?.movers || 0, p?.f?.claim ?? CLAIM_START),
+  ]));
+  const nextMover = p => routePrices(p).pipe;
 
   /** True when every connected player satisfies the test (and there is at least one). */
   function everyone(test) {
@@ -278,18 +286,21 @@ export function createEngine(cfgIn = {}) {
      * that has jumped to the far side, so they are on sale in every phase and do
      * not count against the one machine a round from the workshop.
      */
-    if (msg.t === 'mover') {
+    if (msg.t === 'mover' || msg.t === 'route') {
       if (phase === 'lobby' || phase === 'over') return;
-      const cost = nextMover(p);
-      if (p.f.cash < cost) return note(p, `Conveyor costs $${cost}`);
-      const dest = giveMachine(p.f, MOVER);
+      const kind = msg.t === 'mover' ? 'pipe' : String(msg.k || 'pipe');
+      if (!ROUTE_KINDS.includes(kind)) return;
+      const cost = routePrices(p)[kind];
+      const name = KINDS[kind].name;
+      if (p.f.cash < cost) return note(p, `${name} costs $${cost}`);
+      const dest = giveMachine(p.f, ROUTE_SPEC[kind]);
       if (dest.where === 'none') return note(p, 'No room anywhere');
       p.f.cash -= cost;
       p.movers = (p.movers || 0) + 1;
-      const left = Math.max(0, moverFree() - p.movers);
+      const left = Math.max(0, moverFree(p.f.claim) - p.movers);
       note(p, dest.where === 'grid'
-        ? (left ? `Conveyor installed · ${left} more at $${cost}` : 'Conveyor installed')
-        : 'Conveyor to crate');
+        ? (left ? `${name} installed · ${left} cheap left` : `${name} installed`)
+        : `${name} to crate`);
       p.f.fx.push({ k: 'up', cell: dest.where === 'grid' ? dest.idx : 4 });
       return;
     }
@@ -383,6 +394,7 @@ export function createEngine(cfgIn = {}) {
         an: announce, board: board(), note: p.note,
         ready: !!p.planReady,
         mover: nextMover(p),
+        routes: routePrices(p),
         moverLeft: Math.max(0, moverFree(p.f.claim) - (p.movers || 0)),
         claim: p.f.claim, plot: GRID,
         expand: p.f.claim < GRID ? expandCost(p.f.claim) : 0,

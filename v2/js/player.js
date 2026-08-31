@@ -10,7 +10,7 @@ import { Stage, drawPanel, playFx, PLAYER_COLORS } from './render.js';
 import {
   KINDS, DIR_NAME, MAX_LEVEL, MAX_UTIL, GRID, setGridSize,
   upgradeCost, scrapValue, producerCost, sellerCost, label,
-  cycleTime, claimed,
+  cycleTime, claimed, TYPES, ROUTE_KINDS,
 } from './machines.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -117,8 +117,11 @@ export function createController({ send }) {
     paintSel();
   });
   wire('#btn-clear', () => { sel = null; paintSel(); });
-  wire('#btn-mover', () => { send({ t: 'mover' }); buzz(14); });
+  wire('#btn-mover', () => { send({ t: 'route', k: 'pipe' }); buzz(14); });
+  wire('#btn-bal', () => { send({ t: 'route', k: 'bal' }); buzz(14); });
+  wire('#btn-sort', () => { send({ t: 'route', k: 'sort' }); buzz(14); });
   wire('#btn-expand', () => { send({ t: 'expand' }); buzz(22); });
+  wire('#btn-filt', () => { if (sel) act({ a: 'filt', ref: sel }); });
   wire('#btn-prod', () => act({ a: 'upprod' }));
   wire('#btn-sell', () => act({ a: 'upsell' }));
   wire('#btn-plan', () => {
@@ -138,6 +141,8 @@ export function createController({ send }) {
     const box = $('#pad-sel');
     if (!m) {
       box.dataset.on = 'off';
+      $('#btn-filt').hidden = true;
+      $('#btn-filt').disabled = true;
       $('#sel-name').textContent = 'Tap a machine';
       $('#sel-sub').textContent = 'then tap a slot to move it — belts aim themselves';
       $('#btn-up').textContent = 'UPGRADE';
@@ -167,6 +172,16 @@ export function createController({ send }) {
     $('#btn-scrap').textContent = `SCRAP +$${scrapValue(fake)}`;
     $('#btn-rot').disabled = false;
     $('#btn-stow').disabled = sel[0] !== 'g';
+
+    // A Sorter's filter is free to change and changes often, so it sits with
+    // ROTATE rather than being something you buy your way out of.
+    const fb = $('#btn-filt');
+    fb.hidden = m.k !== 'sort';
+    fb.disabled = m.k !== 'sort';
+    if (m.k === 'sort') {
+      const next = TYPES[((m.m ?? 1) + 1) % TYPES.length];
+      fb.textContent = `FILTER \u2192 ${next.name.toUpperCase()}`;
+    }
   }
 
   function paintInv() {
@@ -223,15 +238,28 @@ export function createController({ send }) {
       : `CLAIM LAND NEXT ROUND · $${cost}`;
   }
 
+  const ROUTE_BTN = { pipe: '#btn-mover', bal: '#btn-bal', sort: '#btn-sort' };
+  const ROUTE_NAME = { pipe: 'CONVEYOR', bal: 'BALANCER', sort: 'SORTER' };
+
   function paintUtil() {
-    const mv = $('#btn-mover');
-    const cost = hud?.mover ?? 10;
+    // All three routing machines share one ladder and one counter, so the cheap
+    // allowance is a budget rather than a belt quota — say how much of it is left
+    // once, under the row, instead of on every button.
+    const prices = hud?.routes || { pipe: hud?.mover ?? 15 };
     const left = hud?.moverLeft ?? 0;
-    // The cheap belts are the safety net, so say plainly how many are left in it.
-    mv.textContent = left > 0
-      ? `+ CONVEYOR · $${cost} · ${left} AT THIS PRICE`
-      : `+ CONVEYOR · $${cost}`;
-    mv.disabled = view.c < cost || hud?.ph === 'over';
+    for (const k of ROUTE_KINDS) {
+      const b = $(ROUTE_BTN[k]);
+      if (!b) continue;
+      const cost = prices[k] ?? 0;
+      b.textContent = `+ ${ROUTE_NAME[k]} · $${cost}`;
+      b.disabled = view.c < cost || hud?.ph === 'over';
+    }
+    const rn = $('#route-note');
+    if (rn) {
+      rn.textContent = left > 0
+        ? `${left} more routing machines at base price this round — belts, balancers or sorters.`
+        : 'Routing is past its cheap allowance this round; every one now costs more than the last.';
+    }
 
     const pc = producerCost(view.pl), sc = sellerCost(view.sl);
     const bp = $('#btn-prod'), bs = $('#btn-sell');

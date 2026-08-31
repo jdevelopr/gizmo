@@ -176,8 +176,14 @@ setTimeout(function () {
 
   <p id="pad-note" class="toast" hidden></p>
 
-  <!-- Always reachable without scrolling: the plumbing, and the land it runs on. -->
-  <button id="btn-mover" class="buy-row">+ CONVEYOR</button>
+  <!-- Always reachable without scrolling: the plumbing, and the land it runs on.
+       None of these count against the one machine a round from the workshop. -->
+  <div id="pad-route">
+    <button id="btn-mover" class="buy-row">+ CONVEYOR</button>
+    <button id="btn-bal" class="buy-row">+ BALANCER</button>
+    <button id="btn-sort" class="buy-row">+ SORTER</button>
+  </div>
+  <p id="route-note" class="fine"></p>
   <button id="btn-expand" class="buy-row land" data-nudge="off" hidden>+ CLAIM LAND</button>
 
   <div id="pad-sel" data-on="off">
@@ -187,6 +193,7 @@ setTimeout(function () {
     </div>
     <div class="sel-btns">
       <button id="btn-rot" disabled>ROTATE</button>
+      <button id="btn-filt" disabled hidden>FILTER</button>
       <button id="btn-up" disabled>UPGRADE</button>
       <button id="btn-stow" disabled>TO CRATE</button>
       <button id="btn-scrap" disabled>SCRAP</button>

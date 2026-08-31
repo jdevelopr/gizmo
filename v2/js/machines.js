@@ -65,16 +65,28 @@ export const KINDS = {
   dup: {
     name: 'Doubler', short: 'DOUBLER',
     // Deliberately the slowest multiplier on the floor: it is the one that needs no
-    // routing, so it pays for that convenience in seconds. A Splitter is 1.9x faster.
+    // routing, so it pays for that convenience in seconds. A Balancer is far faster
+    // but only ever moves what it is given — speed is the price of multiplication.
     desc: 'Holds an original, copies it, and pushes both out front. Slow. A copy is never copied again.',
     price: 96, cycle: 1.8, cap: 1, hold: 2, travel: 0.52,
     body: '#27552f', trim: '#5fbf6a', lit: '#a7f070',
   },
-  split: {
-    name: 'Splitter', short: 'SPLITTER',
-    desc: 'Holds one, then sends the original ahead and a copy right. Copies leave one at a time, alternating.',
-    price: 78, cycle: 0.96, cap: 1, hold: 2, travel: 0.52,
+  bal: {
+    name: 'Balancer', short: 'BALANCER',
+    // The routing primitive the game was missing. Until now the only way to send
+    // gizmos two ways was to copy them, which meant you could not divide a stream
+    // without inflating it — every fork was also an economic decision. This one
+    // just divides. It is plumbing, and it is priced and sold as plumbing.
+    desc: 'Takes one in and sends it out one exit, alternating sides. Never copies. '
+      + 'Skips an exit that is backed up, so one blocked arm cannot stall the other.',
+    price: 46, cycle: 0.34, cap: 1, hold: 2, travel: 0.34,
     body: '#5c4a1e', trim: '#c9a23f', lit: '#ffcd75',
+  },
+  sort: {
+    name: 'Sorter', short: 'SORTER',
+    desc: 'Sends the one type it is set to out to the side, and everything else straight ahead.',
+    price: 92, cycle: 0.44, cap: 1, hold: 2, travel: 0.4,
+    body: '#1f3a52', trim: '#4d9fd8', lit: '#a8dcff',
   },
   trident: {
     name: 'Trident', short: 'TRIDENT',
@@ -125,12 +137,19 @@ export function price(spec) {
   return spec.kind === 'mut' ? MUT_PRICE[spec.mut] : KINDS[spec.kind].price;
 }
 
+/** Machines whose `mut` field names a gizmo type rather than a tier to print. */
+export const TYPED = { mut: 'Mutator', sort: 'Sorter' };
+
 export function label(spec) {
-  return spec.kind === 'mut' ? `${TYPES[spec.mut].name} Mutator` : KINDS[spec.kind].name;
+  const t = TYPED[spec.kind];
+  return t ? `${TYPES[spec.mut ?? 1].name} ${t}` : KINDS[spec.kind].name;
 }
 
 export function describe(spec) {
   if (spec.kind === 'mut') return `Rewrites any gizmo into ${TYPES[spec.mut].name}.`;
+  if (spec.kind === 'sort') {
+    return `${TYPES[spec.mut ?? 1].name} goes out to the side; everything else goes straight ahead.`;
+  }
   return KINDS[spec.kind].desc;
 }
 
@@ -168,7 +187,19 @@ export const SHOP_STEP = 1.55;
  * gets seven. This is the guarantee that you can always reconnect to a vault.
  */
 export const moverFree = (claim = GRID) => claim;
-export const MOVER_STEP = 1.9;
+
+/**
+ * Routing machines. None of them makes a gizmo worth more; they only decide where
+ * it goes. That is the same argument that put conveyors on permanent sale, so all
+ * three share it: buyable from the phone in any phase, in any number you can pay
+ * for, and never counting against the one machine a round from the workshop.
+ *
+ * They also share one ladder and one counter, so each round's cheap allowance is a
+ * budget you spend how you like — a long belt run, or one Balancer and a Sorter.
+ * Reconnecting stays a right; sprawl stays a luxury.
+ */
+export const ROUTE_KINDS = ['pipe', 'bal', 'sort'];
+export const ROUTE_STEP = 1.9;
 
 /** What is refunded when a machine is scrapped, of everything paid for it. */
 export const SCRAP_RATE = 0.3;
@@ -325,10 +356,21 @@ export function outputs(m, inputs) {
       return Array.from({ length: n }, (_, i) => ({ ty: a, dir: d, cp: i ? 1 : 0 }));
     }
 
-    case 'split': {
-      const dirs = m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, (d + 1) % 4];
-      if (copy) return [{ ty: a, dir: nextExit(m, dirs), cp: 1 }];
-      return dirs.map((dir, i) => ({ ty: a, dir, cp: i ? 1 : 0 }));
+    case 'bal': {
+      // One in, one out. Which exit is the only decision, and it alternates, so a
+      // stream arriving at 4/s leaves as two streams of 2/s rather than as 8/s of
+      // anything. `release` may override this pick if that side is backed up.
+      return [{ ty: a, dir: nextExit(m, balDirs(m)), cp: copy }];
+    }
+
+    case 'sort': {
+      // The filter never reroutes on a jam: sending a Cobalt down the Scrap line
+      // because the Cobalt line was briefly full would defeat the whole machine.
+      // A backed-up sorter holds, and the stall walks back up the line as usual.
+      const want = m.mut ?? 1;
+      if (a !== want) return [{ ty: a, dir: d, cp: copy }];
+      const outs = m.level >= 3 ? [(d + 1) % 4, (d + 3) % 4] : [(d + 1) % 4];
+      return [{ ty: a, dir: outs.length > 1 ? nextExit(m, outs) : outs[0], cp: copy }];
     }
 
     case 'trident': {
@@ -361,14 +403,17 @@ export function outputs(m, inputs) {
 
 /**
  * Every direction a machine can fire into, in world space. Routers are read at
- * their current level, so a level 3 splitter reports its third exit. Used by the
+ * their current level, so a level 3 Balancer reports its third exit. Used by the
  * conveyor auto-facing heuristic to tell a hand-off from a head-on collision.
  * @returns {number[]} distinct directions, 0 = east
  */
 export function exitDirs(m) {
   const d = m.dir | 0;
   switch (m.kind) {
-    case 'split':
+    case 'bal':
+      return balDirs(m);
+    case 'sort':
+      // Ahead for the pass-through, plus wherever the filtered type is sent.
       return m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, (d + 1) % 4];
     case 'trident':
       return [d, (d + 1) % 4, (d + 3) % 4];
@@ -377,7 +422,20 @@ export function exitDirs(m) {
   }
 }
 
-/** Round-robin over a router's exits, one copy at a time. */
+/** A balancer's exits: ahead and right, plus left at level 3. */
+export function balDirs(m) {
+  const d = m.dir | 0;
+  return m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, (d + 1) % 4];
+}
+
+/**
+ * Machines allowed to pick a different exit when the one they chose is full. Only
+ * the Balancer: it promises to divide a stream, and a divider that stalls because
+ * one arm is briefly busy is not dividing anything.
+ */
+export const REROUTES = new Set(['bal']);
+
+/** Round-robin over a router's exits, one at a time. */
 function nextExit(m, dirs) {
   m.flip = ((m.flip || 0) + 1) % dirs.length;
   return dirs[m.flip];
@@ -473,14 +531,14 @@ export const TECH_LOCKED = new Set();
 
 /** Weighted draw of one machine spec, tuned so later rounds offer richer parts. */
 export function rollSpec(rnd, round) {
+  // Routing machines are not in here: they are on permanent sale from the phone,
+  // so spending one of three shop cards on a belt would be a wasted card.
   const table = ([
-    ['pipe', 30],
-    ['store', 15],
-    ['dup', 20],
-    ['split', 16],
-    ['mut', 22],
-    ['fuse', 8 + round * 2],
-    ['trident', 4 + round],
+    ['store', 22],
+    ['dup', 24],
+    ['mut', 30],
+    ['fuse', 12 + round * 2],
+    ['trident', 6 + round],
   ]).filter(r => !TECH_LOCKED.has(r[0]));
   const total = table.reduce((s, r) => s + r[1], 0);
   let n = rnd() * total;
@@ -507,12 +565,16 @@ export const shopCost = (spec, round) => Math.max(4, Math.round(price(spec) * co
  * @param {number} round
  * @param {number} bought how many have already been bought this round
  */
-export function moverCost(round, bought = 0, claim = GRID) {
-  const base = KINDS.pipe.price;
+export function routeCost(kind, round, bought = 0, claim = GRID) {
+  const base = KINDS[kind]?.price ?? KINDS.pipe.price;
   const free = moverFree(claim);
   if (bought < free) return base;
-  return Math.round(base * costMult(round) * Math.pow(MOVER_STEP, bought - free + 1));
+  return Math.round(base * costMult(round) * Math.pow(ROUTE_STEP, bought - free + 1));
 }
+
+/** The conveyor's price, which is the one every explanation is written around. */
+export const moverCost = (round, bought = 0, claim = GRID) =>
+  routeCost('pipe', round, bought, claim);
 
 /** Three distinct-ish options for one player's shop. */
 export function rollShop(rnd, round, n = 3) {

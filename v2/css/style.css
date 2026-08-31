@@ -379,6 +379,12 @@ input::placeholder { color: #414a68; }
 }
 .buy-row:disabled { color: var(--dim); border-color: var(--line); background: var(--plate); }
 
+/* The routing shelf: three purchases that are all plumbing, so they read as one
+   group rather than as three unrelated buttons. */
+#pad-route { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 6px; }
+#pad-route .buy-row { font-size: 9px; padding: 10px 4px; letter-spacing: .03em; }
+#route-note { margin-top: 2px; }
+
 /* Land reads as its own kind of purchase: it is the only thing you buy that is
    not a machine, and the only one that changes the shape of the floor. */
 .buy-row.land {

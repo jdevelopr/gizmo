@@ -41,6 +41,25 @@ magnitude — any single ladder of numbers is either free for a good player or
 impossible for a new one. A floor under it keeps the target climbing even after a
 flat round, so standing still stops paying.
 
+**Routing is its own thing now.** The old Splitter copied — original ahead, copy to
+the right — which meant the only way to send gizmos two ways was to make more of
+them, and every fork was also an economic decision. It is gone, replaced by two
+machines that route and nothing else:
+
+- **Balancer** — one in, one out, alternating between its exits. Divides a stream
+  instead of inflating it. If the exit it picked is backed up it takes another,
+  because a divider that stalls on one busy arm is not dividing anything.
+- **Sorter** — the gizmo type it is set to goes out to the side, everything else
+  goes straight ahead. Its filter is free to change from the phone, like rotating.
+  It never reroutes on a jam: sending a Cobalt down the Scrap line because the
+  Cobalt line was briefly full would defeat the whole machine.
+
+Neither makes a gizmo worth more, so both are plumbing: on sale from the phone in
+any phase, outside the workshop's one-machine-a-round limit, sharing one price
+ladder and one counter with conveyors. Each round's cheap allowance is a budget you
+spend how you like — a long belt run, or one Balancer and a Sorter. Conveyors also
+came out of the workshop deck, so a shop card is never wasted on a belt.
+
 **Ratios are visible.** Every machine reports its rate in jobs per second, and the
 two failure modes are drawn differently because they want opposite fixes: amber all
 round the casing means BACKED UP (holding finished goods, fix the line ahead), four
@@ -50,12 +69,8 @@ cool blue corner ticks mean STARVED (standing idle, fix the feed behind).
 
 ## Still to come
 
-This is phase one of four. The design the rest is heading toward:
+Phases one and two are in. Two left. The design the rest is heading toward:
 
-- **Phase 2 — routing.** A real Balancer (one in, two out, no copying) and a Filter
-  Splitter that routes by gizmo type. The machine currently called Splitter is a
-  cloner, not a splitter, and will be renamed. Mergers are not needed: every machine
-  already accepts input from all four sides, so merging is implicit.
 - **Phase 3 — recipes.** A second Producer on a different edge emitting a different
   raw type, and an Assembler with fixed multi-input recipes. The Fuser is already a
   working two-input machine, so this is largely a re-skin of code that exists.
@@ -79,6 +94,7 @@ js/render.js      unbought land, the fence, the starved badge
 js/player.js      the CLAIM LAND button, the order bar, per-machine rates
 js/howto.js       the manual, still generated from machines.js on open
 tools/lint.mjs    parses every module as a module, the way the browser will
+tools/routing.mjs proves the Balancer divides and the Sorter sorts
 tools/balance.mjs an ordinary-player bot, for calibrating the numbers
 tools/verify.mjs  headless assertions over a whole match
 ```
@@ -91,6 +107,7 @@ is the original, unchanged.
 ```bash
 node tools/lint.mjs       # will every module parse in a browser?
 node tools/verify.mjs     # invariants: nothing on unowned land, vaults on the fence
+node tools/routing.mjs    # the Balancer divides evenly; the Sorter never misroutes
 node tools/balance.mjs    # what an ordinary player actually ships, round by round
 ```
 

@@ -11,6 +11,7 @@
 import {
   KINDS, TYPES, MUT_PRICE, MAX_LEVEL, MAX_UTIL, DIR_NAME,
   cycleTime, upgradeCost, scrapValue, outputs, capacity, EMPTY_HOLD,
+  exitDirs as machineExits, routeCost, ROUTE_KINDS,
   moverCost, moverFree, SCRAP_RATE, UP_STEP, UTIL_STEP, SHOP_STEP,
   producerCycle, producerCost, sellerMult, sellerCost, shopCost, costMult,
   GRID, CLAIM_START, SECOND_VAULT_CLAIM, expandCost,
@@ -34,8 +35,10 @@ const LEVELS = {
     'Room for fourteen — a whole round\u2019s surge, parked.'],
   dup: ['The original plus one copy.', 'Three out: the original and two copies.',
     'Four out: the original and three copies.'],
-  split: ['Original ahead, copy to the right.', '30% faster, still two exits.',
-    'A third exit opens to the left.'],
+  bal: ['One in, one out, alternating between ahead and right.', '30% faster.',
+    'A third exit opens to the left, and it takes all three in turn.'],
+  sort: ['The type it is set to goes right; everything else goes straight ahead.',
+    '30% faster.', 'A second filtered exit opens to the left, taking turns with the first.'],
   trident: ['Original ahead, copies left and right.', '30% faster.', 'Twice the speed of level 1.'],
   mut: ['Rewrites anything it eats into its type.', '30% faster.',
     'Refuses to downgrade: anything already above its tier passes through untouched.'],
@@ -43,12 +46,15 @@ const LEVELS = {
     'A matching pair jumps two tiers instead of one.'],
 };
 
-const BUILDABLE = ['pipe', 'store', 'dup', 'split', 'trident', 'fuse'];
+const BUILDABLE = ['pipe', 'store', 'bal', 'sort', 'dup', 'trident', 'fuse'];
 
-/** Exits a machine fires into, in its own frame, facing east. */
+/**
+ * Exits a machine fires into, in its own frame, facing east. Read from the
+ * machine's declared exits rather than from one call to `outputs`, because a
+ * router picks one exit per job — asking it once would draw only that one.
+ */
 function exitDirs(kind, level) {
-  const m = { kind, dir: 0, level, mut: 1, flip: 0 };
-  return [...new Set(outputs(m, [{ ty: 2, cp: 0 }]).map(o => o.dir))];
+  return machineExits({ kind, dir: 0, level, mut: 1, flip: 0 });
 }
 
 function diagram(kind, color) {
@@ -205,7 +211,7 @@ function build() {
   /* --- the two rules ----------------------------------------------------- */
   const rules = section('THE TWO RULES');
   [
-    ['A copy is never copied', 'Duplicating machines multiply originals. A copy that reaches one is routed onward instead — a Splitter or Trident sends copies out one at a time, taking each exit in turn.'],
+    ['A copy is never copied', 'Duplicating machines multiply originals. A copy that reaches one is routed onward instead — a Trident sends copies out one at a time, taking each exit in turn. Routing machines never copy anything at all.'],
     ['Two originals make an original', 'A Fuser handed a copy returns a copy. Copies sell for full price; they just cannot become copyable stock again. On the floor they are drawn dimmer and unlit.'],
   ].forEach(([h, p]) => {
     const card = el('div', 'ht-rule');
@@ -249,7 +255,10 @@ function build() {
       const cyc = cycleTime(m);
       rows.push([
         'L' + l,
-        String(outputs(m, [{ ty: 2, cp: 0 }]).length),
+        // Routers emit one gizmo and choose where; everything else emits what it makes.
+        (m.kind === 'bal' || m.kind === 'sort')
+          ? `1 of ${machineExits(m).length}`
+          : String(outputs(m, [{ ty: 2, cp: 0 }]).length),
         r2(cyc) + 's',
         r2(1 / cyc) + '/s',
         { v: l < MAX_LEVEL ? money(upgradeCost(m)) : 'max', cls: l < MAX_LEVEL ? 'ht-buy' : 'ht-dim' },
@@ -340,19 +349,24 @@ function build() {
       { v: money(shopCost({ kind: 'fuse' }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'mut', mut: 4 }, r)), cls: 'ht-buy' }])));
   shop.appendChild(el('p', 'ht-custody',
-    `Conveyors are the exception, because a player who cannot reach a vault cannot score `
-    + `at all. Each round, a number of belts equal to your plot's width go for base price `
-    + `whatever the round it is — one row's worth, so a bigger claim gets the longer runs `
-    + `it needs, and the belt that reaches a vault you just moved is always cheap. Past those, each `
-    + `belt in the same round costs nearly double the last on top of the round's markup. `
-    + `Sprawl is a luxury; reconnecting is a right. They still never count against the one `
-    + `machine a round from the workshop.`));
-  shop.appendChild(table(['Round', '1st belt', '2nd', '3rd', '4th', '5th', '6th'],
-    [1, 4, 8].map(r => ['R' + r, ...[0, 1, 2, 3, 4, 5].map(n =>
-      ({ v: money(moverCost(r, n, CLAIM_START)),
+    `Routing machines are the exception. A Conveyor, a Balancer and a Sorter all only `
+    + `decide where a gizmo goes — none of them makes one worth more — so all three are on `
+    + `sale from your phone in any phase, in any number you can pay for, and none of them `
+    + `counts against the one machine a round from the workshop. They also share one price `
+    + `ladder and one counter: each round, a number of them equal to your plot's width go `
+    + `for base price whatever the round it is, and that allowance is a budget you spend `
+    + `how you like — a long belt run, or one Balancer and a Sorter. Past it, each one in `
+    + `the same round costs nearly double the last on top of the round's markup. Sprawl is `
+    + `a luxury; reconnecting is a right.`));
+  shop.appendChild(table(['Routing', '1st this round', '2nd', '3rd', '4th', '5th', '6th'],
+    ROUTE_KINDS.map(k => [KINDS[k].name, ...[0, 1, 2, 3, 4, 5].map(n =>
+      ({ v: money(routeCost(k, 1, n, CLAIM_START)),
         cls: n < moverFree(CLAIM_START) ? 'ht-sell' : 'ht-buy' }))])));
   shop.appendChild(el('p', 'ht-note',
-    `Prices above are for a ${CLAIM_START} x ${CLAIM_START} claim; a wider plot gets more of them at base price.`));
+    `Round 1 on a ${CLAIM_START} x ${CLAIM_START} claim, where the first ${moverFree(CLAIM_START)} routing machines are cheap. `
+    + `A wider plot gets more of them at base price, and later rounds mark up everything past the allowance. `
+    + `The counter is shared: buying a Balancer uses up one of the cheap belts, and the other way round. `
+    + `A conveyor in round 8 past the allowance runs to ${money(moverCost(8, moverFree(CLAIM_START) + 2, CLAIM_START))}.`));
   body.appendChild(shop);
 
   /* --- ladder ------------------------------------------------------------ */

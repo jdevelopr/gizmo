@@ -9,6 +9,7 @@ import {
   GRID, DIRS, TYPES, MAX_TYPE, KINDS, MAX_LEVEL, MAX_UTIL,
   makeMachine, price, upgradeCost, scrapValue, cycleTime, travelTime,
   intake, outputs, exitDirs, sizeOf, capacity, EMPTY_HOLD,
+  balDirs, REROUTES, TYPED,
   producerCycle, producerCost, sellerMult, sellerCost,
   cellOf, cx, cy, inClaim, claimed, claimCells,
   CLAIM_START, sellerSpotsFor, expandCost, PRODUCER_PORT,
@@ -230,19 +231,46 @@ function startJob(f, m, i) {
  * Let go — but only of what the far side has room for. Anything the next slot
  * cannot take stays in the machine's hands and is offered again next tick, so the
  * machine sits there visibly full instead of forcing gizmos into a jam. Outputs are
- * offered one at a time, so a Splitter with one blocked exit still works the other.
+ * offered one at a time, so a Trident with one blocked exit still works the others.
  */
+/**
+ * Where one output actually goes.
+ *
+ * Most machines have exactly one answer and hold on when it is full. A Balancer is
+ * the exception: it promised to divide a stream, and a divider that stalls because
+ * one arm happens to be busy is not dividing anything — so it tries its other
+ * exits, starting from the one the round-robin picked. Leaving the claim always
+ * counts as available: that is either a vault or a loss, and neither backs up.
+ *
+ * @returns {number|null} the direction to fire, or null if every exit is full
+ */
+function pickExit(f, i, m, o) {
+  let cands = [o.dir];
+  if (REROUTES.has(m.kind)) {
+    const all = balDirs(m);
+    const at = Math.max(0, all.indexOf(o.dir));
+    cands = all.slice(at).concat(all.slice(0, at));
+  }
+  for (const d of cands) {
+    const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
+    if (!inClaim(nx, ny, f.claim)) return d;
+    if (canAccept(f, cellOf(nx, ny), o.ty)) return d;
+  }
+  return null;
+}
+
 function release(f, m, i) {
   const outs = m.out || [];
   const stay = [];
   const sent = [];
 
   for (const o of outs) {
-    const nx = cx(i) + DIRS[o.dir][0], ny = cy(i) + DIRS[o.dir][1];
+    const d = pickExit(f, i, m, o);
+    if (d == null) { stay.push(o); continue; }
+    o.dir = d;
+    const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
     if (inClaim(nx, ny, f.claim)) {
-      const to = cellOf(nx, ny);
-      if (!canAccept(f, to, o.ty)) { stay.push(o); continue; }
-      f.load[to] += sizeOf(o.ty);        // claim the space now, before it flies
+      f.load[cellOf(nx, ny)] += sizeOf(o.ty);   // claim the space now, before it flies
     }
     sent.push(o);
   }
@@ -386,9 +414,12 @@ export function setSellerSpots(f, spots) {
  *   -  fires back into the machine feeding us, or head-on into one facing us
  *   -  spills off the edge of the floor anywhere but the seller's window
  */
+/** Machines that aim themselves when set down: the routing family, plus Storage. */
+const AUTO_FACE = new Set(['pipe', 'store', 'bal', 'sort']);
+
 export function smartDir(f, i) {
   const m = f.grid[i];
-  if (!m || (m.kind !== 'pipe' && m.kind !== 'store')) return null;
+  if (!m || !AUTO_FACE.has(m.kind)) return null;
 
   const x = cx(i), y = cy(i);
   // With two vaults open, a belt aims at whichever one is nearer to it. That is
@@ -440,7 +471,7 @@ export function smartDir(f, i) {
   return best;
 }
 
-/** Face a freshly landed belt or Storage down the line. No-op for anything else. */
+/** Face a freshly landed routing machine down the line. No-op for anything else. */
 function autoFace(f, i) {
   const d = smartDir(f, i);
   if (d != null && d !== f.grid[i].dir) {
@@ -518,6 +549,21 @@ export function applyAction(f, a) {
       m.flash = 1;
       f.fx.push({ k: 'up', cell: ref.zone === 'grid' ? ref.idx : -1 });
       return yes();
+    }
+
+    /**
+     * Retune a Sorter. Its filter is the machine's whole personality and the right
+     * answer changes as a floor grows, so unlike a Mutator's tier — which is bought
+     * and fixed — this one cycles freely, for nothing, like rotating.
+     */
+    case 'filt': {
+      const ref = parseRef(f, a.ref);
+      const m = ref && getRef(f, ref);
+      if (!m) return no('Nothing there');
+      if (m.kind !== 'sort') return no('Only a Sorter has a filter');
+      m.mut = ((m.mut ?? 1) + 1) % TYPES.length;
+      f.fx.push({ k: 'rot', cell: ref.zone === 'grid' ? ref.idx : -1 });
+      return yes(`Sorting ${TYPES[m.mut].name}`);
     }
 
     case 'scrap': {
@@ -598,6 +644,7 @@ export function viewOf(f) {
       q: r2(machineLoad(m)), c: capacity(m),                    // how full, out of how much
       x: m.blocked ? 1 : 0,                                     // holding, nowhere to put it
       s: (!m.work.length && m.buf.length < intake(m)) ? 1 : 0,   // waiting on a feed
+      fl: m.flip | 0,                                            // round-robin cursor
       r: r2(1 / (cycleTime(m) || 1)),                            // jobs per second at this level
       p: m.work.length ? r2(1 - Math.max(0, m.t) / cycleTime(m)) : 0,
       f: r2(m.flash),

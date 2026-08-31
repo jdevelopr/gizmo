@@ -65,9 +65,9 @@ console.log(pad('total tree', 16) + pad(M.TECH.reduce((s2, t) => s2 + t.cost, 0)
   + '   = the same number of dollars not taken');
 
 console.log('\n=== WHAT A ROUND EARNS, for reference ===');
-const perRound = 90 / M.producerCycle(1) * 2;
-console.log(`starter kit at 90s: ${$(perRound)}   (producer L1, one Doubler, Scrap at $1)`);
-console.log(`producer at L5:     ${$(90 / M.producerCycle(5) * 2)} on the same line`);
+const perRound = 90 / M.producerCycle(1);
+console.log(`starter kit at 90s: ${$(perRound)}   (producer L1, a bare belt run, Scrap at $1)`);
+console.log(`producer at L5:     ${$(90 / M.producerCycle(5))} on the same line`);
 const mutSlot = t => M.TYPES[t].value / M.MUT_CYCLE[t];
 console.log('mutator $/s per slot: ' + [1, 2, 4, 6, 7].map(t =>
   `${M.TYPES[t].name} ${mutSlot(t).toFixed(1)}`).join('  '));
@@ -104,13 +104,13 @@ const P = (x, y, kind, extra = {}) => [x, y, { kind, dir: 0, ...extra }];
 const belt = (x, y, dir = 0) => [x, y, { kind: 'pipe', dir }];
 
 const builds = [
-  build('3x3 starter kit', 3, [P(0, 0, 'dup'), belt(1, 0), belt(2, 0)]),
-  build('3x3 + Copper Mutator', 3, [P(0, 0, 'dup'), P(1, 0, 'mut', { mut: 1 }), belt(2, 0)]),
+  build('3x3 starter kit', 3, [belt(0, 0), belt(1, 0), belt(2, 0)]),
+  build('3x3 + Copper Mutator', 3, [P(0, 0, 'mut', { mut: 1 }), belt(1, 0), belt(2, 0)]),
   build('5x5 two-tier line', 5, [
-    P(0, 0, 'dup'), P(1, 0, 'mut', { mut: 1 }), P(2, 0, 'mut', { mut: 2 }), belt(3, 0), belt(4, 0),
+    P(0, 0, 'mut', { mut: 1 }), P(1, 0, 'mut', { mut: 2 }), belt(2, 0), belt(3, 0), belt(4, 0),
   ]),
   build('5x5 two-tier, Producer L3', 5, [
-    P(0, 0, 'dup'), P(1, 0, 'mut', { mut: 1 }), P(2, 0, 'mut', { mut: 2 }), belt(3, 0), belt(4, 0),
+    P(0, 0, 'mut', { mut: 1 }), P(1, 0, 'mut', { mut: 2 }), belt(2, 0), belt(3, 0), belt(4, 0),
   ], 3),
   build('5x5 Engine chain', 5, [
     P(0, 0, 'mut', { mut: 2 }), belt(1, 0, 1),

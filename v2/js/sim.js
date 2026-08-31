@@ -61,14 +61,22 @@ export function createFactory({ cash = 120, claim = CLAIM_START } = {}) {
 }
 
 /**
- * The starting line: producer -> doubler -> conveyors -> vault, filling the top
- * row of the opening claim. Unlike GIZMO 1 this line is never invalidated — it is
- * the seed of the factory you finish the match with, and every round after this
- * one is spent adding to it rather than rebuilding it.
+ * The starting line: producer -> conveyors -> vault, filling the top row of the
+ * opening claim. Nothing but plumbing, which is the point — it moves raw Scrap to
+ * the vault at a dollar a piece and that is all. The first Mutator you buy triples
+ * it, which is the fastest way to teach what this game is actually about.
+ *
+ * It used to open with a free Doubler, from back when the Doubler was a shop
+ * machine. Duplication is deep research now, and handing someone the endgame
+ * machine in round one taught the wrong lesson twice over: it hid the ladder behind
+ * a flat multiplier, and it made the one thing you cannot buy the one thing you
+ * started with.
+ *
+ * Unlike GIZMO 1 this line is never invalidated — it is the seed of the factory you
+ * finish the match with, and every round after this one is spent adding to it.
  */
 export function starterKit(f) {
-  place(f, makeMachine({ kind: 'dup', dir: 0 }, f.nid++), 0);
-  for (let x = 1; x < f.claim; x++) {
+  for (let x = 0; x < f.claim; x++) {
     place(f, makeMachine({ kind: 'pipe', dir: 0 }, f.nid++), cellOf(x, 0));
   }
   f.seller.spots = sellerSpotsFor(f.claim).map(v => ({ ...v, flash: 0 }));

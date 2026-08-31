@@ -346,13 +346,13 @@ export const ORDER_FLOOR_GROWTH = 1.12; // minimum climb, even after a flat roun
 export const ORDER_BONUS = 0.35;        // bonus as a fraction of the target
 
 /**
- * Round one asks only that the starting line keeps running: nine tenths of what
- * the producer can push through an untouched starter kit in one round. Derived
- * from the clock rather than hardcoded, so a 60-second round asks for less.
+ * Round one asks only that the starting line keeps running: nine tenths of what the
+ * producer can push down an untouched belt run in one round. Derived from the clock
+ * rather than hardcoded, so a 60-second round asks for less.
  */
 export function firstOrder(roundSecs) {
-  const perRound = (roundSecs / producerCycle(1)) * 2;   // producer -> doubler, at $1 each
-  return Math.max(20, Math.round(perRound * 0.9));
+  const perRound = roundSecs / producerCycle(1);   // one belt run, raw Scrap at $1 each
+  return Math.max(15, Math.round(perRound * 0.9));
 }
 
 /** Next round's target, from this round's target and the best round so far. */

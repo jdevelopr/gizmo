@@ -59,7 +59,7 @@ function goShopping(eng) {
     // throttles everything behind it to nothing. Matching the machine to the feed
     // is the single most important thing a player learns, and a harness that does
     // not do it measures the wrong game.
-    const feed = 2 / M.producerCycle(f.producer.level);   // gizmos/s reaching the line
+    const feed = 1 / M.producerCycle(f.producer.level);   // gizmos/s reaching the line
     const affordable = sh.opts.map((o, i) => ({ i, o }))
       .filter(x => x.o.kind === 'mut' && x.o.cost <= f.cash
         && M.MUT_CYCLE[x.o.mut] <= (1 / feed) * 1.15);

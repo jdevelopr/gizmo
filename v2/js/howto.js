@@ -115,7 +115,10 @@ function build() {
   body.innerHTML = '';
 
   /* --- the loop ---------------------------------------------------------- */
-  const loop = section('HOW A ROUND GOES');
+  const loop = section('HOW A ROUND GOES',
+    'You open with a belt run from the Producer to the vault and nothing else — raw '
+    + 'Scrap at a dollar a piece. That is the whole game in one line, and the first '
+    + 'Mutator you put in it triples what the same Producer earns you.');
   const ol = el('ol', 'ht-steps');
   [
     ['PLANNING', 'The floor is stopped and everything you built is exactly where you left it. Extend the line, upgrade it, and claim land if you can afford it — land is bought here and nowhere else, because the vault rides out to the new fence and moving it mid-round would sell gizmos into a wall. A conveyor aims itself whenever it lands on a slot, so laying a route is a row of taps. ROTATE always overrides it. The round starts as soon as everyone is ready.'],
@@ -411,12 +414,12 @@ function build() {
     + `take — so the prices multiply too. Each level of anything costs ${UTIL_STEP}x the last, and the `
     + `workshop marks up ${Math.round((SHOP_STEP - 1) * 100)}% every round, compounding. Buy one more thing a round, not `
     + `everything.`);
-  shop.appendChild(table(['Round', 'Markup', 'Conveyor', 'Storage', 'Doubler', 'Fuser', 'Cobalt Mut'],
+  shop.appendChild(table(['Round', 'Markup', 'Conveyor', 'Storage', 'Fuser', 'Engine Asm', 'Cobalt Mut'],
     [1, 2, 3, 4, 5, 6, 7, 8].map(r => ['R' + r, 'x' + r2(costMult(r)),
       { v: money(shopCost({ kind: 'pipe' }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'store' }, r)), cls: 'ht-buy' },
-      { v: money(shopCost({ kind: 'dup' }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'fuse' }, r)), cls: 'ht-buy' },
+      { v: money(shopCost({ kind: 'asm', mut: 0 }, r)), cls: 'ht-buy' },
       { v: money(shopCost({ kind: 'mut', mut: 4 }, r)), cls: 'ht-buy' }])));
   shop.appendChild(el('p', 'ht-custody',
     `Routing machines are the exception. A Conveyor, a Balancer and a Sorter all only `

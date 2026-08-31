@@ -20,6 +20,12 @@ structure around permanence.
 **Your factory persists.** The line you build in round one is still running in round
 eight. Nothing is ever taken away from you.
 
+**You open with nothing but plumbing.** The starting line is a belt run from the
+Producer to the vault, moving raw Scrap at a dollar a piece — about $33 a round. The
+first Mutator you buy triples it. GIZMO 1 opened with a free Doubler, which taught
+the wrong lesson twice over: it hid the tier ladder behind a flat multiplier, and it
+handed you the one machine you now cannot buy until deep into the research tree.
+
 **The plot is a claim, not a room.** You start owning a 3x3 corner of a 7x7 plot.
 Everything beyond your fence is dirt: you cannot build on it, and anything fired into
 it is lost as surely as if it had gone off the edge of the world. Land is bought
@@ -141,16 +147,6 @@ round the casing means BACKED UP (holding finished goods, fix the line ahead), f
 cool blue corner ticks mean STARVED (standing idle, fix the feed behind).
 
 ---
-
-## Still to come
-
-Phases one through three are in. One left. The design the rest is heading toward:
-
-- **Phase 4 — research.** A Lab bolted to an edge like the Producer, costing no slot.
-  Route gizmos into it for science; science unlocks machine types and levels while
-  cash still buys the instances. Duplication — the Doubler and the Trident — moves
-  behind a deep node with a hard throughput cap, which is why `TECH_LOCKED` exists in
-  `machines.js` and is currently empty.
 
 ---
 

@@ -102,7 +102,7 @@ export const KINDS = {
     name: 'Storage', short: 'STORAGE',
     desc: 'Carries a gizmo one slot along like a belt, but holds a crowd while it waits. '
       + 'The cure for a line that keeps backing up.',
-    price: 84, cycle: 0.35, cap: 1, hold: 6, travel: 0.26,
+    price: 70, cycle: 0.35, cap: 1, hold: 6, travel: 0.26,
     body: '#20443f', trim: '#5fc9ae', lit: '#a7f0dc',
   },
   dup: {
@@ -122,19 +122,19 @@ export const KINDS = {
     // just divides. It is plumbing, and it is priced and sold as plumbing.
     desc: 'Takes one in and sends it out one exit, alternating sides. Never copies. '
       + 'Skips an exit that is backed up, so one blocked arm cannot stall the other.',
-    price: 46, cycle: 0.34, cap: 1, hold: 2, travel: 0.34,
+    price: 36, cycle: 0.34, cap: 1, hold: 2, travel: 0.34,
     body: '#5c4a1e', trim: '#c9a23f', lit: '#ffcd75',
   },
   sort: {
     name: 'Sorter', short: 'SORTER',
     desc: 'Sends the one type it is set to out to the side, and everything else straight ahead.',
-    price: 92, cycle: 0.44, cap: 1, hold: 2, travel: 0.4,
+    price: 68, cycle: 0.44, cap: 1, hold: 2, travel: 0.4,
     body: '#1f3a52', trim: '#4d9fd8', lit: '#a8dcff',
   },
   trident: {
     name: 'Trident', short: 'TRIDENT',
     desc: 'Holds one, then fires the original three ways. Copies leave one at a time, in turn.',
-    price: 186, cycle: 1.7, cap: 1, hold: 2, travel: 0.52,
+    price: 160, cycle: 1.7, cap: 1, hold: 2, travel: 0.52,
     body: '#5c2a49', trim: '#b55088', lit: '#ff9ad0',
   },
   mut: {
@@ -158,13 +158,13 @@ export const KINDS = {
   fuse: {
     name: 'Fuser', short: 'FUSER',
     desc: 'Holds two gizmos and melts them into one of the next tier. Two originals make an original.',
-    price: 150, cycle: 1.9, cap: 2, hold: 3, travel: 0.52,
+    price: 120, cycle: 1.9, cap: 2, hold: 3, travel: 0.52,
     body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
   },
 };
 
 /** Mutators are priced by the tier they output. */
-export const MUT_PRICE = [0, 72, 102, 144, 192, 264, 372, 510];
+export const MUT_PRICE = [0, 60, 85, 120, 160, 220, 310, 425];
 
 /**
  * Assembler recipes. `mut` on an Assembler is the index into this list.
@@ -176,9 +176,9 @@ export const MUT_PRICE = [0, 72, 102, 144, 192, 264, 372, 510];
  * bigger than the raw feeding it.
  */
 export const RECIPES = [
-  { ins: [9, 2], out: 11, cycle: 2.4, price: 190 },    // Cord  + Amber  -> Engine
-  { ins: [10, 4], out: 12, cycle: 3.6, price: 430 },   // Frame + Cobalt -> Turbine
-  { ins: [10, 6], out: 13, cycle: 4.8, price: 880 },   // Frame + Ember  -> Reactor
+  { ins: [9, 2], out: 11, cycle: 2.4, price: 165 },    // Cord  + Amber  -> Engine
+  { ins: [10, 4], out: 12, cycle: 3.6, price: 360 },   // Frame + Cobalt -> Turbine
+  { ins: [10, 6], out: 13, cycle: 4.8, price: 720 },   // Frame + Ember  -> Reactor
 ];
 
 export const recipeOf = m => RECIPES[m?.mut ?? 0] || RECIPES[0];
@@ -241,30 +241,41 @@ export function describe(spec) {
 /* --------------------------------------------------------- producer/seller --- */
 
 export const producerCycle = lvl => 2.7 * Math.pow(0.78, lvl - 1);
-export const producerCost = lvl => Math.round(102 * Math.pow(UTIL_STEP, lvl - 1));
+export const producerCost = lvl => Math.round(85 * Math.pow(UTIL_STEP, lvl - 1));
 export const sellerMult = lvl => 1 + 0.3 * (lvl - 1);
-export const sellerCost = lvl => Math.round(120 * Math.pow(UTIL_STEP, lvl - 1));
+export const sellerCost = lvl => Math.round(100 * Math.pow(UTIL_STEP, lvl - 1));
 
 /* ------------------------------------------------------------------ costs --- */
 
 /*
- * Everything a floor earns multiplies: machine level times producer rate times
- * seller take, each one scaling the last. Costs used to add. That is why a good
- * line used to out-earn the entire shop in a single round and every decision after
- * round three stopped being a decision. So the prices multiply now too — each
- * level of anything costs four times the last, and the shop marks up by half again
- * every round. You buy one more thing per round, not everything.
+ * Costs multiply, because earnings multiply — but they used to multiply far harder
+ * than earnings do, and in a game where the factory persists that is fatal.
+ *
+ * The old numbers came from GIZMO 1, where the Seller jumped every round and a
+ * floor was rebuilt from scratch each time. Here you keep what you build, so income
+ * climbs in steps: it roughly doubles each time you add a tier to the line, and
+ * then flattens while you save for the next one. A shop marking up 55% *every
+ * round* compounds to 21x by round eight and outruns that completely — a Cobalt
+ * Mutator finished the match costing $4,127 against an income of a few hundred.
+ * The same went for every other ladder: maxing the Producer, the one upgrade that
+ * raises the raw ceiling everything else depends on, cost $8,670.
+ *
+ * These are set against what a floor can actually earn. A well-built 7x7 tops out
+ * around $5,000 a round; a competent 5x5 makes a few hundred. Maxing a fixture now
+ * costs about what a good mid-game round earns, the plot costs under a thousand
+ * end to end, and the shop's late-round premium is a real premium rather than a
+ * wall.
  */
 
-/** Each level costs UP_STEP times the last. */
-export const UP_BASE = 2;
-export const UP_STEP = 4;
+/** Each level costs UP_STEP times the last, starting at UP_BASE times the price. */
+export const UP_BASE = 1;
+export const UP_STEP = 2.2;
 
 /** Producer and Seller levels climb on the same ladder. */
-export const UTIL_STEP = 4;
+export const UTIL_STEP = 2.1;
 
-/** Workshop markup, compounding per round. */
-export const SHOP_STEP = 1.55;
+/** Workshop markup, compounding per round. Reaches about 3.5x by round eight. */
+export const SHOP_STEP = 1.2;
 
 /**
  * Belts bought at base price each round before the ladder starts: one row's worth,
@@ -287,7 +298,7 @@ export const ROUTE_KINDS = ['pipe', 'bal', 'sort'];
 export const ROUTE_STEP = 1.9;
 
 /** What is refunded when a machine is scrapped, of everything paid for it. */
-export const SCRAP_RATE = 0.3;
+export const SCRAP_RATE = 0.5;
 
 /**
  * Buying land. The first step out is deliberately cheap — nine slots fills up
@@ -296,8 +307,8 @@ export const SCRAP_RATE = 0.3;
  * more than the last, which is what keeps a plot the size you can actually feed
  * rather than the size you can afford.
  */
-export const EXPAND_BASE = 90;
-export const EXPAND_STEP = 2.4;
+export const EXPAND_BASE = 75;
+export const EXPAND_STEP = 1.8;
 
 /** Cost of growing a claim from `claim` to `claim + 1`. */
 export function expandCost(claim) {
@@ -321,8 +332,16 @@ export function expandCost(claim) {
  * A floor under it keeps the target climbing even after a flat round, so standing
  * still stops paying. Missing an order costs nothing but the bonus.
  */
-export const ORDER_GROWTH = 1.25;       // over your own best round
-export const ORDER_FLOOR_GROWTH = 1.15; // minimum climb, even after a flat round
+/*
+ * Tuned against the harness rather than by feel. Income does not climb smoothly —
+ * it steps each time you add a tier to a line and then sits flat while you save
+ * for the next one — so asking for a quarter more than your best round meant a big
+ * round set a bar you could not clear until two rounds later. At these numbers an
+ * ordinary bot that never routes a second arm fills about half its orders, which
+ * leaves real headroom for someone actually playing well.
+ */
+export const ORDER_GROWTH = 1.15;       // over your own best round
+export const ORDER_FLOOR_GROWTH = 1.12; // minimum climb, even after a flat round
 export const ORDER_BONUS = 0.35;        // bonus as a fraction of the target
 
 /**

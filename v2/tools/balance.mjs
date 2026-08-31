@@ -21,57 +21,95 @@ function run(cfg, play) {
   while (eng.phase !== 'over' && t < 20000) {
     eng.step(dt); t += dt;
     if (eng.phase === 'plan' && planDone !== eng.round) { planDone = eng.round; play(eng); }
-    if (eng.phase === 'shop' && shopDone !== eng.round) {
-      shopDone = eng.round;
-      const p = eng.players.get(0), sh = eng.stateFor(0).shop;
-      if (sh) {
-        const best = sh.opts.map((o, i) => ({ i, c: o.cost }))
-          .filter(o => o.c <= p.f.cash * 0.7).sort((a, b) => b.c - a.c)[0];
-        if (best) eng.action(0, { t: 'buy', i: best.i });
-      }
-      eng.action(0, { t: 'done' });
-    }
+    if (eng.phase === 'shop' && shopDone !== eng.round) { shopDone = eng.round; goShopping(eng); }
     if (eng.phase === 'tally' && eng.round !== last) {
       last = eng.round;
       const p = eng.players.get(0);
-      rounds.push({ r: eng.round, inc: p.lastIncome, claim: p.f.claim,
-        tgt: p.order?.target ?? 0, met: !!p.metOrder });
+      rounds.push({
+        r: eng.round, inc: p.lastIncome, claim: p.f.claim,
+        tgt: p.order?.target ?? 0, met: !!p.metOrder, cash: Math.round(p.f.cash),
+      });
     }
   }
   const p = eng.players.get(0);
-  return { rounds, earned: Math.round(p.f.earned), claim: p.f.claim };
+  return { rounds, earned: Math.round(p.f.earned), claim: p.f.claim, filled: p.filled };
 }
 
 /**
- * An ordinary player's priorities, in order: throughput first, then the line it
- * feeds, then land, then plumbing. Deliberately not optimal — it never routes a
- * second arm and never builds a tier ladder, so whatever it earns is close to the
- * floor of competent play rather than the ceiling.
+ * Buy the best thing affordable, then actually put it in the line.
+ *
+ * The bot used to leave purchases wherever they landed, which on a fresh row was
+ * nowhere useful — so its income never moved and the harness could not tell an
+ * affordable economy from an unaffordable one. Now it slots each machine into the
+ * top row in place of a conveyor, which is the crudest version of what a person
+ * does and enough to make the ramp visible.
+ */
+function goShopping(eng) {
+  const p = eng.players.get(0), f = p.f;
+  const sh = eng.stateFor(0).shop;
+  if (sh) {
+    // Only what a single-file line can actually use. A Fuser needs two feeds and a
+    // Trident fires into three directions; dropping either into one row throttles
+    // it to nothing, which is bad play rather than a bad economy — and the harness
+    // is here to measure the economy.
+    const RANK = { mut: 3, dup: 2, store: 1 };
+    const best = sh.opts.map((o, i) => ({ i, c: o.cost, rank: RANK[o.kind] || 0 }))
+      .filter(o => o.rank > 0 && o.c <= f.cash)
+      .sort((a, b) => (b.rank - a.rank) || (b.c - a.c))[0];
+    if (best) {
+      const had = new Set(f.grid.map((m, i) => (m ? i : -1)).filter(i => i >= 0));
+      eng.action(0, { t: 'buy', i: best.i });
+      const at = f.grid.findIndex((m, i) => m && !had.has(i));
+      if (at >= 0) placeInLine(eng, f, at);
+    }
+  }
+  eng.action(0, { t: 'done' });
+}
+
+/** Swap a freshly bought machine into the top row, displacing a conveyor. */
+function placeInLine(eng, f, at) {
+  if (M.cy(at) === 0) return;                       // already in the line
+  for (let x = 1; x < f.claim; x++) {
+    const target = M.cellOf(x, 0);
+    if (f.grid[target]?.kind !== 'pipe') continue;
+    eng.action(0, { t: 'act', a: { a: 'move', from: 'g' + at, to: 'g' + target } });
+    return;
+  }
+}
+
+/**
+ * An ordinary player's priorities, in order: raw throughput first, then the line
+ * it feeds, then land, then plumbing. Deliberately not optimal — it never routes a
+ * second arm, never builds a recipe chain and never uses the Sorter, so what it
+ * earns is close to the floor of competent play rather than the ceiling.
  */
 const ordinary = eng => {
-  const p = eng.players.get(0);
-  const cash = () => p.f.cash;
+  const p = eng.players.get(0), f = p.f;
+  const cash = () => f.cash;
 
   for (let k = 0; k < 4; k++) {
-    const pc = M.producerCost(p.f.producer.level);
-    if (p.f.producer.level >= M.MAX_UTIL || cash() < pc * 1.6) break;
+    const pc = M.producerCost(f.producer.level);
+    if (f.producer.level >= M.MAX_UTIL || cash() < pc * 1.5) break;
     eng.action(0, { t: 'act', a: { a: 'upprod' } });
   }
-  for (let x = 0; x < p.f.claim; x++) {
-    const m = p.f.grid[x];
-    if (!m || m.level >= 3) continue;
-    if (cash() > M.upgradeCost(m) * 2.2) eng.action(0, { t: 'act', a: { a: 'up', ref: 'g' + x } });
+  for (let x = 0; x < f.claim; x++) {
+    const m = f.grid[x];
+    if (!m || m.level >= 3 || m.kind === 'pipe') continue;
+    if (cash() > M.upgradeCost(m) * 2) eng.action(0, { t: 'act', a: { a: 'up', ref: 'g' + x } });
   }
-  const sc = M.sellerCost(p.f.seller.level);
-  if (p.f.seller.level < M.MAX_UTIL && cash() > sc * 2.2) eng.action(0, { t: 'act', a: { a: 'upsell' } });
+  const sc = M.sellerCost(f.seller.level);
+  if (f.seller.level < M.MAX_UTIL && cash() > sc * 2.5) eng.action(0, { t: 'act', a: { a: 'upsell' } });
 
-  if (p.f.claim < M.GRID && cash() > M.expandCost(p.f.claim) * 2.2) eng.action(0, { t: 'expand' });
+  if (f.claim < M.GRID && cash() > M.expandCost(f.claim) * 2) eng.action(0, { t: 'expand' });
 
-  for (let k = 0; k < 40; k++) {
-    const st = eng.stateFor(0);
-    if (cash() < st.hud.mover * 4) break;
+  // Belts only to reach the fence the vault just rode out to. Buying them for
+  // their own sake is how the bot used to spend itself broke.
+  const vault = f.seller.spots[0];
+  for (let x = 0; x < f.claim && cash() > 40; x++) {
+    const cell = M.cellOf(x, M.cy(vault.cell));
+    if (f.grid[cell]) continue;
     const before = cash();
-    eng.action(0, { t: 'mover' });
+    eng.action(0, { t: 'route', k: 'pipe' });
     if (cash() === before) break;
   }
 };
@@ -94,4 +132,8 @@ for (let r = 1; r <= cfg.rounds; r++) {
   );
 }
 console.log('lifetime:', rs.map(x => x.earned).join(', '));
-console.log('final claim:', rs.map(x => x.claim).join(','));
+console.log('final claim:', rs.map(x => x.claim).join(','),
+  ' orders filled:', rs.map(x => x.filled).join(','));
+const first = rs.map(x => x.rounds[0]?.inc ?? 0), lastR = rs.map(x => x.rounds.at(-1)?.inc ?? 0);
+const avg = a => Math.round(a.reduce((s, v) => s + v, 0) / a.length);
+console.log(`income R1 ${avg(first)} -> R${cfg.rounds} ${avg(lastR)}  (x${(avg(lastR) / (avg(first) || 1)).toFixed(1)} over the match)`);

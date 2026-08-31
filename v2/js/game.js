@@ -31,8 +31,8 @@ export const DEFAULT_CFG = {
   planSecs: 120,      // planning phase: extend the line, spend, expand, ready up
   gridSize: 7,        // the full plot; you start owning 3x3 of it and buy the rest
   tallySecs: 3.5,
-  cash: 120,
-  rerollBase: 18,
+  cash: 200,           // enough to open with a machine and a ring of land, not both twice
+  rerollBase: 15,
 };
 
 export function createEngine(cfgIn = {}) {

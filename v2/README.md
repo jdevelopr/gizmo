@@ -32,7 +32,7 @@ the only rebuild tax left in the game, and it is one you opted into by expanding
 second vault opens once the plot is 5 wide, on the far corner of the same face, which
 is the point at which running two arms is worth the slots.
 
-**Pressure comes from the order board.** Each round posts a target worth 25% more
+**Pressure comes from the order board.** Each round posts a target worth 15% more
 than your own best round so far. Filling it pays a bonus of a third of the target;
 missing it costs nothing but the bonus, so one bad round can never bury anyone. The
 target is measured against your own history rather than a fixed curve because round
@@ -40,6 +40,16 @@ length, plot size and above all routing skill swing achievable income by an orde
 magnitude — any single ladder of numbers is either free for a good player or
 impossible for a new one. A floor under it keeps the target climbing even after a
 flat round, so standing still stops paying.
+
+**The economy is calibrated, not guessed.** Prices in GIZMO all multiply, and
+multiplications compound quietly: the inherited numbers marked the shop up 55% a
+round, which is 21x by round eight, and put maxing the Producer — the one upgrade
+that raises the raw ceiling everything else depends on — at $8,670 against an
+opening income of $67 a round. Every ladder has been reset against what a floor can
+actually earn. `tools/economy.mjs` prints the whole cost structure plus worked
+builds run through the real simulation, so the question "can I afford the thing I am
+trying to build" has an answer rather than a vibe. Every build in that table now
+pays for itself inside two rounds.
 
 **Routing is its own thing now.** The old Splitter copied — original ahead, copy to
 the right — which meant the only way to send gizmos two ways was to make more of
@@ -122,6 +132,7 @@ js/howto.js       the manual, still generated from machines.js on open
 tools/lint.mjs    parses every module as a module, the way the browser will
 tools/routing.mjs proves the Balancer divides and the Sorter sorts
 tools/recipes.mjs proves an Assembler cannot deadlock, and the chain runs
+tools/economy.mjs every price at every round, and what real builds pay back
 tools/balance.mjs an ordinary-player bot, for calibrating the numbers
 tools/verify.mjs  headless assertions over a whole match
 ```
@@ -136,6 +147,7 @@ node tools/lint.mjs       # will every module parse in a browser?
 node tools/verify.mjs     # invariants: nothing on unowned land, vaults on the fence
 node tools/routing.mjs    # the Balancer divides evenly; the Sorter never misroutes
 node tools/recipes.mjs    # two feeds, two lines, one Assembler, no deadlock
+node tools/economy.mjs    # the cost tables, and what worked builds earn back
 node tools/balance.mjs    # what an ordinary player actually ships, round by round
 ```
 

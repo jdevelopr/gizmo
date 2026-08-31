@@ -150,6 +150,37 @@ cool blue corner ticks mean STARVED (standing idle, fix the feed behind).
 
 ---
 
+## The phone
+
+The pad is an app shell, not a page. One status line, the board taking every pixel
+that is left, and a dock at the bottom holding one panel at a time — SELECT, BUILD,
+TECH, CRATE. The board never scrolls out of reach and the controls never compete
+with it for room.
+
+It got that way because it had to. Each phase of this project appended its controls
+to the end of a single scrolling column: the order strip, two more routing buttons,
+CLAIM LAND, a FILTER button, a tabbed build sheet. By the end that was about 600px
+of chrome above the fold on a phone, and the board — the actual game — was a sliver.
+
+Three things the dock buys beyond room:
+
+- **Selecting a machine snaps to SELECT, and dropping it snaps back** to whatever
+  you were doing. A permanent selection strip costs the same pixels whether or not
+  anything is selected; this costs them only when they are useful.
+- **The catalogue and the tech tree are live in every phase**, so you can price a
+  machine while watching the floor decide it needs one. Only the buying is gated.
+- **One action button** that reads whatever the round is asking for — READY while
+  planning, DONE BUILDING in the build phase. Two buttons for two phases that never
+  overlap was two buttons' worth of screen for one button's worth of meaning.
+
+Tapping unbought land opens BUILD and nudges CLAIM LAND, rather than doing nothing.
+Tabs badge what is waiting on them: how many machines are in the crate, how many
+research nodes you can afford right now.
+
+In landscape the dock moves to the right-hand side and the board keeps its height,
+because a sideways phone is exactly the wrong shape for a square board stacked above
+a drawer.
+
 ## The files
 
 Identical in shape to the original. What GIZMO 2 changed:
@@ -160,13 +191,14 @@ js/sim.js         the claim is the edge of the world; growth; starved detection;
                   two producers; acceptance that knows about type
 js/game.js        per-player orders, land purchases, the catalogue and the tech tree
 js/render.js      unbought land, the fence, the starved badge
-js/player.js      the CLAIM LAND button, the order bar, per-machine rates
+js/player.js      the whole pad: the dock, its tabs, and everything in them
 js/howto.js       the manual, still generated from machines.js on open
 tools/lint.mjs    parses every module as a module, the way the browser will
 tools/routing.mjs proves the Balancer divides and the Sorter sorts
 tools/recipes.mjs proves an Assembler cannot deadlock, and the chain runs
 tools/economy.mjs every price at every round, and what real builds pay back
 tools/tech.mjs    proves research gates the game and the Lab pays what a vault does
+tools/pad.mjs     drives the phone UI headlessly against the real index.html
 tools/balance.mjs an ordinary-player bot, for calibrating the numbers
 tools/verify.mjs  headless assertions over a whole match
 ```
@@ -183,6 +215,9 @@ node tools/routing.mjs    # the Balancer divides evenly; the Sorter never misrou
 node tools/recipes.mjs    # two feeds, two lines, one Assembler, no deadlock
 node tools/economy.mjs    # the cost tables, and what worked builds earn back
 node tools/tech.mjs       # the gate binds, the Lab pays, duplication stays capped
+
+npm i jsdom               # once, anywhere; the pad harness is the only thing needing it
+JSDOM_PATH=$PWD/node_modules/jsdom node tools/pad.mjs
 node tools/balance.mjs    # what an ordinary player actually ships, round by round
 ```
 

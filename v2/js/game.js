@@ -357,8 +357,15 @@ export function createEngine(cfgIn = {}) {
     return board().map((r, i) => ({ ...r, place: i + 1 }));
   }
 
+  /**
+   * The catalogue and the tech tree, in every phase.
+   *
+   * These used to exist only during the build phase, because they were a sheet
+   * that took over the screen. They are dock tabs now: you browse what a machine
+   * costs while watching the floor decide it needs one, and only the buying is
+   * gated. `done` is the one field that needs the phase to mean anything.
+   */
   function shopView(p) {
-    if (!p.shop) return null;
     return {
       opts: catalogue(p.f.done, round).map(s => ({
         kind: s.kind, mut: s.mut, dir: s.dir,
@@ -373,7 +380,7 @@ export function createEngine(cfgIn = {}) {
         needs: (t.needs || []).map(n => TECH.find(x => x.id === n)?.name).filter(Boolean),
       })),
       science: Math.round(p.f.science),
-      done: p.shop.done,
+      done: !!p.shop?.done,
     };
   }
 

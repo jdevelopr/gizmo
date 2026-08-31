@@ -149,91 +149,98 @@ setTimeout(function () {
 </section>
 
 <!-- ================================================================== pad -->
+<!--
+  The phone is an app shell, not a scrolling page. One status line, the board
+  taking every pixel that is left, and a dock at the bottom holding one panel at a
+  time. The board never competes with the controls for room, and the controls never
+  push it off screen — which is what happened when four phases of new mechanics were
+  each appended to the end of a single column.
+-->
 <section id="pad" class="screen">
-  <header id="pad-top">
-    <span class="pill">CASH <b id="pad-cash">$0</b></span>
-    <span class="pill">EARNED <b id="pad-earned">$0</b></span>
-    <span class="pill">RANK <b id="pad-rank">-</b></span>
+  <header id="pad-bar">
+    <span id="bar-phase" data-ph="plan">R1 PLANNING</span>
+    <span id="bar-timer">00</span>
+    <span class="bar-stat" id="bar-cash">$0</span>
+    <span class="bar-stat sci" id="bar-sci">0</span>
+    <span class="bar-stat" id="bar-rank">-</span>
   </header>
-  <p id="pad-phase" data-ph="plan">R1 · PLANNING</p>
 
-  <!-- The order board: your own best round, plus a quarter. Filling it pays a
-       bonus; missing it costs nothing but the bonus. -->
   <div id="pad-order" data-met="off" hidden>
     <div class="order-bar"><i id="order-fill"></i></div>
     <small id="order-text"></small>
   </div>
-
-  <p id="pad-hint" class="fine"></p>
 
   <div id="pad-stage-wrap">
     <div class="stage-stack">
       <canvas id="pad-stage"></canvas>
       <canvas class="text-layer" aria-hidden="true"></canvas>
     </div>
+    <p id="pad-note" class="toast" hidden></p>
   </div>
 
-  <button id="btn-plan" class="primary wide" data-on="off" hidden>READY — START THE ROUND</button>
+  <div id="pad-dock">
+    <!-- One primary action, whatever the round is asking for right now. -->
+    <button id="dock-action" class="primary" data-on="off" hidden>READY</button>
 
-  <p id="pad-note" class="toast" hidden></p>
+    <div id="dock-panels">
+      <section id="panel-select" class="dock-panel">
+        <div class="sel-head">
+          <b id="sel-name">Tap a machine</b>
+          <small id="sel-sub">Tap a machine on the board, then an owned slot to move it.
+            Belts aim themselves.</small>
+        </div>
+        <div class="sel-btns">
+          <button id="btn-rot" disabled>ROTATE</button>
+          <button id="btn-filt" disabled hidden>FILTER</button>
+          <button id="btn-up" disabled>UPGRADE</button>
+          <button id="btn-stow" disabled>TO CRATE</button>
+          <button id="btn-scrap" disabled>SCRAP</button>
+        </div>
+      </section>
 
-  <!-- Always reachable without scrolling: the plumbing, and the land it runs on.
-       None of these count against the one machine a round from the workshop. -->
-  <div id="pad-route">
-    <button id="btn-mover" class="buy-row">+ CONVEYOR</button>
-    <button id="btn-bal" class="buy-row">+ BALANCER</button>
-    <button id="btn-sort" class="buy-row">+ SORTER</button>
-  </div>
-  <p id="route-note" class="fine"></p>
-  <button id="btn-expand" class="buy-row land" data-nudge="off" hidden>+ CLAIM LAND</button>
+      <section id="panel-build" class="dock-panel" hidden>
+        <p class="dock-label">ROUTING <span class="dim">any phase, no limit</span></p>
+        <div id="pad-route">
+          <button id="btn-mover" class="buy-row">+ CONVEYOR</button>
+          <button id="btn-bal" class="buy-row">+ BALANCER</button>
+          <button id="btn-sort" class="buy-row">+ SORTER</button>
+        </div>
+        <p id="route-note" class="fine"></p>
 
-  <div id="pad-sel" data-on="off">
-    <div class="sel-text">
-      <b id="sel-name">Tap a machine</b>
-      <small id="sel-sub">then tap an owned slot to move it — belts aim themselves</small>
+        <p class="dock-label">THE PLOT</p>
+        <button id="btn-expand" class="buy-row land" data-nudge="off" hidden>+ CLAIM LAND</button>
+
+        <p class="dock-label">FIXTURES <span class="dim">one level runs every feed</span></p>
+        <div id="pad-util">
+          <button id="btn-prod">PRODUCER</button>
+          <button id="btn-sell">SELLER</button>
+        </div>
+
+        <p class="dock-label" id="cat-label">CATALOGUE</p>
+        <div id="shop-cards"></div>
+      </section>
+
+      <section id="panel-tech" class="dock-panel" hidden>
+        <p class="dock-label" id="tech-label">RESEARCH</p>
+        <p class="fine">Science comes from gizmos pushed into the Lab, on the north face
+          beside your vault. A gizmo is worth the same there as at the vault — the only
+          cost of research is the money you did not take.</p>
+        <div id="tech-list"></div>
+      </section>
+
+      <section id="panel-crate" class="dock-panel" hidden>
+        <p class="dock-label">CRATE <span class="dim">machines with nowhere to go</span></p>
+        <div id="pad-inv" class="crate"></div>
+        <button class="ghost wide" data-howto>HOW TO PLAY</button>
+      </section>
     </div>
-    <div class="sel-btns">
-      <button id="btn-rot" disabled>ROTATE</button>
-      <button id="btn-filt" disabled hidden>FILTER</button>
-      <button id="btn-up" disabled>UPGRADE</button>
-      <button id="btn-stow" disabled>TO CRATE</button>
-      <button id="btn-scrap" disabled>SCRAP</button>
-    </div>
-  </div>
 
-  <div id="pad-util">
-    <button id="btn-prod">PRODUCER</button>
-    <button id="btn-sell">SELLER</button>
-  </div>
-
-  <div id="pad-inv" class="crate"></div>
-
-  <button class="ghost pad-howto" data-howto>HOW TO PLAY</button>
-
-  <div id="shop" hidden>
-    <h3 id="shop-title">BUILD &amp; RESEARCH</h3>
-    <div id="shop-tabs" class="row">
-      <button id="tab-build" class="ghost" aria-pressed="true">BUILD</button>
-      <button id="tab-tech" class="ghost" aria-pressed="false">RESEARCH</button>
-      <span id="sci-pill" class="pill">SCIENCE <b id="sci-count">0</b></span>
-    </div>
-
-    <div id="shop-build">
-      <p class="fine">Everything you have unlocked. Buy as many as you can afford —
-        slots are the only limit. Each lands in an open slot, or in your crate.</p>
-      <div id="shop-cards"></div>
-    </div>
-
-    <div id="shop-tech" hidden>
-      <p class="fine">Science comes from gizmos pushed into the Lab, on the north face
-        beside your vault. A gizmo is worth the same there as it is at the vault — the
-        only cost of research is the money you did not take.</p>
-      <div id="tech-list"></div>
-    </div>
-
-    <div class="row end">
-      <button id="shop-done" class="primary">READY</button>
-    </div>
+    <nav id="dock-tabs">
+      <button data-tab="select" aria-pressed="true">SELECT</button>
+      <button data-tab="build" aria-pressed="false">BUILD</button>
+      <button data-tab="tech" aria-pressed="false">TECH</button>
+      <button data-tab="crate" aria-pressed="false">CRATE</button>
+    </nav>
   </div>
 </section>
 

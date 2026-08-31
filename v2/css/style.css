@@ -64,10 +64,11 @@ body[data-screen="connecting"] #connecting,
 body[data-screen="plobby"] #plobby,
 body[data-screen="lobby"] #lobby,
 body[data-screen="floor"] #floor,
-body[data-screen="pad"] #pad,
 body[data-screen="results"] #results { display: flex; }
-body[data-screen="practice"] #floor,
-body[data-screen="practice"] #pad { display: flex; }
+body[data-screen="practice"] #floor { display: flex; }
+/* The pad is a grid app shell, not a flex column — see the pad section below. */
+body[data-screen="pad"] #pad,
+body[data-screen="practice"] #pad { display: grid; }
 
 #home, #name, #connecting, #plobby, #results {
   min-height: 100dvh;
@@ -272,103 +273,134 @@ input::placeholder { color: #414a68; }
 }
 
 /* ------------------------------------------------------------------ pad --- */
-
+/*
+ * The phone is an app shell: a status line, the board, and a dock. It is a grid
+ * with exactly one flexible row, so the board absorbs whatever is left over and
+ * nothing can push it off screen. The dock is capped and scrolls inside itself —
+ * that cap is the whole design, because every phase of this game added another
+ * control and a column that grows by accretion eventually has no room for the game.
+ */
 #pad {
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px 10px calc(12px + env(safe-area-inset-bottom));
-  padding-left: calc(10px + env(safe-area-inset-left));
-  padding-right: calc(10px + env(safe-area-inset-right));
-  min-height: 100dvh;
+  display: grid;
+  grid-template-areas: "bar" "order" "stage" "dock";
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 6px;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  padding-left: calc(8px + env(safe-area-inset-left));
+  padding-right: calc(8px + env(safe-area-inset-right));
 }
-#pad > * { flex: 0 0 auto; }     /* nothing gets squeezed under the canvas */
-#pad-top { display: flex; gap: 6px; }
-.pill {
-  flex: 1;
-  background: var(--plate);
-  border: 2px solid var(--line);
-  padding: 6px 8px;
-  font-size: 9px;
-  color: var(--dim);
-  letter-spacing: .06em;
-}
-.pill b { display: block; font-size: 15px; color: var(--gold-lit); letter-spacing: 0; }
-#pad-phase {
-  background: var(--plate2);
-  border: 2px solid var(--line);
-  padding: 8px 10px;
-  font-size: 12px;
-  color: var(--gold);
-  text-align: center;
-  letter-spacing: .08em;
-}
-#pad-phase[data-ph="run"] { color: var(--lime); border-color: var(--lime); }
-#pad-phase[data-ph="plan"] { color: var(--coral); border-color: var(--coral); }
-#btn-plan { font-size: 13px; letter-spacing: .06em; }
-#btn-plan[hidden] { display: none; }
-#pad-hint { text-align: center; min-height: 1.6em; padding: 0 4px; }
 
-/* Full-bleed: the grid gets the whole screen width, which is what makes the
-   slots big enough to hit without aiming. */
-#pad-stage-wrap {
+/* --- status line --- */
+#pad-bar {
+  grid-area: bar;
   display: flex;
   align-items: center;
-  justify-content: center;
-  /* The solo panel is square, so the box it lives in is too: the grid then scales
-     off the full screen width instead of whatever height happens to be left. */
-  aspect-ratio: 1 / 1;
-  max-height: 54vh;
-  flex: 0 0 auto;
-  margin: 0 calc(-10px - env(safe-area-inset-right)) 0 calc(-10px - env(safe-area-inset-left));
-}
-#pad-stage { touch-action: none; }
-
-.toast {
-  background: var(--gold);
-  color: var(--ink);
-  padding: 6px 10px;
-  font-size: 11px;
-  text-align: center;
-}
-
-#pad-sel {
-  background: var(--plate);
+  gap: 6px;
+  background: var(--plate2);
   border: 2px solid var(--line);
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  padding: 6px 8px;
+  font-size: 10px;
+  letter-spacing: .05em;
 }
-#pad-sel[data-on="on"] { border-color: var(--gold); }
-.sel-text { display: flex; flex-direction: column; gap: 2px; }
-.sel-text b { font-size: 12px; color: var(--gold-lit); }
-.sel-text small { font-size: 9px; color: var(--dim); line-height: 1.6; }
-.sel-btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
-.sel-btns button { padding: 10px 6px; font-size: 10px; }
+#bar-phase { color: var(--gold); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bar-phase[data-ph="run"] { color: var(--lime); }
+#bar-phase[data-ph="plan"] { color: var(--coral); }
+#bar-timer { color: var(--ink-lit, #fff); font-size: 12px; min-width: 2.2em; text-align: right; }
+.bar-stat { color: var(--dim); padding-left: 6px; border-left: 1px solid var(--line); }
+#bar-cash { color: #ffe9a8; }
+.bar-stat.sci { color: #a8dcff; }
 
-/*
- * The order board. A bar rather than a number, because the thing a player wants
- * to know mid-round is not "how much" but "am I going to make it".
- */
-#pad-order { display: grid; gap: 4px; }
-.order-bar {
-  height: 6px;
-  background: var(--ink2, #12131f);
-  border: 1px solid var(--line);
-  overflow: hidden;
-}
-.order-bar > i {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--gold, #ffcd75);
-  transition: width .25s linear;
-}
+/* --- order strip --- */
+#pad-order { grid-area: order; display: grid; gap: 3px; }
+.order-bar { height: 5px; background: var(--ink2, #12131f); border: 1px solid var(--line); overflow: hidden; }
+.order-bar > i { display: block; height: 100%; width: 0; background: var(--gold, #ffcd75); transition: width .25s linear; }
 #pad-order[data-met="on"] .order-bar > i { background: var(--lime, #a7f070); }
 #order-text { font-size: 9px; color: var(--dim); letter-spacing: .04em; }
 #pad-order[data-met="on"] #order-text { color: var(--lime, #a7f070); }
 
-/* Always available: the plumbing, and the ground it runs on. */
+/* --- the board: the one flexible thing on the screen --- */
+#pad-stage-wrap {
+  grid-area: stage;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+#pad-stage { touch-action: none; }
+#pad-note {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  margin: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* --- the dock --- */
+#pad-dock {
+  grid-area: dock;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  min-height: 0;
+  max-height: 46dvh;
+}
+#dock-action { font-size: 12px; letter-spacing: .06em; padding: 12px 10px; }
+#dock-action[hidden] { display: none; }
+#dock-panels { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.dock-panel[hidden] { display: none; }
+.dock-label {
+  font-size: 9px;
+  color: var(--gold);
+  letter-spacing: .08em;
+  margin: 8px 0 5px;
+}
+.dock-panel > .dock-label:first-child { margin-top: 0; }
+.dock-label .dim { color: var(--dim); letter-spacing: .04em; }
+
+#dock-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+#dock-tabs button {
+  font-size: 9px;
+  padding: 11px 2px;
+  letter-spacing: .04em;
+  color: var(--dim);
+  position: relative;
+}
+#dock-tabs button[aria-pressed="true"] {
+  color: var(--gold-lit, #ffe9a8);
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, var(--plate));
+}
+/* A tab with something waiting on it says so, rather than hiding it a tap away. */
+#dock-tabs button[data-badge]::after {
+  content: attr(data-badge);
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 7px;
+  color: #a8dcff;
+}
+
+/* --- selection panel --- */
+.sel-head { margin-bottom: 8px; }
+.sel-head b { font-size: 11px; letter-spacing: .04em; }
+.sel-head small { display: block; color: var(--dim); font-size: 9px; line-height: 1.6; margin-top: 3px; }
+.sel-btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.sel-btns button { padding: 11px 6px; font-size: 10px; }
+.sel-btns button[hidden] { display: none; }
+
+/* --- build panel --- */
+#pad-route { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 5px; }
+#pad-route .buy-row { font-size: 9px; padding: 11px 3px; letter-spacing: .02em; }
+#route-note { margin-top: 4px; }
+#pad-util { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+#pad-util button { font-size: 10px; padding: 11px 6px; color: var(--gold); }
+
 .buy-row {
   width: 100%;
   font-size: 11px;
@@ -378,55 +410,11 @@ input::placeholder { color: #414a68; }
   letter-spacing: .06em;
 }
 .buy-row:disabled { color: var(--dim); border-color: var(--line); background: var(--plate); }
-
-/* Build catalogue and tech tree share the sheet, one tab at a time. */
-#shop-tabs { align-items: center; gap: 6px; margin-bottom: 8px; }
-#shop-tabs button[aria-pressed="true"] { color: var(--gold-lit); border-color: var(--gold); }
-#sci-pill { margin-left: auto; }
-#sci-pill b { color: #a8dcff; }
-
-.cat-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  align-items: center;
-  border-left: 3px solid var(--tint, var(--line));
-  background: var(--plate);
-  padding: 8px 10px;
-  margin-bottom: 5px;
-}
-.cat-row b { font-size: 10px; letter-spacing: .04em; }
-.cat-row small { display: block; color: var(--dim); font-size: 9px; line-height: 1.5; }
-.cat-row button { font-size: 9px; padding: 8px 10px; white-space: nowrap; }
-
-.tech-row {
-  border-left: 3px solid var(--line);
-  background: var(--plate);
-  padding: 8px 10px;
-  margin-bottom: 5px;
-}
-.tech-row[data-state="open"] { border-left-color: #41a6f6; }
-.tech-row[data-state="done"] { border-left-color: var(--lime); opacity: .6; }
-.tech-row .row { align-items: center; gap: 8px; }
-.tech-row b { font-size: 10px; letter-spacing: .04em; }
-.tech-row small { display: block; color: var(--dim); font-size: 9px; line-height: 1.5; }
-.tech-row button { font-size: 9px; padding: 7px 10px; margin-left: auto; white-space: nowrap; }
-.tech-cost { color: #a8dcff; font-size: 9px; }
-.tech-lock { color: var(--dim); font-size: 9px; }
-
-/* The routing shelf: three purchases that are all plumbing, so they read as one
-   group rather than as three unrelated buttons. */
-#pad-route { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 6px; }
-#pad-route .buy-row { font-size: 9px; padding: 10px 4px; letter-spacing: .03em; }
-#route-note { margin-top: 2px; }
-
-/* Land reads as its own kind of purchase: it is the only thing you buy that is
-   not a machine, and the only one that changes the shape of the floor. */
+.buy-row[hidden] { display: none; }
 .buy-row.land {
   color: #a8dcff;
   border-color: #2f4a63;
   background: color-mix(in srgb, #41a6f6 10%, var(--plate));
-  margin-top: 6px;
 }
 .buy-row.land:disabled { color: var(--dim); border-color: var(--line); background: var(--plate); }
 .buy-row.land[data-nudge="on"] { animation: nudge .3s steps(2) 3; }
@@ -435,51 +423,44 @@ input::placeholder { color: #414a68; }
   50% { transform: translateX(3px); }
 }
 
-#pad-util { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-#pad-util button { font-size: 10px; padding: 10px 6px; color: var(--gold); }
-
-.crate { display: flex; gap: 6px; flex-wrap: wrap; min-height: 40px; align-items: center; }
-.crate-empty { font-size: 9px; color: var(--dim); }
-.chip {
-  --chip: var(--line);
-  border-color: var(--chip);
-  color: var(--chip);
+/* --- catalogue and tech rows --- */
+.cat-row, .tech-row {
+  border-left: 3px solid var(--tint, var(--line));
+  background: var(--plate);
   padding: 8px 10px;
-  min-height: 40px;
-  font-size: 10px;
-  background: var(--plate);
+  margin-bottom: 4px;
 }
-.chip[aria-pressed="true"] { background: var(--chip); color: var(--ink); }
+.cat-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.cat-row b, .tech-row b { font-size: 10px; letter-spacing: .04em; }
+.cat-row small, .tech-row small { display: block; color: var(--dim); font-size: 9px; line-height: 1.5; }
+.cat-row button, .tech-row button { font-size: 9px; padding: 9px 10px; white-space: nowrap; }
+.tech-row[data-state="open"] { border-left-color: #41a6f6; }
+.tech-row[data-state="done"] { border-left-color: var(--lime); opacity: .55; }
+.tech-row .row { align-items: center; gap: 8px; }
+.tech-row button { margin-left: auto; }
+.tech-cost { color: #a8dcff; font-size: 9px; }
 
-/* --------------------------------------------------------------- shop --- */
+/* --- crate --- */
+.crate { display: flex; gap: 5px; flex-wrap: wrap; min-height: 36px; align-items: center; }
+.crate-empty { font-size: 9px; color: var(--dim); }
 
-#shop {
-  position: fixed;
-  inset: 0;
-  z-index: 15;
-  background: var(--ink);
-  padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/*
+ * Landscape. A sideways phone is much wider than it is tall, which is exactly the
+ * wrong shape for a square board stacked above a dock — so the dock moves to the
+ * side and the board keeps its height instead of losing it.
+ */
+@media (orientation: landscape) and (max-height: 620px) {
+  #pad {
+    grid-template-areas: "bar dock" "order dock" "stage dock";
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 38%);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    column-gap: 8px;
+  }
+  #pad-dock { max-height: none; }
+  #dock-tabs button { font-size: 8px; padding: 9px 2px; }
+  #pad-route { grid-template-columns: 1fr; }
 }
-#shop[hidden] { display: none; }
-#shop h3 { color: var(--gold); font-size: 18px; letter-spacing: .1em; }
-#shop-cards { display: flex; flex-direction: column; gap: 10px; }
-.shop-card {
-  --tint: var(--gold);
-  background: var(--plate);
-  border: 2px solid var(--tint);
-  border-left: 8px solid var(--tint);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.shop-card h4 { font-size: 13px; color: var(--tint); }
-.shop-card p { font-size: 10px; color: var(--dim); line-height: 1.7; }
-.shop-card .buy { background: var(--tint); color: var(--ink); border-color: var(--tint); }
+
 
 /* ------------------------------------------------------------- results --- */
 
@@ -552,12 +533,13 @@ input::placeholder { color: #414a68; }
 
 body[data-screen="practice"] { overflow-y: auto; }
 body[data-screen="practice"] #floor { height: auto; min-height: 40dvh; }
-body[data-screen="practice"] #pad { min-height: auto; }
+/* Stacked practice: the pad still needs a definite height for its one flexible row. */
+body[data-screen="practice"] #pad { height: 78dvh; }
 
 @media (min-width: 900px) {
   body[data-screen="practice"] { display: grid; grid-template-columns: 1fr 380px; height: 100dvh; overflow: hidden; }
   body[data-screen="practice"] #floor { height: 100dvh; }
-  body[data-screen="practice"] #pad { height: 100dvh; overflow-y: auto; }
+  body[data-screen="practice"] #pad { height: 100dvh; overflow: hidden; }
 }
 
 /* ------------------------------------------------------------- the manual --- */

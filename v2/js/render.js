@@ -527,7 +527,7 @@ export function drawPanel(st, view, rect, meta = {}) {
     }
     px(ctx, gx, gy, CELL - 2, 2, '#20243a');
     px(ctx, gx, gy, 2, CELL - 2, '#20243a');
-    if (ground) { drawGround(ctx, gx, gy, ground, false); continue; }
+    if (ground) { drawGround(ctx, gx, gy, ground, false, i === meta.selected); continue; }
     if (!view.g[i]) {
       // empty slot: corner ticks, so the grid reads as slots and not a blank sheet
       px(ctx, gx + 4, gy + 4, 5, 2, '#252b45');
@@ -548,7 +548,12 @@ export function drawPanel(st, view, rect, meta = {}) {
 
   if (meta.selected != null) {
     const gx = o.x + cx(meta.selected) * CELL, gy = o.y + cy(meta.selected) * CELL;
-    const c = (st.t * 6) % 2 < 1 ? col.lit : col.hex;
+    // Rubble blinks in its own colour rather than the player's: it is not a
+    // machine of yours, it is something in the way.
+    const tint = meta.selectTint;
+    const c = tint
+      ? ((st.t * 6) % 2 < 1 ? shade(tint, 1.4) : tint)
+      : ((st.t * 6) % 2 < 1 ? col.lit : col.hex);
     px(ctx, gx - 2, gy - 2, CELL + 2, 2, c);
     px(ctx, gx - 2, gy + CELL - 2, CELL + 2, 2, c);
     px(ctx, gx - 2, gy - 2, 2, CELL + 2, c);
@@ -616,21 +621,27 @@ export function drawPanel(st, view, rect, meta = {}) {
  * reads as part of the floor plan rather than an obstacle on it, because that is
  * what it is: routing around bedrock is the map's whole contribution to the game.
  */
-function drawGround(ctx, x, y, kind, faded) {
-  const a = faded ? 0.4 : 1;
-  ctx.globalAlpha = a;
+function drawGround(ctx, x, y, kind, faded, hot = false) {
+  ctx.globalAlpha = faded ? 0.4 : 1;
+  if (hot) {
+    // Tapped. Light the slot under it so the thing you asked about is obviously
+    // the thing being described — a selection outline alone is easy to lose among
+    // eight other rocks.
+    px(ctx, x + 1, y + 1, CELL - 2, CELL - 2, kind === 2 ? '#1c2436' : '#2a2418');
+  }
   if (kind === 2) {
-    px(ctx, x + 3, y + 3, CELL - 6, CELL - 6, STONE);
-    px(ctx, x + 3, y + 3, CELL - 6, 2, STONE2);
+    px(ctx, x + 3, y + 3, CELL - 6, CELL - 6, hot ? shade(STONE, 1.35) : STONE);
+    px(ctx, x + 3, y + 3, CELL - 6, 2, hot ? shade(STONE2, 1.3) : STONE2);
     px(ctx, x + 3, y + 3, 2, CELL - 6, shade(STONE2, 0.8));
     px(ctx, x + 9, y + 9, 5, 5, shade(STONE, 0.7));
     px(ctx, x + 17, y + 14, 7, 6, shade(STONE, 0.7));
     px(ctx, x + 11, y + 19, 4, 4, STONE2);
   } else {
-    px(ctx, x + 6, y + 12, 9, 7, ROCK);
-    px(ctx, x + 6, y + 12, 9, 2, ROCK2);
-    px(ctx, x + 16, y + 8, 7, 6, ROCK);
-    px(ctx, x + 16, y + 8, 7, 2, ROCK2);
+    const face = hot ? shade(ROCK, 1.4) : ROCK, lip = hot ? shade(ROCK2, 1.3) : ROCK2;
+    px(ctx, x + 6, y + 12, 9, 7, face);
+    px(ctx, x + 6, y + 12, 9, 2, lip);
+    px(ctx, x + 16, y + 8, 7, 6, face);
+    px(ctx, x + 16, y + 8, 7, 2, lip);
     px(ctx, x + 13, y + 20, 6, 4, shade(ROCK, 0.8));
     px(ctx, x + 20, y + 18, 4, 4, shade(ROCK, 0.8));
     px(ctx, x + 8, y + 7, 3, 3, shade(ROCK, 0.75));

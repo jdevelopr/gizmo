@@ -211,6 +211,9 @@ minutes on forty-nine slots, not a hundred hours on an infinite one. So it borro
 the map generation and accepts that it needs a little more variety per match than
 Factorio itself does.
 
+Tapping either lights the slot and outlines it — in the rock's own colour rather
+than the player's, since it is not a machine of yours but something in the way.
+
 **Rubble** is loose stone on an otherwise good slot — clear it for $45 and build
 there. **Bedrock** never moves; it is the shape of the plot, and routing around it is
 the map's contribution to the game. Both are drawn on land you have not bought yet,

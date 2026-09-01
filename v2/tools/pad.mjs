@@ -269,6 +269,11 @@ push();
       $('#sel-name').textContent);
     ok(/CLEAR \$/.test($('#btn-up').textContent), 'and offers to clear it',
       $('#btn-up').textContent);
+    // Saying what it is without showing which one is half an answer on a floor
+    // with eight rocks on it.
+    ok(ctrl.highlight().selected === rub.i, 'and the board outlines the slot you tapped',
+      JSON.stringify(ctrl.highlight()));
+    ok(!!ctrl.highlight().selectTint, 'in its own colour, not the player\'s');
     $('#btn-up').click();
     ok(f.terrain[rub.i] === M.OPEN, 'clearing it works');
     ok(!vis('#panel-select'), 'and the panel closes, since there is nothing there now');
@@ -280,6 +285,7 @@ push();
     ctrl.selectCell(bed.i);
     ok(/Bedrock/.test($('#sel-name').textContent), 'tapping bedrock says what it is');
     ok($('#btn-up').disabled, 'and does not offer to move it');
+    ok(ctrl.highlight().selected === bed.i, 'bedrock is outlined too');
     ctrl.selectCell(bed.i);
   } else {
     ok(true, 'no bedrock inside the claim to tap (skipped)');

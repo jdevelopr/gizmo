@@ -753,7 +753,7 @@ export function createController({ send, solo = false, onEnd = null }) {
       name: hud?.name || 'YOU',
       color: PLAYER_COLORS[hud?.color ?? 0],
       earned: view.e,
-      selected: sel && sel[0] === 'g' ? +sel.slice(1) : null,
+      ...highlight(),
     });
 
     stage.end();
@@ -792,6 +792,22 @@ export function createController({ send, solo = false, onEnd = null }) {
   });
 
   /**
+   * Which slot the board should outline, and in what colour.
+   *
+   * A tapped slot is outlined whether it holds a machine or a rock — a panel that
+   * describes something without showing you which something is only half an answer
+   * on a floor with eight rocks on it. Rubble blinks in its own colour rather than
+   * the player's, because it is not a machine of yours; it is something in the way.
+   */
+  function highlight() {
+    if (sel && sel[0] === 'g') return { selected: +sel.slice(1), selectTint: null };
+    if (info?.kind === 'ground') {
+      return { selected: info.idx, selectTint: info.ground === 1 ? '#c9a23f' : '#8fa2c8' };
+    }
+    return { selected: null, selectTint: null };
+  }
+
+  /**
    * Announce something over the board. Solo play has no floor screen to shout
    * ROUND 3 across the room, so the pad does it itself.
    */
@@ -817,5 +833,8 @@ export function createController({ send, solo = false, onEnd = null }) {
 
   // selectCell and tapPoint are exposed so the headless pad harness can drive the
   // board without pointer events; banner so solo mode can drive announcements.
-  return { applyState, start, destroy, fit, stage, banner, selectCell: tapCell, tapPoint };
+  return {
+    applyState, start, destroy, fit, stage, banner, highlight,
+    selectCell: tapCell, tapPoint,
+  };
 }

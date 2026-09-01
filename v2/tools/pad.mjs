@@ -237,6 +237,59 @@ push();
   ok(!vis('#panel-select'), 'tapping the same fixture again closes it');
 }
 
+/* --- the setup panel ---------------------------------------------------------- */
+{
+  const S = await import('../js/setup.js');
+  const set = (id, v) => { $(id).value = String(v); };
+
+  ok(window.document.querySelectorAll('#setup .pick select').length === 4,
+    'every dropdown is wrapped for styling');
+  ok($('#cfg-rounds').type === 'number', 'rounds is a number you type, not a menu');
+  ok(!!$('#cfg-endless'), 'and ENDLESS sits beside it');
+
+  set('#cfg-rounds', 20); set('#cfg-plan', 150); set('#cfg-secs', 90);
+  let cfg = S.readSetupCfg();
+  ok(cfg.rounds === 20 && !cfg.endless, 'any round count is accepted', cfg.rounds + '');
+  ok(/min/.test(S.estimate(cfg)), 'and it estimates how long that will take',
+    S.estimate(cfg));
+
+  set('#cfg-rounds', 5);
+  const short = S.estimate(S.readSetupCfg());
+  set('#cfg-rounds', 40);
+  const long = S.estimate(S.readSetupCfg());
+  const firstNum = t => parseInt(t.replace(/[^0-9]/g, ''), 10);
+  ok(firstNum(long) > firstNum(short), 'more rounds reads as more time',
+    `5 rounds ${short} · 40 rounds ${long}`);
+
+  // Out-of-range input must not produce a match with zero or a million rounds.
+  set('#cfg-rounds', 0);
+  ok(S.readSetupCfg().rounds >= 1, 'zero rounds is clamped away');
+  set('#cfg-rounds', 99999);
+  ok(S.readSetupCfg().rounds <= 999, 'and so is an absurd one');
+  set('#cfg-rounds', 8);
+
+  $('#cfg-endless').click();
+  cfg = S.readSetupCfg();
+  ok(cfg.endless, 'the toggle turns endless on');
+  ok($('#cfg-rounds').disabled, 'and greys out the count it makes meaningless');
+  ok(/a round/.test(S.estimate(cfg)), 'the estimate switches to per-round',
+    S.estimate(cfg));
+  ok(/endless/.test(S.summary(cfg)), 'and the summary says so', S.summary(cfg));
+
+  // An endless engine must not stop on its own, and must stop when asked.
+  const e2 = createEngine({ ...cfg, rounds: 2, planSecs: 1, roundSecs: 1, tallySecs: 0.5 });
+  e2.addPlayer(0, 'A', 0);
+  e2.startGame();
+  for (let t = 0; t < 400; t += 0.25) e2.step(0.25);
+  ok(e2.phase !== 'over' && e2.round > 2, 'endless runs past its round count',
+    `reached round ${e2.round}`);
+  e2.endMatch();
+  ok(e2.phase === 'over', 'and ends when the floor screen calls it');
+
+  $('#cfg-endless').click();          // back to normal for anything after this
+  ok(!S.readSetupCfg().endless && !$('#cfg-rounds').disabled, 'the toggle turns off again');
+}
+
 /* --- solo is reachable from inside the join flow ---------------------------- */
 {
   ok(!!$('#solo-btn'), 'the phone lobby offers PLAY SOLO INSTEAD');

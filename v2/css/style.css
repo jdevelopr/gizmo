@@ -151,6 +151,64 @@ input {
 }
 input::placeholder { color: #414a68; }
 
+/*
+ * Dropdowns. A native select renders as whatever the operating system feels like —
+ * rounded, grey, system-font — which in a page built out of hard-edged pixels reads
+ * as a hole punched in the game. `appearance: none` takes the chrome off; the arrow
+ * is drawn back on as two stacked pixel wedges by a wrapper, because a background
+ * image would smooth on a high-density screen and everything else here does not.
+ */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding-right: 34px;
+  color: var(--gold-lit);
+  background: var(--ink2);
+  border-color: var(--line);
+  letter-spacing: .04em;
+  font-size: 11px;
+}
+select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+select option { background: var(--plate); color: var(--text); }
+
+.pick { position: relative; display: block; }
+.pick::after,
+.pick::before {
+  content: '';
+  position: absolute;
+  right: 14px;
+  pointer-events: none;
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+}
+.pick::before { top: 18px; border-bottom: 5px solid var(--gold); }
+.pick::after { bottom: 18px; border-top: 5px solid var(--gold); }
+.pick:focus-within::before { border-bottom-color: var(--gold-lit); }
+.pick:focus-within::after { border-top-color: var(--gold-lit); }
+
+/* Rounds: a number you type, beside the toggle that makes it irrelevant. */
+.rounds-row { flex-wrap: nowrap; gap: 8px; }
+#cfg-rounds {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  letter-spacing: .1em;
+  color: var(--gold-lit);
+  -moz-appearance: textfield;
+}
+#cfg-rounds::-webkit-outer-spin-button,
+#cfg-rounds::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+#cfg-rounds:disabled { color: var(--dim); opacity: .45; }
+.toggle { flex: 0 0 auto; font-size: 11px; letter-spacing: .08em; }
+.toggle[data-on="on"] {
+  background: var(--lime);
+  border-color: #dcffb0;
+  color: var(--ink);
+}
+label .dim { color: var(--dim); letter-spacing: .02em; }
+
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }
 #join-form label { font-size: 10px; color: var(--dim); }

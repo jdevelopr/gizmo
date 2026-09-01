@@ -19,7 +19,7 @@ import {
 const $ = (s, r = document) => r.querySelector(s);
 const buzz = ms => { try { navigator.vibrate?.(ms); } catch {} };
 
-export function createController({ send }) {
+export function createController({ send, solo = false, onEnd = null }) {
   const canvas = $('#pad-stage');
   const stage = new Stage(canvas, { solo: true });
   stage.layout(1);
@@ -130,6 +130,17 @@ export function createController({ send }) {
   wire('#btn-bal', () => { send({ t: 'route', k: 'bal' }); buzz(14); });
   wire('#btn-sort', () => { send({ t: 'route', k: 'sort' }); buzz(14); });
   wire('#btn-expand', () => { send({ t: 'expand' }); buzz(22); });
+  wire('#btn-endmatch', () => {
+    const b = $('#btn-endmatch');
+    if (b.dataset.armed !== 'yes') {
+      b.dataset.armed = 'yes';
+      b.textContent = 'END THE MATCH — SURE?';
+      setTimeout(() => { b.dataset.armed = 'no'; b.textContent = 'END THE MATCH'; }, 4000);
+      return;
+    }
+    buzz(30);
+    onEnd?.();
+  });
   wire('#btn-prod', () => act({ a: 'upprod' }));
   wire('#btn-sell', () => act({ a: 'upsell' }));
 
@@ -245,7 +256,9 @@ export function createController({ send }) {
       plan: 'BUILD', run: 'SHIPPING', tally: 'TALLY',
       over: 'FINISHED', lobby: 'LOBBY',
     }[hud.ph] || hud.ph;
-    $('#bar-phase').textContent = hud.ph === 'over' ? 'MATCH OVER' : `R${hud.r}/${hud.rs} ${label}`;
+    // An endless match has no denominator to show.
+    const counter = hud.rs ? `R${hud.r}/${hud.rs}` : `R${hud.r}`;
+    $('#bar-phase').textContent = hud.ph === 'over' ? 'MATCH OVER' : `${counter} ${label}`;
     $('#bar-phase').dataset.ph = hud.ph;
     $('#bar-timer').textContent = hud.ph === 'over' ? '' : String(Math.max(0, Math.ceil(hud.tm)));
     $('#bar-cash').textContent = '$' + view.c;
@@ -619,6 +632,8 @@ export function createController({ send }) {
   }
 
   function paintCrate() {
+    const end = $('#btn-endmatch');
+    if (end) end.hidden = !(solo && hud?.endless && hud.ph !== 'over');
     const row = $('#pad-inv');
     if (!row) return;
     const items = view?.v || [];

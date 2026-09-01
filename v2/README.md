@@ -170,6 +170,29 @@ cool blue corner ticks mean STARVED (standing idle, fix the feed behind).
 
 ---
 
+## Setting up a match
+
+The Setup panel is shared by the floor screen and solo, so a solo run is exactly the
+match a room would play. Its dropdowns are drawn rather than left native — a system
+select renders rounded and grey and reads as a hole punched in a page built out of
+hard-edged pixels — and the chevron is two stacked pixel wedges rather than a
+background image, which would smooth on a high-density screen when nothing else here
+does.
+
+**Rounds is a number you type**, anything from 1 to 999, beside an **ENDLESS** toggle
+that greys it out. Endless runs until the floor screen calls it: the order board asks
+for more either way, so a match ends when you decide it has rather than when a counter
+runs out. Both the floor and solo get an END MATCH button that arms on the first tap
+and fires on the second.
+
+**And it tells you how long the match will take**, which is the one thing a group
+actually needs to know before starting and the one thing the panel never said. A round
+is the build phase plus shipping plus the tally, but the build phase ends the moment
+everyone taps READY — so its clock is a ceiling, not a duration. The estimate is a
+range: a table that readies up briskly against one that burns every second it is
+given. Twenty rounds at the standard settings is about 46–81 minutes; endless quotes
+per-round instead.
+
 ## Playing alone
 
 Solo runs the whole match on one device with no phones and no networking, and it is

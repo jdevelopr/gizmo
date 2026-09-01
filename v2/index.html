@@ -143,6 +143,8 @@ setTimeout(function () {
     <span id="floor-round">ROUND 1</span>
     <span id="floor-phase">RE-ROUTE</span>
     <span id="floor-timer">00</span>
+    <!-- An endless match has no counter to run out, so something has to call it. -->
+    <button id="floor-end" class="ghost" hidden>END MATCH</button>
   </header>
   <div id="stage-wrap">
     <div class="stage-stack">
@@ -238,6 +240,7 @@ setTimeout(function () {
       <section id="panel-crate" class="dock-panel" hidden>
         <p class="dock-label">CRATE <span class="dim">machines with nowhere to go</span></p>
         <div id="pad-inv" class="crate"></div>
+        <button id="btn-endmatch" class="ghost wide" hidden>END THE MATCH</button>
       </section>
 
       <!--
@@ -304,42 +307,60 @@ setTimeout(function () {
 <div id="setup" class="modal" hidden>
   <div class="modal-box stack">
     <h3>SETUP</h3>
+
     <label for="cfg-grid">PLOT SIZE</label>
-    <select id="cfg-grid">
-      <option value="3">3 x 3 — no room to grow</option>
-      <option value="4">4 x 4 — one expansion</option>
-      <option value="5">5 x 5 — two, and a second vault</option>
-      <option value="6">6 x 6</option>
-      <option value="7" selected>7 x 7 — the full run</option>
-    </select>
+    <div class="pick">
+      <select id="cfg-grid">
+        <option value="3">3 x 3 — no room to grow</option>
+        <option value="4">4 x 4 — one expansion</option>
+        <option value="5">5 x 5 — two, and a second vault</option>
+        <option value="6">6 x 6</option>
+        <option value="7" selected>7 x 7 — the full run</option>
+      </select>
+    </div>
     <p class="fine">Everyone starts owning a 3 x 3 corner of this and buys the rest
       during the match. This is how far the fence can go, not where it starts.</p>
+
     <label for="cfg-rounds">ROUNDS</label>
-    <select id="cfg-rounds">
-      <option value="3">3 — quick</option>
-      <option value="5">5 — short</option>
-      <option value="8" selected>8 — standard</option>
-      <option value="12">12 — long haul</option>
-    </select>
-    <label for="cfg-plan">PLANNING TIME</label>
-    <select id="cfg-plan">
-      <option value="60">60 seconds</option>
-      <option value="120" selected>120 seconds</option>
-      <option value="180">180 seconds</option>
-    </select>
-    <label for="cfg-secs">ROUND LENGTH</label>
-    <select id="cfg-secs">
-      <option value="60">60 seconds</option>
-      <option value="90" selected>90 seconds</option>
-      <option value="120">120 seconds</option>
-      <option value="150">150 seconds</option>
-    </select>
+    <div class="row rounds-row">
+      <input id="cfg-rounds" type="number" min="1" max="999" step="1" value="8"
+             inputmode="numeric" autocomplete="off">
+      <button id="cfg-endless" class="ghost toggle" data-on="off" type="button"
+              aria-pressed="false">ENDLESS</button>
+    </div>
+    <p class="fine">Any number you like. ENDLESS runs until the floor screen calls it —
+      the order board keeps asking for more either way, so a match ends when you decide
+      it has, not when a counter runs out.</p>
+
+    <label for="cfg-plan">BUILD TIME <span class="dim">buy, research, arrange</span></label>
+    <div class="pick">
+      <select id="cfg-plan">
+        <option value="90">90 seconds — brisk</option>
+        <option value="120">120 seconds</option>
+        <option value="150" selected>150 seconds — standard</option>
+        <option value="210">210 seconds — unhurried</option>
+      </select>
+    </div>
+
+    <label for="cfg-secs">SHIPPING TIME <span class="dim">the floor runs</span></label>
+    <div class="pick">
+      <select id="cfg-secs">
+        <option value="60">60 seconds</option>
+        <option value="90" selected>90 seconds</option>
+        <option value="120">120 seconds</option>
+        <option value="150">150 seconds</option>
+      </select>
+    </div>
+
     <label for="cfg-cash">STARTING CASH</label>
-    <select id="cfg-cash">
-      <option value="75">$75 — lean</option>
-      <option value="120" selected>$120 — standard</option>
-      <option value="240">$240 — rich</option>
-    </select>
+    <div class="pick">
+      <select id="cfg-cash">
+        <option value="120">$120 — lean</option>
+        <option value="200" selected>$200 — standard</option>
+        <option value="400">$400 — rich</option>
+      </select>
+    </div>
+
     <p id="cfg-note" class="fine"></p>
     <button id="setup-close" class="primary wide">DONE</button>
   </div>

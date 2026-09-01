@@ -35,6 +35,7 @@ const ROUTE_SPEC = { pipe: { kind: 'pipe', dir: 0 }, bal: { kind: 'bal', dir: 0 
  */
 export const DEFAULT_CFG = {
   rounds: 8,
+  endless: false,     // when true, `rounds` is ignored and the floor screen calls it
   roundSecs: 90,
   planSecs: 150,      // build phase: buy, research, extend the line, expand, ready up
   gridSize: 7,        // the full plot; you start owning 3x3 of it and buy the rest
@@ -238,8 +239,15 @@ export function createEngine(cfgIn = {}) {
 
   function nextRound() {
     round++;
-    if (round > cfg.rounds) go('over');
+    if (!cfg.endless && round > cfg.rounds) go('over');
     else go('plan');
+  }
+
+  /** Stop an endless match now. The round in progress is the last one. */
+  function endMatch() {
+    if (phase === 'lobby' || phase === 'over') return;
+    for (const p of players.values()) endRound(p.f);
+    go('over');
   }
 
   /* ------------------------------------------------------------ actions --- */
@@ -383,7 +391,8 @@ export function createEngine(cfgIn = {}) {
       v: viewOf(p.f),
       fx: p.outbox.splice(0, p.outbox.length),
       hud: {
-        ph: phase, tm: Math.round(timer * 10) / 10, r: round, rs: cfg.rounds,
+        ph: phase, tm: Math.round(timer * 10) / 10, r: round,
+        rs: cfg.endless ? 0 : cfg.rounds, endless: !!cfg.endless,
         n: GRID,
         an: announce, board: board(), note: p.note,
         ready: !!p.planReady,
@@ -406,7 +415,7 @@ export function createEngine(cfgIn = {}) {
 
   const api = {
     on, cfg, players, addPlayer, removePlayer, setConnected, setColor,
-    startGame, resetToLobby, step, action, stateFor, board, results,
+    startGame, resetToLobby, endMatch, step, action, stateFor, board, results,
     get phase() { return phase; },
     get timer() { return timer; },
     get round() { return round; },

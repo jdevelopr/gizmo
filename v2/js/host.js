@@ -169,6 +169,21 @@ export function startHost(show) {
 
   const warn = e => { e.preventDefault(); e.returnValue = ''; };
 
+  // Ending an endless match is deliberate and irreversible, so it asks once.
+  $('#floor-end').addEventListener('click', () => {
+    if (!engine.cfg.endless || engine.phase === 'over') return;
+    const btn = $('#floor-end');
+    if (btn.dataset.armed !== 'yes') {
+      btn.dataset.armed = 'yes';
+      btn.textContent = 'END MATCH — SURE?';
+      setTimeout(() => { btn.dataset.armed = 'no'; btn.textContent = 'END MATCH'; }, 4000);
+      return;
+    }
+    btn.dataset.armed = 'no';
+    btn.textContent = 'END MATCH';
+    engine.endMatch();
+  });
+
   /* ------------------------------------------------------------- engine --- */
 
   engine.on('phase', (ph, info) => {
@@ -272,8 +287,10 @@ export function startHost(show) {
       if (bannerT > 0) banner(stage, bannerText, bannerSub);
       stage.end();
 
-      $('#floor-round').textContent = engine.phase === 'over'
-        ? 'FINAL' : `ROUND ${engine.round} / ${engine.cfg.rounds}`;
+      $('#floor-round').textContent = engine.phase === 'over' ? 'FINAL'
+        : engine.cfg.endless ? `ROUND ${engine.round}`
+          : `ROUND ${engine.round} / ${engine.cfg.rounds}`;
+      $('#floor-end').hidden = !engine.cfg.endless || engine.phase === 'over';
       $('#floor-phase').textContent = {
         plan: 'BUILD', run: 'SHIPPING', tally: 'TALLY', over: 'DONE',
       }[engine.phase] || '';

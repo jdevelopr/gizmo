@@ -257,7 +257,12 @@ function startSolo(cfg = {}) {
   engine.addPlayer(0, localStorage.getItem('gizmo-name') || 'YOU', 0);
 
   const stage = new Stage($('#stage'));
-  const ctrl = createController({ send: msg => engine.action(0, msg) });
+  // Solo owns its own engine, so the pad may offer to end an endless run itself.
+  const ctrl = createController({
+    send: msg => engine.action(0, msg),
+    solo: true,
+    onEnd: () => engine.endMatch(),
+  });
 
   let bannerText = '', bannerSub = '', bannerT = 0, last = 0;
 

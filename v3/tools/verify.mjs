@@ -15,6 +15,7 @@ import {
 import {
   createFactory, starterKit, stepFactory, build, buildCheck, moveMachine,
   scrapMachine, applyAction, research, rebuild, reachesPayout, diagnose,
+  replaceMode, placeFromCrate, scrapFromCrate, stashMachine, crateStacks, crateKey,
 } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
 import { createGame, stepGame, serialise, deserialise } from '../js/game.js';
@@ -64,7 +65,10 @@ console.log('\nWHERE YOU MAY BUILD');
   ore(f, cx(bare), cy(bare));
   ok(buildCheck(f, { kind: 'ext' }, bare).ok, 'and yes on one');
   put(f, 'pipe', lo, lo);
-  ok(!buildCheck(f, { kind: 'pipe' }, cellOf(lo, lo)).ok, 'and never two on one slot');
+  // An occupied slot is no longer a refusal — it is a replacement, and what was
+  // there goes to the crate. See BUILDING OVER THINGS below.
+  ok(buildCheck(f, { kind: 'mut', mut: 1 }, cellOf(lo, lo)).ok,
+    'and on a slot that is already taken, which replaces what is there');
 }
 
 console.log('\nBUYING LAND');
@@ -225,6 +229,67 @@ console.log('\nSCRAPPING AND MOVING');
     'and it picks up the richness of the patch it lands on');
 }
 
+console.log('\nBUILDING OVER THINGS');
+{
+  const f = bench();
+  f.cash = 100000;
+  build(f, { kind: 'pipe' }, cellOf(20, 20), { dir: 0 });
+  const belt = f.grid[cellOf(20, 20)];
+  applyAction(f, { a: 'up', i: cellOf(20, 20) });      // make it a level 2 belt
+  ok(belt.level === 2, 'a belt can be upgraded');
+
+  // Same kind on the same slot: re-aim, free, nothing crated.
+  const before = f.cash;
+  ok(replaceMode(f, { kind: 'pipe' }, cellOf(20, 20)) === 'reaim',
+    'the same kind on an occupied slot is a re-aim');
+  const r1 = build(f, { kind: 'pipe' }, cellOf(20, 20), { dir: 1 });
+  ok(r1.ok && r1.cost === 0 && f.cash === before, 'which costs nothing');
+  ok(f.grid[cellOf(20, 20)] === belt, 'and keeps the very same machine');
+  ok(belt.dir === 1, 'turned to face the way you meant');
+  ok(belt.level === 2, 'with its level intact');
+  ok(f.crate.length === 0, 'and nothing goes to the crate');
+
+  // A different kind: the old one is crated, not destroyed.
+  ok(replaceMode(f, { kind: 'mut' }, cellOf(20, 20)) === 'replace',
+    'a different kind on an occupied slot is a replacement');
+  const r2 = build(f, { kind: 'mut', mut: 1 }, cellOf(20, 20), { dir: 0 });
+  ok(r2.ok && r2.crated === belt, 'the machine underneath comes back as `crated`');
+  ok(f.crate.length === 1 && f.crate[0] === belt, 'and is in the crate');
+  ok(f.crate[0].level === 2, 'still at the level you paid for');
+  ok(f.grid[cellOf(20, 20)].kind === 'mut', 'and the new machine is standing there');
+
+  // Putting it back is free.
+  const cash = f.cash;
+  const r3 = placeFromCrate(f, crateKey(belt), cellOf(21, 20), { dir: 0 });
+  ok(r3.ok && f.cash === cash, 'putting a crated machine back costs nothing');
+  ok(f.grid[cellOf(21, 20)] === belt, 'and it is the same machine, not a new one');
+  ok(f.crate.length === 0, 'and the crate empties');
+
+  // Stashing by hand, and selling out of the crate.
+  ok(stashMachine(f, cellOf(21, 20)).ok, 'a machine can be put away by hand');
+  ok(f.crate.length === 1 && !f.grid[cellOf(21, 20)], 'which takes it off the map');
+  const paid = f.cash;
+  const r4 = scrapFromCrate(f, crateKey(belt));
+  ok(r4.ok && f.cash > paid, 'and sold out of the crate for its scrap value');
+  ok(f.crate.length === 0, 'leaving the crate empty again');
+
+  // Moving one machine onto another crates the one underneath.
+  build(f, { kind: 'pipe' }, cellOf(30, 30), { dir: 0 });
+  build(f, { kind: 'bal' }, cellOf(31, 30), { dir: 0 });
+  const bal = f.grid[cellOf(31, 30)];
+  ok(moveMachine(f, cellOf(31, 30), cellOf(30, 30)).ok, 'a machine can be moved onto another');
+  ok(f.grid[cellOf(30, 30)] === bal && f.crate.length === 1,
+    'and the one underneath goes to the crate rather than being destroyed');
+
+  // The crate has a ceiling, and says so rather than quietly eating things.
+  while (f.crate.length < 40) f.crate.push({ ...bal, kind: 'pipe', buf: [], work: [] });
+  build(f, { kind: 'store' }, cellOf(40, 40), { dir: 0 });
+  ok(!buildCheck(f, { kind: 'mut', mut: 1 }, cellOf(40, 40)).ok,
+    'a full crate stops a replacement instead of losing the machine');
+  ok(buildCheck(f, { kind: 'store' }, cellOf(40, 40)).ok,
+    'but a re-aim still works, because it crates nothing');
+}
+
 console.log('\nTHE SAVE FILE');
 {
   const g = createGame({ seed: 4242, cash: 900 });
@@ -245,6 +310,15 @@ console.log('\nTHE SAVE FILE');
   const b = back.f.cells.map(i => `${i}:${back.f.grid[i].kind}:${back.f.grid[i].dir}`).join('|');
   ok(a === b, 'in the same slots, facing the same way');
   ok(back.f.nets.length === g.f.nets.length, 'and on the same power grids');
+
+  // and the crate
+  stashMachine(g.f, g.f.cells[1]);
+  const d2 = serialise(g);
+  const b2 = deserialise(JSON.parse(JSON.stringify(d2)));
+  ok(b2.f.crate.length === g.f.crate.length, 'the crate survives a reload');
+  ok(b2.f.crate[0]?.kind === g.f.crate[0]?.kind
+    && b2.f.crate[0]?.level === g.f.crate[0]?.level,
+    'with what was in it, at the level it was');
 }
 
 console.log('\nA WHOLE GAME, LEFT RUNNING');

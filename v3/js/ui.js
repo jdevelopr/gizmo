@@ -21,6 +21,7 @@ import {
 import { bodyTile, frameCount, shade } from './render.js';
 import {
   kindCounts, countKind, diagnose, machineLoad, speedOf, reachesPayout,
+  crateStacks, crateKey,
 } from './sim.js';
 import { powerSummary } from './power.js';
 
@@ -172,6 +173,56 @@ export class Palette {
 
 const anyRecipe = on => RECIPES.some((_, i) => on.has('asm:' + i));
 
+/**
+ * The crate: machines you own that are not standing anywhere.
+ *
+ * It fills when you build over the top of something, which in GIZMO 3 is the
+ * ordinary way to change your mind about a slot. Nothing in here cost you
+ * anything to put away and nothing costs anything to put back down — the point of
+ * the crate is that rearranging a factory is moving things rather than a sequence
+ * of scrap-and-rebuy transactions.
+ */
+export class Crate {
+  constructor(host, onPick, onScrap) {
+    this.host = host;
+    this.box = $('crate-box');
+    this.count = $('crate-n');
+    this.onPick = onPick;
+    this.onScrap = onScrap;
+    this.key = '';
+  }
+
+  update(g, S) {
+    const f = g.f;
+    const stacks = crateStacks(f);
+    const key = stacks.map(st => st.key + 'x' + st.n).join(',') + '|' + (S.tool?.crate || '');
+    if (key === this.key) return;
+    this.key = key;
+
+    this.box.hidden = !stacks.length;
+    this.count.textContent = stacks.length
+      ? `${f.crate.length}  ·  RIGHT-CLICK TO SELL` : '';
+    this.host.textContent = '';
+    if (!stacks.length) return;
+
+    for (const st of stacks) {
+      const btn = el('button', 'pal' + (S.tool?.crate === st.key ? ' on' : ''));
+      btn.appendChild(icon(st.spec));
+      const mid = el('div');
+      mid.appendChild(el('div', 'nm', label(st.spec).toUpperCase()));
+      // The bar is 208 pixels wide and this label is repeated on every row, so it
+      // says the one thing that differs between rows and nothing else. How to sell
+      // is on the heading, once.
+      mid.appendChild(el('span', 'key', `LEVEL ${st.spec.level || 1}`));
+      btn.appendChild(mid);
+      btn.appendChild(el('div', 'n', st.n > 1 ? `x${st.n}` : ''));
+      btn.onclick = () => this.onPick(st);
+      btn.oncontextmenu = e => { e.preventDefault(); this.onScrap(st.key); };
+      this.host.appendChild(btn);
+    }
+  }
+}
+
 /* -------------------------------------------------------------------- hud --- */
 
 export class Hud {
@@ -196,12 +247,15 @@ export class Hud {
 
   update(g) {
     const f = g.f;
+    // Every string here is written to fit its box in Silkscreen, which is wider
+    // than it looks in a fallback font. The long-form versions of all of them
+    // live one click away on the STATS tab, where there is room.
     this.set(this.cash, 'b', money(f.cash));
     this.set(this.cash, 'i', `${g.income >= 0 ? '+' : ''}${num(g.income, 1)}/s`);
     this.set(this.sci, 'b', num(f.science));
-    this.set(this.sci, 'i', `+${num(g.sciRate, 1)}/s science`);
-    this.set(this.claim, 'b', `${f.claim} x ${f.claim}`);
-    this.set(this.claim, 'i', `claim  ${f.claim * f.claim} slots`);
+    this.set(this.sci, 'i', `+${num(g.sciRate, 1)}/s sci`);
+    this.set(this.claim, 'b', `${f.claim}x${f.claim}`);
+    this.set(this.claim, 'i', 'claim');
 
     const p = powerSummary(f);
     const ratio = p.demand <= 0 ? 1 : Math.min(1, p.supply / p.demand);
@@ -211,15 +265,22 @@ export class Hud {
       this.pwrFill.style.width = pct + '%';
       this.pwrFill.style.background = ratio >= 0.95 ? '#a7f070' : ratio >= 0.7 ? '#ffcd75' : '#ff5d4a';
     }
+    // Short, because the alert box on the left is already saying the long version
+    // of whichever of these matters most, and because this line has to survive
+    // being squeezed on a narrow window.
     const ptxt = p.nets === 0
-      ? 'NO POWER — everything at 20%'
-      : `${Math.round(p.demand)} / ${Math.round(p.supply)} kW` +
-        (p.unpowered ? `  ·  ${p.unpowered} off grid` : '') +
-        (p.dry ? `  ·  ${p.dry} out of fuel` : '');
+      ? 'NO POWER'
+      : `${Math.round(p.demand)} / ${Math.round(p.supply)} kW`
+        + (p.unpowered ? ` · ${p.unpowered} off` : '')
+        + (p.dry ? ` · ${p.dry} dry` : '');
     if (this.last.ptxt !== ptxt) { this.last.ptxt = ptxt; this.pwrText.textContent = ptxt; }
 
+    // On a narrow window the word is the first thing to go: the button is beside
+    // the claim size and its own icon-free shape is unmistakable.
+    const tight = window.matchMedia('(max-width: 1140px)').matches;
     const cost = f.claim < WORLD ? expandCost(f.claim) : 0;
-    const etxt = cost ? `EXPAND ${money(cost)}` : 'WHOLE WORLD';
+    const etxt = cost ? (tight ? money(cost) : `EXPAND ${money(cost)}`)
+      : (tight ? 'MAX' : 'WHOLE WORLD');
     if (this.last.exp !== etxt) { this.last.exp = etxt; this.expand.textContent = etxt; }
     this.expand.disabled = !cost || f.cash < cost;
     this.expand.classList.toggle('can', !!cost && f.cash >= cost);
@@ -396,15 +457,19 @@ export class Panel {
     head.appendChild(icon(tool, 34));
     const t = el('div');
     t.appendChild(el('h3', null, label(tool).toUpperCase()));
-    t.appendChild(el('div', 'sub', money(buyCost(tool, countKind(f, tool.kind))) +
-      (LADDERED[tool.kind] ? '  ·  the next one costs more' : '')));
+    t.appendChild(el('div', 'sub', tool.crate
+      ? `Out of the crate — free, level ${tool.level || 1}`
+      : money(buyCost(tool, countKind(f, tool.kind)))
+        + (LADDERED[tool.kind] ? '  ·  the next one costs more' : '')));
     head.appendChild(t);
     host.appendChild(head);
     host.appendChild(el('p', 'body', describe(tool)));
     host.appendChild(this.specRows(g, tool));
     host.appendChild(el('div', 'blank',
-      'Click the map to place it. <b style="color:#8b96b8">R</b> turns it, ' +
-      '<b style="color:#8b96b8">F</b> flips a branch, <b style="color:#8b96b8">Esc</b> puts it down.'));
+      'Click the map to place it. Dropping it on a slot that is already taken puts '
+      + 'whatever was there in the crate — nothing is destroyed, and putting it back '
+      + 'costs nothing.<br><br><b style="color:#8b96b8">R</b> turns it, '
+      + '<b style="color:#8b96b8">F</b> flips a branch, <b style="color:#8b96b8">Esc</b> puts it down.'));
   }
 
   /** A slot with nothing on it: what the ground is, and what it would cost. */
@@ -472,6 +537,7 @@ export class Panel {
     }
     if (m.kind === 'bal' || m.kind === 'sort') add('FLIP <span class="k">F</span>', () => this.act('mir', cell));
     add('MOVE <span class="k">M</span>', () => this.act('pickup', cell));
+    add('TO CRATE', () => this.act('stash', cell));
     const cap = levelCap(f.done);
     if (m.level < cap) {
       const c = upgradeCost(m);
@@ -848,6 +914,19 @@ Cord, Frame — comes out of Sap patches and is worth almost nothing on its own.
 one of each, and is where the money is. Fusers climb inside a family and never
 across one.</p>
 
+<h3>Building over things</h3>
+<p>You can set a machine down on a slot that already has one on it. Whatever was
+there goes to the <b>crate</b> — a list at the bottom of the build bar of machines
+you own but have not put anywhere. Nothing is destroyed, nothing is refunded at
+half price, and putting a crated machine back down costs nothing, because you
+already bought it. It keeps its level and its settings too.</p>
+<p>Dropping the <i>same kind</i> of machine on a slot is the exception: it does not
+crate anything and does not charge you. It just turns the one that is already there
+to face the way you meant — which is what makes dragging a conveyor back along a
+run you have already laid fix its direction rather than cost you the whole run
+again. The build ghost is green on empty ground and amber when it is about to
+replace something.</p>
+
 <h3>Land</h3>
 <p>Your claim is a centred square. Buying a ring costs
 ${money(EXPAND_BASE)} the first time and about 28% more each time after,
@@ -879,6 +958,7 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <tr><td>F</td><td class="k">Flip a Balancer or Sorter's branch to the other side</td></tr>
 <tr><td>Q</td><td class="k">Pipette — copy whatever is under the cursor into your hand</td></tr>
 <tr><td>M</td><td class="k">Pick a machine up and move it, for free</td></tr>
+<tr><td>Build on top</td><td class="k">Replaces it; the old one goes to the crate, free to put back</td></tr>
 <tr><td>X / Delete</td><td class="k">Scrap, for half of everything it cost</td></tr>
 <tr><td>Right click</td><td class="k">Put down what you are holding, or scrap what is there</td></tr>
 <tr><td>V</td><td class="k">Show the power grid</td></tr>

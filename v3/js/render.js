@@ -746,8 +746,12 @@ export class View {
   drawGhost(ctx, f, ui, z) {
     const { ghost } = ui;
     if (ghost.cell < 0) return;
-    this.fillCell(ctx, ghost.cell, z, ghost.ok ? '#7fe8a0' : '#ff5d4a', ghost.ok ? 0.22 : 0.3);
-    this.outline(ctx, ghost.cell, z, ghost.ok ? '#a7f070' : '#ff5d4a', 2);
+    // Three states, not two: free ground, a slot whose occupant is about to be
+    // crated, and a refusal. The middle one is drawn amber so that building over
+    // something never looks like building on nothing.
+    const tint = !ghost.ok ? '#ff5d4a' : ghost.mode === 'new' ? '#7fe8a0' : '#ffcd75';
+    this.fillCell(ctx, ghost.cell, z, tint, ghost.ok ? 0.22 : 0.3);
+    this.outline(ctx, ghost.cell, z, tint, 2);
     if (z >= 24 && ghost.spec) {
       ctx.globalAlpha = 0.65;
       const [sx, sy] = this.toScreen(cx(ghost.cell), cy(ghost.cell));
@@ -760,7 +764,11 @@ export class View {
   /** A dragged run of belts, before you let go of the mouse. */
   drawDragPath(ctx, f, ui, z) {
     for (const step of ui.dragPath) {
-      this.fillCell(ctx, step.cell, z, step.ok ? '#7fe8a0' : '#ff5d4a', step.ok ? 0.2 : 0.28);
+      // Green is fresh ground, amber is a slot that already has something on it
+      // — either the same belt about to be re-aimed, or a machine about to be
+      // crated — and red is somewhere the run cannot go at all.
+      const tint = !step.ok ? '#ff5d4a' : step.mode === 'new' ? '#7fe8a0' : '#ffcd75';
+      this.fillCell(ctx, step.cell, z, tint, step.ok ? 0.2 : 0.28);
       if (z >= 16 && step.ok) {
         const [sx, sy] = this.toScreen(cx(step.cell), cy(step.cell));
         const d = step.dir | 0, h = Math.max(2, z / 6);

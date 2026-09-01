@@ -478,6 +478,21 @@ export function capacity(m) {
 /** Room on a bare slot. Gizmos rest here; they are never destroyed. */
 export const EMPTY_HOLD = 2;
 
+/**
+ * How many machines the crate holds.
+ *
+ * The crate is what makes building over the top of something safe. Dropping a
+ * Mutator onto a slot that already has a conveyor on it does not destroy the
+ * conveyor and does not charge you half of it back — it puts it in the crate,
+ * where it is still yours and still free to put down again. That turns
+ * rearranging a factory from a sequence of scrap-and-rebuy transactions into
+ * simply moving things, which is what rearranging a factory should be.
+ *
+ * Forty is far more than a session will ever displace at once, because the common
+ * case — laying a belt across a belt — replaces in place and never touches it.
+ */
+export const CRATE_CAP = 40;
+
 /** The hard ceiling on duplication: nothing richer than Cobalt can be copied. */
 export const COPY_MAX_VALUE = 32;
 export const copyable = ty => TYPES[ty].value <= COPY_MAX_VALUE;

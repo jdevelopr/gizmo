@@ -145,6 +145,26 @@ h1 span { color: var(--gold); }
 
 #palette { flex: 1; overflow-y: auto; padding: 6px; }
 
+/*
+ * The crate: machines you own that are not standing anywhere, because you built
+ * something on top of them. It only exists when it has something in it, and it
+ * never takes more than a third of the bar — the catalogue above it is what you
+ * are usually reaching for.
+ */
+#crate-box {
+  border-top: 2px solid var(--line);
+  background: #12172a;
+  max-height: 33%;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.crate-head {
+  padding: 8px 12px 4px;
+  color: var(--gold); font-size: 10px; letter-spacing: 0.16em;
+}
+.crate-head span { color: var(--dimmer); letter-spacing: 0.1em; }
+#crate { overflow-y: auto; padding: 0 6px 6px; }
+.pal .n { font-size: 11px; color: var(--green); }
+
 .pal-group {
   color: var(--dimmer); font-size: 10px; letter-spacing: 0.16em;
   padding: 10px 6px 4px;
@@ -188,18 +208,46 @@ h1 span { color: var(--gold); }
 
 #hud {
   position: absolute; top: 0; left: 0; right: 0; height: var(--hud);
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 12px;
   padding: 0 12px;
   background: rgba(11, 13, 22, 0.92);
   border-bottom: 2px solid var(--line);
   pointer-events: none;
+  /*
+   * Nothing in this bar may ever spill out of it. Silkscreen is a good deal wider
+   * than the monospace it falls back to, so a label sized to look right without
+   * the webfont wraps to a second line the moment the real one loads — and a
+   * second line in a 46-pixel bar is a line you cannot see. Every label below is
+   * therefore nowrap with an ellipsis, every block has a min-width that fits its
+   * widest realistic value in Silkscreen, and the bar itself clips.
+   */
+  overflow: hidden;
 }
-#hud button, #hud .speeds { pointer-events: auto; }
+#hud button, #hud .speeds, #hud .zooms { pointer-events: auto; }
 
-.stat { display: flex; flex-direction: column; line-height: 1.15; min-width: 72px; }
+.stat {
+  display: flex; flex-direction: column; justify-content: center;
+  line-height: 1.2;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.stat b, .stat i {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .stat b { font-size: 15px; }
 .stat i { font-style: normal; font-size: 10px; color: var(--dim); }
-.stat.wide { min-width: 168px; }
+
+/* Widths that fit the widest value each one can actually hold, measured in
+   Silkscreen: "$123.4k" is 68px, "+0.0/s sci" is 65px, "56x56" is 58px. */
+
+
+/* The power block is the one that flexes, because it is the one whose text
+   genuinely varies in length — so it takes the slack when the window is wide and
+   gives it back, ellipsis and all, when it is not. */
+.stat.wide { flex: 1 1 176px; min-width: 92px; max-width: 300px; }
 
 .pwr-bar {
   height: 9px; background: #131a2e; border: 1px solid var(--line);
@@ -207,22 +255,31 @@ h1 span { color: var(--gold); }
 }
 .pwr-bar span { display: block; height: 100%; width: 0; background: var(--green); }
 
-.hud-btn { padding: 6px 9px; font-size: 11px; }
+.hud-btn { padding: 6px 9px; font-size: 11px; white-space: nowrap; flex: 0 0 auto; }
 .hud-btn.can { border-color: var(--gold); color: var(--gold); }
 
-.spacer { flex: 1; }
+.spacer { flex: 1 1 0; min-width: 0; }
 
-.zooms { display: flex; gap: 2px; align-items: stretch; margin-right: 8px; }
-.zooms button { padding: 5px 0; font-size: 13px; width: 26px; line-height: 1; }
+/* Under real pressure every stat gives ground and ellipsises rather than pushing
+   the controls off the end of the bar. The two button clusters never shrink. */
+.stat { flex-shrink: 1; }
+#s-cash { flex-basis: 80px; }
+#s-sci { flex-basis: 72px; }
+#s-claim { flex-basis: 62px; }
+.stat, .hud-btn { min-width: 46px; }
+.hud-btn { overflow: hidden; text-overflow: ellipsis; }
+
+.zooms { display: flex; gap: 2px; align-items: stretch; flex: 0 0 auto; }
+.zooms button { padding: 5px 0; font-size: 13px; width: 24px; line-height: 1; }
 .zooms span {
   display: flex; align-items: center; justify-content: center;
-  min-width: 46px; font-size: 11px; color: var(--dim);
+  min-width: 42px; font-size: 11px; color: var(--dim);
   border: 2px solid var(--line); border-left: 0; border-right: 0;
   background: var(--plate);
 }
 
-.speeds { display: flex; gap: 2px; }
-.speeds button { padding: 5px 9px; font-size: 11px; min-width: 34px; }
+.speeds { display: flex; gap: 2px; flex: 0 0 auto; }
+.speeds button { padding: 5px 6px; font-size: 11px; min-width: 30px; }
 .speeds button.on { background: var(--gold); color: #201603; border-color: #b98f3d; }
 
 /* toasts, hints, alerts --------------------------------------------------- */
@@ -363,9 +420,27 @@ h3 {
 ::-webkit-scrollbar-thumb:hover { background: #3d4869; }
 
 /* A window too small for three columns loses the panel before the world ---- */
+/*
+ * Below about 1,340 pixels the bar runs out of room before the world does. The
+ * claim size is the first thing to go — it is a number you look at once a ring,
+ * and it is on the STATS tab and implied by the EXPAND button beside it.
+ */
+@media (max-width: 1340px) {
+  #s-claim { display: none; }
+}
+
 @media (max-width: 1180px) {
   #app { grid-template-columns: var(--bar) 1fr 264px; }
-  :root { --panel: 264px; }
+  :root { --panel: 264px; --bar: 190px; }
+  #hud { gap: 9px; padding: 0 9px; }
+  .zooms span { min-width: 34px; }
+  .speeds button { min-width: 26px; padding: 5px 4px; }
+}
+
+/* The last thing to go is the zoom readout, which the two buttons beside it make
+   redundant anyway. */
+@media (max-width: 1100px) {
+  .zooms span { display: none; }
 }
 @media (max-width: 980px) {
   #app { grid-template-columns: 168px 1fr; }

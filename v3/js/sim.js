@@ -34,7 +34,7 @@ import {
   makeMachine, price, buyCost, upgradeCost, scrapValue, cycleTime, travelTime,
   intake, outputs, exitDirs, sizeOf, capacity, EMPTY_HOLD, drawOf,
   cellOf, cx, cy, inClaim, claimed, claimCells, inWorld,
-  CLAIM_START, CLAIM_STEP, expandCost, LADDERED,
+  CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
 } from './machines.js';
@@ -64,6 +64,7 @@ export function createFactory({ cash = 400, seed = 1, world = null } = {}) {
     patch: Int8Array.from(w.patch),
     rich: Float32Array.from(w.rich),
     grid: new Array(n).fill(null),
+    crate: [],          // machines you own that are not standing anywhere
     cells: [],          // indices of occupied slots, rebuilt when the map changes
     gizmos: [],
     load: new Float64Array(n),
@@ -503,9 +504,33 @@ export function buildCheck(f, spec, i) {
   if (!claimed(i, f.claim)) return no('You do not own this land');
   if (f.terrain[i] === RUBBLE) return no(`Rubble — clear it for $${RUBBLE_COST}`);
   if (f.terrain[i] !== OPEN) return no('Bedrock will not move');
-  if (f.grid[i]) return no('Something is already here');
   if (spec.kind === 'ext' && f.patch[i] < 0) return no('An Extractor has to stand on ore');
+  // Building over the top of something is allowed, and is the normal way to change
+  // your mind about a slot. Whatever was there goes in the crate — unless the crate
+  // is full, which is the one thing that can stop it.
+  const here = f.grid[i];
+  if (here && here.kind !== spec.kind && f.crate.length >= CRATE_CAP) {
+    return no('Crate is full — place or scrap something from it first');
+  }
   return yes();
+}
+
+/**
+ * Is putting `spec` here a *replacement* rather than a fresh build, and if so what
+ * kind? Three answers, and the difference matters a great deal to how it feels:
+ *
+ *   'new'     — an empty slot. Pay for it.
+ *   'reaim'   — the same kind of machine is already there, so nothing is bought and
+ *               nothing is crated; it simply turns to face the way you meant. This
+ *               is what makes dragging a belt back over a run you already laid fix
+ *               its direction instead of costing you the whole run again.
+ *   'replace' — something else is there. It goes to the crate, still yours, and the
+ *               new machine is bought and put down in its place.
+ */
+export function replaceMode(f, spec, i) {
+  const here = f.grid[i];
+  if (!here) return 'new';
+  return here.kind === spec.kind ? 'reaim' : 'replace';
 }
 
 /**
@@ -521,8 +546,32 @@ export function build(f, spec, i, opt = {}) {
   const check = buildCheck(f, spec, i);
   if (!check.ok) return check;
 
+  const mode = replaceMode(f, spec, i);
+
+  // Same kind, same slot: turn it, retune it, and charge nothing. A machine you
+  // already own does not have to be bought again to be pointed somewhere else.
+  if (mode === 'reaim') {
+    const m = f.grid[i];
+    const dir = opt.dir != null ? opt.dir : m.dir;
+    const mir = opt.mir != null ? (opt.mir ? 1 : 0) : m.mir;
+    const mut = (spec.mut != null && spec.kind !== 'ext') ? spec.mut : m.mut;
+    if (m.dir === dir && m.mir === mir && m.mut === mut) return yes(null, { cost: 0, machine: m, mode });
+    m.dir = dir; m.mir = mir; m.mut = mut;
+    m.flash = 1;
+    f.fx.push({ k: 'rot', cell: i });
+    return yes(null, { cost: 0, machine: m, mode });
+  }
+
   const cost = opt.free ? 0 : buyCost(spec, countKind(f, spec.kind));
   if (f.cash < cost) return no(`Need $${cost}`);
+
+  // Whatever was standing here is put away rather than destroyed.
+  let crated = null;
+  if (mode === 'replace') {
+    crated = f.grid[i];
+    toCrate(f, crated);
+    f.grid[i] = null;
+  }
 
   f.cash -= cost;
   f.spent += cost;
@@ -532,7 +581,92 @@ export function build(f, spec, i, opt = {}) {
   if (opt.mir != null) m.mir = opt.mir ? 1 : 0;
   rebuild(f);
   f.fx.push({ k: 'build', cell: i, kind: spec.kind });
-  return yes(null, { cost, machine: m });
+  return yes(null, { cost, machine: m, mode, crated });
+}
+
+/* ------------------------------------------------------------------ crate --- */
+
+/**
+ * Put a machine away. It keeps its level and its settings, because it is the same
+ * machine — you have not sold it, you have picked it up.
+ */
+export function toCrate(f, m) {
+  if (!m || f.crate.length >= CRATE_CAP) return false;
+  m.buf.length = 0; m.work.length = 0; m.out = null; m.t = 0; m.blocked = 0;
+  m.net = -1; m.sat = 0; m.fuel = 0; m.load = 0;
+  f.crate.push(m);
+  return true;
+}
+
+/** Everything about a crated machine that decides whether two of them are alike. */
+export const crateKey = m =>
+  `${m.kind}|${m.mut ?? 0}|${m.mir | 0}|${m.level || 1}`;
+
+/** The crate, grouped into stacks of identical machines, for the build bar. */
+export function crateStacks(f) {
+  const by = new Map();
+  for (const m of f.crate) {
+    const k = crateKey(m);
+    if (!by.has(k)) by.set(k, { key: k, spec: m, n: 0 });
+    by.get(k).n++;
+  }
+  return [...by.values()];
+}
+
+/**
+ * Take one machine of this kind out of the crate and set it down. It costs
+ * nothing: it was bought once already.
+ */
+export function placeFromCrate(f, key, i, opt = {}) {
+  const at = f.crate.findIndex(m => crateKey(m) === key);
+  if (at < 0) return no('Nothing like that in the crate');
+  const m = f.crate[at];
+  const check = buildCheck(f, m, i);
+  if (!check.ok) return check;
+
+  const mode = replaceMode(f, m, i);
+  if (mode === 'replace') {
+    toCrate(f, f.grid[i]);
+    f.grid[i] = null;
+  } else if (mode === 'reaim') {
+    // Two of the same kind: swap them, so the one you were holding goes down and
+    // the one that was there is the one you are now holding.
+    toCrate(f, f.grid[i]);
+    f.grid[i] = null;
+  }
+
+  f.crate.splice(at, 1);
+  f.grid[i] = m;
+  f.dirty = true;
+  if (m.kind === 'ext') { m.mut = f.patch[i]; m.rich = f.rich[i] || 1; }
+  if (opt.dir != null) m.dir = opt.dir;
+  else autoFace(f, i);
+  if (opt.mir != null) m.mir = opt.mir ? 1 : 0;
+  rebuild(f);
+  f.fx.push({ k: 'build', cell: i, kind: m.kind });
+  return yes(null, { cost: 0, machine: m, fromCrate: true, left: f.crate.filter(x => crateKey(x) === key).length });
+}
+
+/** Take a machine off the map and put it in the crate, keeping every setting. */
+export function stashMachine(f, i) {
+  const m = f.grid[i];
+  if (!m) return no('Nothing there');
+  if (f.crate.length >= CRATE_CAP) return no('Crate is full');
+  toCrate(f, m);
+  f.grid[i] = null;
+  rebuild(f);
+  f.fx.push({ k: 'move', cell: i });
+  return yes('To the crate');
+}
+
+/** Sell one crated machine for what scrapping it on the map would have paid. */
+export function scrapFromCrate(f, key) {
+  const at = f.crate.findIndex(m => crateKey(m) === key);
+  if (at < 0) return no('Nothing like that in the crate');
+  const v = scrapValue(f.crate[at]);
+  f.crate.splice(at, 1);
+  f.cash += v;
+  return yes(`+$${v}`, { refund: v });
 }
 
 /**
@@ -550,8 +684,15 @@ export function moveMachine(f, from, to) {
   if (!m) return no('Nothing there');
   if (!claimed(to, f.claim)) return no('You do not own this land');
   if (f.terrain[to] !== OPEN) return no('Something is in the way');
-  if (f.grid[to]) return no('Something is already there');
   if (m.kind === 'ext' && f.patch[to] < 0) return no('An Extractor has to stand on ore');
+  if (f.grid[to]) {
+    // Dropping one machine on another puts the one underneath in the crate, the
+    // same as building over it does. Nothing on this map is ever destroyed by
+    // accident.
+    if (f.crate.length >= CRATE_CAP) return no('Crate is full');
+    toCrate(f, f.grid[to]);
+    f.grid[to] = null;
+  }
 
   f.grid[from] = null;
   f.grid[to] = m;

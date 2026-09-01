@@ -16,14 +16,14 @@ import {
 import { View, ZOOMS } from './render.js';
 import {
   build, buildCheck, moveMachine, scrapMachine, applyAction, research,
-  countKind, rebuild,
+  countKind, rebuild, replaceMode, placeFromCrate, scrapFromCrate, stashMachine,
 } from './sim.js';
 import { reachFrom } from './power.js';
 import {
   createGame, stepGame, saveGame, loadGame, hasSave, clearSave,
   ageToasts, toast, SPEEDS,
 } from './game.js';
-import { Palette, Hud, Panel, drawMinimap, howtoHtml } from './ui.js';
+import { Palette, Crate, Hud, Panel, drawMinimap, howtoHtml } from './ui.js';
 import { Input, makeState } from './input.js';
 
 const $ = id => document.getElementById(id);
@@ -31,6 +31,7 @@ const $ = id => document.getElementById(id);
 let g = null;                       // the game, once one is running
 let view = null;
 let palette = null;
+let crate = null;
 let hud = null;
 let panel = null;
 let input = null;
@@ -59,6 +60,7 @@ function boot(game) {
   if (!view) {
     view = new View($('px'), $('tx'));
     palette = new Palette($('palette'), spec => act('tool', spec));
+    crate = new Crate($('crate'), st => act('takeFromCrate', st), key => act('scrapCrate', key));
     hud = new Hud();
     panel = new Panel(g, act);
     input = new Input(view, S, act, () => g);
@@ -71,6 +73,8 @@ function boot(game) {
   view.groundKey = '';
   palette.key = '';
   palette.build(g);
+  crate.key = '';
+  crate.update(g, S);
   panel.show('info');
   S.selected = -1;
   S.tool = null;
@@ -148,6 +152,7 @@ function frame(now) {
   hud.update(g);
   updateZoom();
   palette.price(g);
+  crate.update(g, S);
   panel.update(g, S);
   updateHint();
 
@@ -169,6 +174,21 @@ function playFx(fx) {
   }
 }
 
+/**
+ * Put the thing in your hand down. One function, because a machine out of the
+ * crate and a machine off the catalogue land in exactly the same way — the only
+ * difference is which pocket it came out of — and because the crate empties as it
+ * goes, so the hand has to let go of itself when the last one is gone.
+ */
+function place(spec, cell, dir, mir) {
+  if (spec.crate) {
+    const r = placeFromCrate(g.f, spec.crate, cell, { dir, mir });
+    if (r.ok && !r.left) act('tool', null);
+    return r;
+  }
+  return build(g.f, spec, cell, { dir, mir });
+}
+
 /** Where the thing in your hand would land, and whether it may. */
 function updateGhost() {
   S.ghost = null;
@@ -184,8 +204,12 @@ function updateGhost() {
   }
   if (!S.tool || S.hover < 0 || S.drag) return;
   const check = buildCheck(g.f, S.tool, S.hover);
-  const cost = buyCost(S.tool, countKind(g.f, S.tool.kind));
-  S.ghost = { cell: S.hover, spec: S.tool, ok: check.ok && g.f.cash >= cost };
+  const mode = replaceMode(g.f, S.tool, S.hover);
+  // A machine out of the crate is already paid for, and re-aiming one you already
+  // own costs nothing either, so neither is ever blocked by an empty wallet.
+  const free = !!S.tool.crate || mode === 'reaim';
+  const cost = free ? 0 : buyCost(S.tool, countKind(g.f, S.tool.kind));
+  S.ghost = { cell: S.hover, spec: S.tool, mode, ok: check.ok && g.f.cash >= cost };
   if (S.tool.kind === 'gen') S.reach = reachFrom(g.f, S.hover, { level: 1 });
 }
 
@@ -255,6 +279,24 @@ function act(name, payload, extra) {
     case 'flipTool':
       if (S.tool) S.tool.mir = S.tool.mir ? 0 : 1;
       return;
+    case 'takeFromCrate': {
+      const st = payload;
+      S.hand = -1;
+      S.selected = -1;
+      S.tool = { ...st.spec, crate: st.key, dir: st.spec.dir, mut: st.spec.mut, mir: st.spec.mir };
+      palette.select(null);
+      crate.key = '';
+      $('stage').classList.add('build');
+      panel.show('info');
+      return;
+    }
+    case 'scrapCrate': {
+      const r = scrapFromCrate(f, payload);
+      if (r.ok) toast(g, `Sold from the crate — ${money(r.refund)}`, '#ffcd75');
+      crate.key = '';
+      return;
+    }
+
     case 'pipette': {
       const m = payload >= 0 ? f.grid[payload] : null;
       if (!m) return;
@@ -266,12 +308,15 @@ function act(name, payload, extra) {
     }
 
     /* --- building --- */
-    case 'canBuild':
-      return buildCheck(f, payload.spec, payload.cell);
+    case 'canBuild': {
+      const r = buildCheck(f, payload.spec, payload.cell);
+      return { ...r, mode: replaceMode(f, payload.spec, payload.cell) };
+    }
 
     case 'build': {
-      const r = build(f, payload.spec, payload.cell, { dir: payload.spec.dir, mir: payload.spec.mir });
+      const r = place(payload.spec, payload.cell, payload.spec.dir, payload.spec.mir);
       if (!r.ok) toast(g, r.msg, '#ff8a6a');
+      else if (r.crated) toast(g, `${label(r.crated).toUpperCase()} to the crate`, '#a8dcff');
       return r;
     }
 
@@ -282,14 +327,17 @@ function act(name, payload, extra) {
      */
     case 'buildRun': {
       let laid = 0, spent = 0, stopped = null;
+      let aimed = 0;
       for (const step of payload.path) {
         if (!step.ok) { if (!stopped && step.why) stopped = step.why; continue; }
-        const r = build(f, payload.spec, step.cell, { dir: step.dir, mir: payload.spec.mir });
+        const r = place(payload.spec, step.cell, step.dir, payload.spec.mir);
         if (!r.ok) { stopped = r.msg; break; }
-        laid++;
-        spent += r.cost;
+        if (r.mode === 'reaim') aimed++;
+        else laid++;
+        spent += r.cost || 0;
       }
       if (laid) toast(g, `${laid} laid — ${money(spent)}`, '#a8dcff');
+      else if (aimed) toast(g, `${aimed} re-aimed`, '#a8dcff');
       else if (stopped) toast(g, stopped, '#ff8a6a');
       return;
     }
@@ -325,6 +373,13 @@ function act(name, payload, extra) {
     case 'up': {
       const r = applyAction(f, { a: 'up', i: payload });
       if (!r.ok) toast(g, r.msg, '#ff8a6a');
+      return r;
+    }
+    case 'stash': {
+      if (payload == null || payload < 0) return;
+      const r = stashMachine(f, payload);
+      if (!r.ok) toast(g, r.msg, '#ff8a6a');
+      else if (S.selected === payload) S.selected = -1;
       return r;
     }
     case 'scrap': {

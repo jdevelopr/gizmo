@@ -285,7 +285,10 @@ export class Input {
         dir = path.length ? path[path.length - 1].dir : (S.tool?.dir ?? 0);
       }
       const check = this.act('canBuild', { spec: S.tool, cell });
-      path.push({ cell, dir: dir < 0 ? 0 : dir, ok: !!check?.ok, why: check?.msg });
+      path.push({
+        cell, dir: dir < 0 ? 0 : dir,
+        ok: !!check?.ok, why: check?.msg, mode: check?.mode || 'new',
+      });
     }
     d.path = path;
   }

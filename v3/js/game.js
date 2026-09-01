@@ -260,6 +260,7 @@ export function serialise(g) {
     if (!m) continue;
     machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir]);
   }
+  const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir]);
   const cleared = [];
   const base = generateWorld(f.seed);
   for (let i = 0; i < f.terrain.length; i++) {
@@ -281,6 +282,7 @@ export function serialise(g) {
     milestones: Array.from(g.done),
     cleared,
     machines,
+    crate,
   };
 }
 
@@ -305,6 +307,10 @@ export function deserialise(data) {
     const m = makeMachine({ kind, dir, mut, mir, level }, f.nid++);
     if (kind === 'ext') { m.mut = f.patch[i]; m.rich = f.rich[i] || 1; }
     f.grid[i] = m;
+  }
+  for (const [kind, dir, level, mut, mir] of data.crate || []) {
+    if (!kind) continue;
+    f.crate.push(makeMachine({ kind, dir, mut, mir, level }, f.nid++));
   }
   rebuild(f);
 

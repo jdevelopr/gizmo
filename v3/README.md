@@ -129,6 +129,25 @@ Pausing is a key, and there are 1x, 2x and 3x speeds, because a game with no rou
 needs somewhere to put the "I want to think about this" button and the "I want to
 watch this run for a while" one.
 
+### There is a crate
+
+You can put a machine down on a slot that already has one on it. Whatever was there
+goes to the **crate**, a list at the bottom of the build bar of machines you own but
+have not put anywhere — keeping its level and its settings, free to put back down,
+because you already bought it once. Right-clicking a crate row sells it at the
+ordinary scrap rate if you would rather have the money.
+
+The point is that rearranging a factory should be *moving things*, not a sequence
+of scrap-and-rebuy transactions where every change of mind costs you half of
+whatever you changed it from. GIZMO 2 had a crate for the same reason; GIZMO 3 lost
+it when the shop became a catalogue, and putting a Mutator where a conveyor was
+turned out to be the single most common thing anyone does.
+
+Dropping the *same kind* of machine on a slot is the exception: nothing is crated
+and nothing is charged, it simply turns to face the way you meant. That is what
+makes dragging a conveyor back along a run you already laid fix its direction
+rather than bill you for the whole run again.
+
 ### The claim is centred
 
 Both earlier games anchored the floor at the top left and grew it down and right,
@@ -212,6 +231,7 @@ differently because they want opposite fixes.
 | `F` | flip a Balancer or Sorter's branch to the other side |
 | `Q` | pipette — copy what is under the cursor into your hand |
 | `M` | pick a machine up and move it, for free |
+| build on top | replaces what is there; the old one goes to the crate, free to put back |
 | `X` / `Delete` | scrap, for half of everything it cost |
 | right click | put down what you are holding, or scrap what is there (drag to scrap a line) |
 | `V` | show the power grid |

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GIZMO 3 — the big floor</title>
+<meta name="description" content="A single-player factory builder on a 56x56 world. Extract, route, assemble, and keep the lights on.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ------------------------------------------------------------- title --- -->
+<div id="title" class="screen">
+  <div class="title-inner">
+    <h1>GIZMO <span>3</span></h1>
+    <p class="tag">Fifty-six slots a side. One player. Keep the lights on.</p>
+
+    <div class="title-buttons">
+      <button id="btn-continue" class="big" hidden>CONTINUE</button>
+      <button id="btn-new" class="big">NEW WORLD</button>
+      <button id="btn-howto" class="ghost">HOW TO PLAY</button>
+    </div>
+
+    <label class="seed-row">
+      <span>SEED</span>
+      <input id="seed" type="text" inputmode="numeric" placeholder="random" autocomplete="off">
+    </label>
+
+    <p class="fine" id="save-note" hidden>A saved world is waiting. Starting a new one replaces it.</p>
+  </div>
+</div>
+
+<!-- -------------------------------------------------------------- game --- -->
+<div id="app" hidden>
+
+  <!-- left: everything you can build -->
+  <aside id="bar">
+    <div class="bar-head">BUILD</div>
+    <div id="palette"></div>
+    <div class="bar-foot">
+      <button id="btn-help" class="mini">CONTROLS  ?</button>
+      <button id="btn-menu" class="mini">MENU  ESC</button>
+    </div>
+  </aside>
+
+  <!-- middle: the world -->
+  <main id="stage">
+    <canvas id="px"></canvas>
+    <canvas id="tx" class="text-layer"></canvas>
+
+    <div id="hud">
+      <div class="stat" id="s-cash"><b>$450</b><i>+0.0/s</i></div>
+      <div class="stat" id="s-sci"><b>0</b><i>science</i></div>
+      <div class="stat wide" id="s-power">
+        <div class="pwr-bar"><span id="pwr-fill"></span></div>
+        <i id="pwr-text">no grid</i>
+      </div>
+      <div class="stat" id="s-claim"><b>10 x 10</b><i>claim</i></div>
+      <button id="btn-expand" class="hud-btn">EXPAND $130</button>
+      <div class="spacer"></div>
+      <div class="speeds">
+        <button data-speed="0" title="Pause (Space)">||</button>
+        <button data-speed="1" class="on">1x</button>
+        <button data-speed="2">2x</button>
+        <button data-speed="3">3x</button>
+      </div>
+    </div>
+
+    <div id="toasts"></div>
+
+    <div id="minimap">
+      <canvas id="mini" width="56" height="56"></canvas>
+    </div>
+
+    <div id="hint"></div>
+    <div id="alert" hidden></div>
+  </main>
+
+  <!-- right: what you are looking at, and what to spend on -->
+  <aside id="panel">
+    <div class="tabs">
+      <button data-tab="info" class="on">INFO</button>
+      <button data-tab="tech">TECH<em id="tech-badge" hidden></em></button>
+      <button data-tab="orders">ORDERS<em id="order-badge" hidden></em></button>
+      <button data-tab="stats">STATS</button>
+    </div>
+    <div id="tab-info" class="tab-body"></div>
+    <div id="tab-tech" class="tab-body" hidden></div>
+    <div id="tab-orders" class="tab-body" hidden></div>
+    <div id="tab-stats" class="tab-body" hidden></div>
+  </aside>
+</div>
+
+<!-- ------------------------------------------------------------ how to --- -->
+<div id="howto" class="screen sheet" hidden>
+  <div class="sheet-inner">
+    <button id="howto-close" class="x">CLOSE</button>
+    <div id="howto-body"></div>
+  </div>
+</div>
+
+<!-- -------------------------------------------------------------- menu --- -->
+<div id="menu" class="screen sheet" hidden>
+  <div class="sheet-inner narrow">
+    <h2>PAUSED</h2>
+    <button id="m-resume" class="big">RESUME</button>
+    <button id="m-save" class="ghost">SAVE NOW</button>
+    <button id="m-howto" class="ghost">HOW TO PLAY</button>
+    <button id="m-quit" class="ghost danger">ABANDON THIS WORLD</button>
+    <p class="fine" id="m-note"></p>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,361 @@
+/*
+ * style.css — GIZMO 3.
+ *
+ * A desktop layout, which the previous two games were not: a fixed build bar on
+ * the left, the world taking every pixel in the middle, and a panel on the right
+ * that answers whatever you last clicked on. Nothing scrolls except the two
+ * panels, and the world never moves out from under the cursor.
+ *
+ * The look is GIZMO's: hard edges, no gradients, no border radius anywhere, and a
+ * pixel font. Everything is sized in whole pixels so nothing lands on a half.
+ */
+
+:root {
+  --ink: #0b0d16;
+  --plate: #151929;
+  --plate2: #1c2133;
+  --plate3: #262c42;
+  --line: #2e3651;
+  --text: #e8ecf8;
+  --dim: #8b96b8;
+  --dimmer: #5d668a;
+  --gold: #ffcd75;
+  --green: #a7f070;
+  --blue: #41a6f6;
+  --red: #ff5d4a;
+  --hot: #ff8a4a;
+  --bar: 208px;
+  --panel: 306px;
+  --hud: 46px;
+}
+
+* { box-sizing: border-box; }
+
+/*
+ * Every full-screen layer here sets `display`, which quietly beats the browser's
+ * own `[hidden] { display: none }` — so a "hidden" menu stays laid out over the
+ * whole window and eats every click aimed at the game underneath it. One line,
+ * and it has to be this one.
+ */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--text);
+  font-family: Silkscreen, ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--plate2);
+  border: 2px solid var(--line);
+  padding: 7px 10px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+button:hover:not(:disabled) { background: var(--plate3); border-color: #46527a; }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: 0.4; cursor: default; }
+
+/* ------------------------------------------------------------------ title --- */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    repeating-linear-gradient(0deg, #0d101c 0 2px, #0b0d16 2px 4px);
+  z-index: 40;
+}
+
+.title-inner { text-align: center; width: min(520px, 88vw); }
+
+h1 {
+  font-size: 68px;
+  margin: 0;
+  letter-spacing: 0.06em;
+  text-shadow: 0 4px 0 #000;
+}
+h1 span { color: var(--gold); }
+
+.tag { color: var(--dim); margin: 6px 0 30px; }
+
+.title-buttons { display: grid; gap: 10px; margin-bottom: 22px; }
+
+.big {
+  padding: 14px;
+  font-size: 17px;
+  background: var(--gold);
+  color: #201603;
+  border-color: #b98f3d;
+  font-weight: 700;
+}
+.big:hover:not(:disabled) { background: #ffe0a2; border-color: #d8a94b; }
+
+.ghost { background: transparent; }
+.ghost.danger { border-color: #6b2a24; color: #ff9a8a; }
+.ghost.danger:hover { background: #341815; }
+
+.seed-row {
+  display: flex; align-items: center; gap: 10px; justify-content: center;
+  color: var(--dim);
+}
+.seed-row input {
+  width: 150px; background: var(--plate); border: 2px solid var(--line);
+  padding: 7px 9px; text-align: center;
+}
+.fine { color: var(--dimmer); font-size: 11px; margin-top: 18px; }
+
+/* ------------------------------------------------------------------- app --- */
+
+#app {
+  position: fixed; inset: 0;
+  display: grid;
+  grid-template-columns: var(--bar) 1fr var(--panel);
+}
+
+/* -------------------------------------------------------------- build bar --- */
+
+#bar {
+  background: var(--plate);
+  border-right: 2px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.bar-head, .bar-foot {
+  padding: 10px 12px;
+  color: var(--dim);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  border-bottom: 2px solid var(--line);
+}
+.bar-foot { border-bottom: 0; border-top: 2px solid var(--line); display: grid; gap: 6px; }
+.mini { padding: 6px; font-size: 11px; }
+
+#palette { flex: 1; overflow-y: auto; padding: 6px; }
+
+.pal-group {
+  color: var(--dimmer); font-size: 10px; letter-spacing: 0.16em;
+  padding: 10px 6px 4px;
+}
+
+.pal {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+}
+.pal:hover:not(:disabled) { background: var(--plate2); border-color: var(--line); }
+.pal.on { background: #2b3350; border-color: var(--gold); }
+.pal.poor .cost { color: var(--red); }
+.pal canvas { width: 28px; height: 28px; image-rendering: pixelated; display: block; }
+.pal .nm { font-size: 11px; letter-spacing: 0.02em; }
+.pal .cost { font-size: 11px; color: var(--gold); }
+.pal .key {
+  font-size: 9px; color: var(--dimmer); display: block;
+}
+
+/* ----------------------------------------------------------------- stage --- */
+
+#stage { position: relative; overflow: hidden; background: var(--ink); }
+#px, #tx { position: absolute; inset: 0; display: block; }
+#px { image-rendering: pixelated; }
+#tx { pointer-events: none; }
+
+#stage.grab { cursor: grabbing; }
+#stage.build { cursor: crosshair; }
+
+/* HUD ------------------------------------------------------------------- */
+
+#hud {
+  position: absolute; top: 0; left: 0; right: 0; height: var(--hud);
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 12px;
+  background: rgba(11, 13, 22, 0.92);
+  border-bottom: 2px solid var(--line);
+  pointer-events: none;
+}
+#hud button, #hud .speeds { pointer-events: auto; }
+
+.stat { display: flex; flex-direction: column; line-height: 1.15; min-width: 72px; }
+.stat b { font-size: 15px; }
+.stat i { font-style: normal; font-size: 10px; color: var(--dim); }
+.stat.wide { min-width: 168px; }
+
+.pwr-bar {
+  height: 9px; background: #131a2e; border: 1px solid var(--line);
+  margin-bottom: 3px; overflow: hidden;
+}
+.pwr-bar span { display: block; height: 100%; width: 0; background: var(--green); }
+
+.hud-btn { padding: 6px 9px; font-size: 11px; }
+.hud-btn.can { border-color: var(--gold); color: var(--gold); }
+
+.spacer { flex: 1; }
+
+.speeds { display: flex; gap: 2px; }
+.speeds button { padding: 5px 9px; font-size: 11px; min-width: 34px; }
+.speeds button.on { background: var(--gold); color: #201603; border-color: #b98f3d; }
+
+/* toasts, hints, alerts --------------------------------------------------- */
+
+#toasts {
+  position: absolute; top: calc(var(--hud) + 10px); left: 50%;
+  transform: translateX(-50%);
+  display: grid; gap: 5px; justify-items: center;
+  pointer-events: none;
+}
+.toast {
+  background: rgba(11, 13, 22, 0.94);
+  border: 2px solid var(--line);
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+#hint {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(11, 13, 22, 0.9);
+  border: 2px solid var(--line);
+  padding: 5px 12px; font-size: 11px; color: var(--dim);
+  pointer-events: none; white-space: nowrap;
+}
+#hint b { color: var(--text); }
+
+#alert {
+  position: absolute; top: calc(var(--hud) + 10px); left: 12px;
+  max-width: 300px;
+  background: #2a1a12; border: 2px solid var(--hot);
+  padding: 8px 11px; font-size: 11px; color: #ffd0ab;
+  pointer-events: none;
+}
+#alert b { color: var(--gold); display: block; margin-bottom: 3px; letter-spacing: 0.08em; }
+
+#minimap {
+  position: absolute; right: 10px; bottom: 10px;
+  border: 2px solid var(--line); background: var(--ink);
+  line-height: 0;
+}
+#mini { image-rendering: pixelated; width: 112px; height: 112px; cursor: pointer; }
+
+/* ----------------------------------------------------------------- panel --- */
+
+#panel {
+  background: var(--plate);
+  border-left: 2px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 2px solid var(--line); }
+.tabs button {
+  border: 0; border-right: 2px solid var(--line); border-bottom: 2px solid transparent;
+  padding: 10px 2px; font-size: 10px; letter-spacing: 0.08em;
+  background: transparent; color: var(--dim); position: relative;
+}
+.tabs button:last-child { border-right: 0; }
+.tabs button.on { color: var(--gold); border-bottom-color: var(--gold); background: var(--plate2); }
+.tabs em {
+  position: absolute; top: 4px; right: 6px;
+  background: var(--gold); color: #201603; font-style: normal;
+  font-size: 9px; padding: 0 3px; line-height: 13px;
+}
+
+.tab-body { flex: 1; overflow-y: auto; padding: 12px; }
+
+.blank { color: var(--dimmer); font-size: 11px; line-height: 1.7; }
+
+h3 {
+  margin: 0 0 3px; font-size: 15px; letter-spacing: 0.02em;
+}
+.sub { color: var(--dim); font-size: 11px; margin: 0 0 12px; }
+.body { font-size: 11px; color: var(--dim); line-height: 1.7; margin: 0 0 12px; }
+
+.rows { display: grid; gap: 1px; background: var(--line); border: 2px solid var(--line); margin-bottom: 12px; }
+.row { display: flex; justify-content: space-between; gap: 8px; background: var(--plate2); padding: 5px 8px; font-size: 11px; }
+.row span { color: var(--dim); }
+.row b { font-weight: 400; }
+.row.good b { color: var(--green); }
+.row.warn b { color: var(--gold); }
+.row.bad b { color: var(--red); }
+
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+.acts button { font-size: 11px; padding: 8px 4px; }
+.acts button.full { grid-column: 1 / -1; }
+.acts .k { color: var(--dimmer); font-size: 9px; }
+
+.card {
+  border: 2px solid var(--line); background: var(--plate2);
+  padding: 9px 10px; margin-bottom: 8px;
+}
+.card.open { border-color: #46527a; }
+.card.can { border-color: var(--gold); }
+.card.done { opacity: 0.55; border-color: #2c4a30; }
+.card h4 { margin: 0 0 2px; font-size: 12px; font-weight: 400; }
+.card p { margin: 0; font-size: 10px; color: var(--dim); line-height: 1.6; }
+.card .price { float: right; color: var(--gold); font-size: 11px; }
+.card button { width: 100%; margin-top: 7px; padding: 6px; font-size: 11px; }
+
+.meter { height: 7px; background: #131a2e; border: 1px solid var(--line); margin-top: 6px; }
+.meter span { display: block; height: 100%; background: var(--gold); width: 0; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+.chip {
+  border: 2px solid var(--line); background: var(--plate2);
+  padding: 3px 6px; font-size: 10px; display: flex; align-items: center; gap: 5px;
+}
+.chip i { width: 8px; height: 8px; display: block; }
+.chip.on { border-color: var(--gold); }
+
+.ms { display: grid; gap: 4px; }
+.ms div { font-size: 11px; color: var(--dim); }
+.ms div.hit { color: var(--green); text-decoration: line-through; opacity: 0.6; }
+
+/* ----------------------------------------------------------------- sheet --- */
+
+.sheet { background: rgba(6, 8, 14, 0.9); }
+.sheet-inner {
+  width: min(760px, 92vw); max-height: 86vh; overflow-y: auto;
+  background: var(--plate); border: 2px solid var(--line);
+  padding: 26px 30px; position: relative;
+}
+.sheet-inner.narrow { width: min(360px, 92vw); text-align: center; display: grid; gap: 10px; }
+.sheet-inner h2 { margin: 0 0 6px; letter-spacing: 0.1em; }
+.x { position: absolute; top: 14px; right: 16px; font-size: 11px; padding: 5px 9px; }
+
+#howto-body h3 { margin: 22px 0 6px; color: var(--gold); }
+#howto-body h3:first-child { margin-top: 0; }
+#howto-body p { font-size: 12px; color: var(--dim); line-height: 1.75; margin: 0 0 10px; }
+#howto-body table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 12px; }
+#howto-body td { padding: 4px 8px 4px 0; vertical-align: top; border-bottom: 1px solid var(--line); }
+#howto-body td:first-child { color: var(--gold); white-space: nowrap; width: 132px; }
+#howto-body td.k { color: var(--text); font-size: 11px; }
+
+/* scrollbars, so they do not look like a different application ------------- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--ink); }
+::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--ink); }
+::-webkit-scrollbar-thumb:hover { background: #3d4869; }
+
+/* A window too small for three columns loses the panel before the world ---- */
+@media (max-width: 1180px) {
+  #app { grid-template-columns: var(--bar) 1fr 264px; }
+  :root { --panel: 264px; }
+}
+@media (max-width: 980px) {
+  #app { grid-template-columns: 168px 1fr; }
+  #panel { display: none; }
+}

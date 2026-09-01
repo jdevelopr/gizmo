@@ -2,6 +2,13 @@
 
 A two-to-four player factory race for one big screen and a pile of phones.
 
+> **Three games ship from this repository.** This one, the party game, is served at
+> `/`. **GIZMO 2** in [`v2/`](v2/README.md) is served at `/v2/` — the same phones and
+> the same big screen, but your factory persists and you buy land instead of chasing
+> a jumping seller. **GIZMO 3** in [`v3/`](v3/README.md) is served at `/v3/` — one
+> player, a keyboard and mouse, a world fifty-six slots a side, and generators you
+> have to keep fed. Each folder is self-contained and documents itself.
+
 One device is the **floor**: it opens the room, shows a QR code, runs every player's
 factory and draws them all side by side. It is never a player. Everyone else joins on
 their own phone, which becomes their control panel.

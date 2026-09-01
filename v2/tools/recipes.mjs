@@ -14,6 +14,7 @@ import {
   makeMachine, cellOf, setGridSize, TYPES, RECIPES, wants, outputs,
   activePorts, RESIN_CLAIM, famOf, PART, PRODUCT,
 } from '../js/machines.js';
+import * as M from '../js/machines.js';
 
 setGridSize(7);
 let fails = 0;
@@ -55,6 +56,26 @@ const nm = ty => TYPES[ty].name;
   ok(famOf(outputs(fu, [{ ty: 8, cp: 0 }, { ty: 8, cp: 0 }])[0].ty) === PART, 'Resin fuses into a Part');
   ok(outputs(fu, [{ ty: 9, cp: 0 }, { ty: 9, cp: 0 }])[0].ty === 10, 'Cord + Cord makes a Frame');
   ok(outputs(fu, [{ ty: 10, cp: 0 }, { ty: 10, cp: 0 }])[0].ty === 10, 'a Frame is the top of its family');
+
+  // Levels buy speed and nothing else: the same pair makes the same thing at every
+  // level, and only the clock changes.
+  for (const [a1, b1] of [[0, 0], [2, 2], [8, 8], [1, 3]]) {
+    const at = l => outputs({ ...fu, level: l }, [{ ty: a1, cp: 0 }, { ty: b1, cp: 0 }])[0].ty;
+    ok(at(1) === at(2) && at(2) === at(3),
+      `${nm(a1)} + ${nm(b1)} makes ${nm(at(1))} at every level`);
+  }
+  const cyc = l => M.cycleTime({ kind: 'fuse', level: l });
+  ok(cyc(3) < cyc(2) && cyc(2) < cyc(1), 'and each level is faster than the last',
+    [1, 2, 3].map(l => `L${l} ${cyc(l).toFixed(2)}s`).join(' '));
+  ok((cyc(2) - cyc(3)) > (cyc(1) - cyc(2)) * 0.6, 'with the second upgrade the bigger step');
+
+  // A Mutator makes what it is set to, whatever it is fed and whatever its level.
+  for (const l of [1, 2, 3]) {
+    const m = { kind: 'mut', dir: 0, level: l, mut: 2 };
+    const outs = [0, 4, 7, 10].map(ty => outputs(m, [{ ty, cp: 0 }])[0].ty);
+    ok(outs.every(o => o === 2), `a level ${l} Amber Mutator always makes Amber`,
+      outs.map(nm).join(','));
+  }
   ok(outputs(fu, [{ ty: 0, cp: 0 }, { ty: 0, cp: 0 }])[0].ty === 1, 'the alloy ladder is unchanged');
   fu.buf.push({ id: 1, ty: 8, cp: 0 });
   ok(!wants(fu, 0), 'a fuser holding Resin refuses Scrap');

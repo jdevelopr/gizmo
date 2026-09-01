@@ -45,9 +45,9 @@ const LEVELS = {
     'A second filtered exit opens on the other side, taking turns with the first.'],
   trident: ['Original ahead, copies left and right.', '30% faster.', 'Twice the speed of level 1.'],
   mut: ['Rewrites anything it eats into its type.', '30% faster.',
-    'Refuses to downgrade: anything already above its tier passes through untouched.'],
+    'Faster again — better than twice the base rate, and the bigger of the two steps.'],
   fuse: ['Two gizmos in, one of the next tier out.', '30% faster.',
-    'A matching pair jumps two tiers instead of one.'],
+    'Faster again — better than twice the base rate, and the bigger of the two steps.'],
   asm: ['One of each ingredient in, one product out.', '30% faster.',
     'Twice the speed of level 1 — the cheapest way to double a recipe line.'],
 };
@@ -361,7 +361,9 @@ function build() {
   const muts = section('MUTATORS',
     'Priced and paced by the tier they print: speed halves as value doubles, so every '
     + 'mutator earns about the same per slot. The tier is a choice about what you feed the '
-    + 'doublers and fusers downstream, not a straight upgrade.');
+    + 'fusers and assemblers downstream, not a straight upgrade. Its levels buy speed and '
+    + 'nothing else, and the second upgrade is the bigger of the two — whatever a Mutator '
+    + 'is set to, that is what comes out, at every level.');
   const mrows = [];
   for (let t = 1; t <= 6; t++) {
     const cells = [TYPES[t].name, { v: money(MUT_PRICE[t]), cls: 'ht-buy' }, money(TYPES[t].value)];

@@ -597,8 +597,9 @@ export function createController({ send, solo = false, onEnd = null }) {
       ['Mismatched tiers take the higher, plus one',
         'Scrap and Cobalt fuse to Void — the cheap one is pure waste, so do not merge '
         + 'two lines carelessly into a Fuser.'],
-      ['A level 3 Fuser jumps two rungs',
-        'but only on a matching pair. Mismatched still gains one.'],
+      ['Levels buy speed, never a different result',
+        'a Mutator makes what it is set to and a Fuser climbs one rung, at every '
+        + 'level. What an upgrade buys is throughput.'],
       ['Families never mix',
         'a Fuser holding Resin refuses Scrap outright and the belt behind it backs up. '
         + 'Products are terminal: nothing fuses an Engine.'],

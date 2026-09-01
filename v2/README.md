@@ -161,6 +161,18 @@ something richer and it passes straight through, uncopied. Its levels buy extra 
 rather than speed, and it sits behind two research nodes. A rule you read off the
 card instead of discovering in the balance sheet.
 
+**A level buys speed, never a different result.** Mutators and Fusers both used to
+change *what they made* at level 3 — a Mutator would let anything above its tier pass
+through untouched, a Fuser would jump two rungs on a matching pair. Both meant the
+same machine did different things depending on a number you had to remember, and both
+did it silently: a Cobalt line could start emitting Ember because of an upgrade bought
+four rounds earlier. Now a Mutator makes what it is set to and a Fuser climbs one
+rung, at every level, and what an upgrade buys is throughput.
+
+Since those two now have nothing but speed to sell, level 3 is the bigger of the two
+steps for every machine on the speed curve: 30% off the cycle, then a further third.
+A maxed Mutator runs at better than twice its base rate.
+
 **Ratios are visible.** Every machine reports its rate in jobs per second, and the
 two failure modes are drawn differently because they want opposite fixes: amber all
 round the casing means BACKED UP (holding finished goods, fix the line ahead), four

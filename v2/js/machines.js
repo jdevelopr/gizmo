@@ -403,7 +403,7 @@ export function cycleTime(m) {
   // buys speed: a Doubler you could also make faster would be printing money again,
   // so its throughput stays fixed at whatever is feeding it.
   if (m.kind === 'store' || m.kind === 'dup' || m.kind === 'trident') return base;
-  return base * Math.pow(0.7, m.level - 1);
+  return base * (LEVEL_SPEED[(m.level || 1) - 1] ?? 1);
 }
 
 /**
@@ -412,6 +412,16 @@ export function cycleTime(m) {
  * doublers and fusers, not a straight upgrade you buy your way past.
  */
 export const MUT_CYCLE = [0, 0.84, 1.72, 3.52, 7.2, 14.8, 30.4, 62];
+
+/**
+ * What a level buys, for every machine that sells speed: a 30% cut to the cycle,
+ * then a bigger one again. The second upgrade being the better of the two is the
+ * point — these are the machines with nothing else to offer at level 3, so it has
+ * to be worth taking them all the way rather than stopping at 2.
+ *
+ * Storage buys capacity instead, and the copiers buy exits, so both ignore this.
+ */
+export const LEVEL_SPEED = [1, 0.7, 0.45];
 
 export function travelTime(m) {
   return KINDS[m.kind].travel * (m.kind === 'pipe' ? Math.pow(0.78, m.level - 1) : 1);
@@ -513,17 +523,21 @@ export function outputs(m, inputs) {
     }
 
     case 'mut': {
-      // A level 3 mutator refuses to downgrade what it is given. That comparison
-      // only means anything within the ladder: a Part or a Product is not "above"
-      // Cobalt, it is somewhere else entirely, and feeding one in rewrites it. That
-      // is a legitimate, lossy use of a Part — a second raw feed for the ladder.
-      const higher = m.level >= 3 && famOf(a) === ALLOY && a > (m.mut ?? 1);
-      return [{ ty: higher ? a : (m.mut ?? 1), dir: d, cp: copy }];
+      // Whatever goes in comes out as this Mutator's type, at every level. Levels
+      // buy speed and nothing else — see MUT_LEVEL. A Mutator that changed what it
+      // made as it levelled meant the same machine did different things depending
+      // on a number you had to remember, and the thing it changed into was worth
+      // more, so a Cobalt Mutator could quietly emit an Ember. One machine, one
+      // output, is worth more than the cleverness was.
+      return [{ ty: m.mut ?? 1, dir: d, cp: copy }];
     }
 
     case 'fuse': {
       const b = inputs[1]?.ty ?? a;
-      const step = (m.level >= 3 && a === b) ? 2 : 1;
+      // One rung, at every level. A level 3 Fuser used to jump two on a matching
+      // pair, which made the same machine do different things depending on a number
+      // you had to remember — and quietly turned a Cobalt line into an Ember one.
+      // Its levels buy speed now, like a Mutator's.
       // Originality is inherited: it takes two originals to make an original.
       // Without this, a fuser would launder copies back into copyable stock and
       // the doubler chain would compound all over again.
@@ -532,7 +546,7 @@ export function outputs(m, inputs) {
       // to Cord and Frame. It only ever holds one family at a time, because `wants`
       // turns the other one away at the mouth.
       const top = tierOf(a) >= tierOf(b) ? a : b;
-      return [{ ty: upFam(top, step), dir: d, cp }];
+      return [{ ty: upFam(top), dir: d, cp }];
     }
 
     case 'asm': {

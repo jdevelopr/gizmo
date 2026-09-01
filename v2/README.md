@@ -64,7 +64,10 @@ machines that route and nothing else:
 
 - **Balancer** — one in, one out, alternating between its exits. Divides a stream
   instead of inflating it. If the exit it picked is backed up it takes another,
-  because a divider that stalls on one busy arm is not dividing anything.
+  because a divider that stalls on one busy arm is not dividing anything. **FLIP**
+  moves its branch to the other side without turning the through line — rotating
+  would move both, and the through line is usually the part you had already got
+  right. One dropped where its branch would fire at unbought land flips itself.
 - **Sorter** — the gizmo type it is set to goes out to the side, everything else
   goes straight ahead. Its filter is free to change from the phone, like rotating.
   It never reroutes on a jam: sending a Cobalt down the Scrap line because the
@@ -119,6 +122,14 @@ what a Balancer is for.
                          ^
  ... -> [Mutator] -> [Balancer] -> [VAULT]  cash
 ```
+
+**Three phases, not four.** BUILD and WORKSHOP were split back when the shop dealt
+three random cards and let you keep one — a hand you were *given* was a genuinely
+different moment from a floor you were *arranging*. The catalogue ended that, so they
+are one phase now: **BUILD → SHIPPING → TALLY**. You buy a machine and immediately see
+where it landed, which is the order you wanted to do it in anyway, and there is one
+READY button instead of two. Round one is no longer a dead round spent watching the
+starter line before you are allowed to spend anything.
 
 **The random workshop is gone.** Three cards and a reroll made sense when the shop
 was the only way to get machines; once you pay production for a tech node, that node

@@ -14,7 +14,7 @@ import * as M from '../js/machines.js';
 let fails = 0;
 const ok = (cond, what) => { if (!cond) { fails++; console.log('  FAIL ', what); } };
 
-const cfg = { rounds: 8, planSecs: 3, roundSecs: 45, shopSecs: 2, tallySecs: 1, cash: 900, gridSize: 7 };
+const cfg = { rounds: 8, planSecs: 4, roundSecs: 45, tallySecs: 1, cash: 900, gridSize: 7 };
 const eng = createEngine(cfg);
 eng.addPlayer(0, 'GROWER', 0);
 eng.addPlayer(1, 'SITTER', 1);
@@ -51,9 +51,9 @@ while (eng.phase !== 'over' && t < 6000) {
     eng.action(0, { t: 'act', a: { a: 'upprod' } });
   }
 
-  if (eng.phase === 'shop' && shopDone !== eng.round) {
+  if (eng.phase === 'plan' && shopDone !== eng.round) {
     shopDone = eng.round;
-    for (const seat of [0, 1]) { eng.action(seat, { t: 'buy', i: 0 }); eng.action(seat, { t: 'done' }); }
+    for (const seat of [0, 1]) eng.action(seat, { t: 'buy', i: 0 });
   }
 
   // Every tick, both floors: nothing may exist outside the claim.

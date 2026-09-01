@@ -21,7 +21,7 @@ function run(cfg, play) {
   while (eng.phase !== 'over' && t < 20000) {
     eng.step(dt); t += dt;
     if (eng.phase === 'plan' && planDone !== eng.round) { planDone = eng.round; play(eng); }
-    if (eng.phase === 'shop' && shopDone !== eng.round) { shopDone = eng.round; goShopping(eng); }
+    if (eng.phase === 'plan' && shopDone !== eng.round) { shopDone = eng.round; goShopping(eng); }
     if (eng.phase === 'tally' && eng.round !== last) {
       last = eng.round;
       const p = eng.players.get(0);
@@ -53,17 +53,19 @@ function goShopping(eng) {
     // it to nothing, which is bad play rather than a bad economy — and the harness
     // is here to measure the economy.
     //
-    // Buy the richest Mutator the line can actually keep fed. Buying the most
-    // expensive one it could afford was the bot's own worst habit: a Prism Mutator
-    // takes 62 seconds a gizmo, so dropping one into a line delivering one a second
-    // throttles everything behind it to nothing. Matching the machine to the feed
-    // is the single most important thing a player learns, and a harness that does
-    // not do it measures the wrong game.
+    // Buy the Mutator that earns the most, which is not the same as the richest or
+    // the fastest. A machine in a single-file line handles the whole stream, so its
+    // output is min(what reaches it, what it can process) times what that is worth
+    // — and because a Mutator's speed halves as its value doubles, the answer is
+    // rarely obvious. Working it out is the single most important thing a player
+    // learns, so the harness has to work it out too or it measures the wrong game.
     const feed = 1 / M.producerCycle(f.producer.level);   // gizmos/s reaching the line
-    const affordable = sh.opts.map((o, i) => ({ i, o }))
-      .filter(x => x.o.kind === 'mut' && x.o.cost <= f.cash
-        && M.MUT_CYCLE[x.o.mut] <= (1 / feed) * 1.15);
-    const best = affordable.sort((a, b) => b.o.cost - a.o.cost)[0];
+    const worth = o => Math.min(feed, 1 / M.MUT_CYCLE[o.mut]) * M.TYPES[o.mut].value;
+    const have = f.grid.filter(m => m && m.kind === 'mut')
+      .reduce((best, m) => Math.max(best, worth(m)), 0);
+    const best = sh.opts.map((o, i) => ({ i, o }))
+      .filter(x => x.o.kind === 'mut' && x.o.cost <= f.cash && worth(x.o) > have * 1.05)
+      .sort((a, b) => worth(b.o) - worth(a.o))[0];
     if (best) {
       const had = new Set(f.grid.map((m, i) => (m ? i : -1)).filter(i => i >= 0));
       eng.action(0, { t: 'buy', i: best.i });
@@ -71,17 +73,22 @@ function goShopping(eng) {
       if (at >= 0) placeInLine(eng, f, at);
     }
   }
-  eng.action(0, { t: 'done' });
 }
 
-/** Swap a freshly bought machine into the top row, displacing a conveyor. */
+/**
+ * Put a freshly bought Mutator at the end of the line, and scrap any other.
+ *
+ * Chaining Mutators is a beginner's mistake the bot used to make every round: each
+ * one rewrites the whole stream, so a line of four produces whatever the last one
+ * is at the speed of the slowest one. One per line is the correct shape, and the
+ * end of the line is where it belongs.
+ */
 function placeInLine(eng, f, at) {
-  if (M.cy(at) === 0) return;                       // already in the line
-  for (let x = 1; x < f.claim; x++) {
-    const target = M.cellOf(x, 0);
-    if (f.grid[target]?.kind !== 'pipe') continue;
-    eng.action(0, { t: 'act', a: { a: 'move', from: 'g' + at, to: 'g' + target } });
-    return;
+  const end = M.cellOf(f.claim - 1, 0);
+  if (at !== end) eng.action(0, { t: 'act', a: { a: 'move', from: 'g' + at, to: 'g' + end } });
+  for (let x = 0; x < f.claim - 1; x++) {
+    const cell = M.cellOf(x, 0);
+    if (f.grid[cell]?.kind === 'mut') eng.action(0, { t: 'act', a: { a: 'scrap', ref: 'g' + cell } });
   }
 }
 
@@ -124,7 +131,7 @@ const ordinary = eng => {
   }
 };
 
-const cfg = { rounds: 8, planSecs: 2, roundSecs: 90, shopSecs: 2, tallySecs: 1, cash: 120, gridSize: 7 };
+const cfg = { rounds: 8, planSecs: 3, roundSecs: 90, tallySecs: 1, cash: 200, gridSize: 7 };
 const N = 7;
 const rs = Array.from({ length: N }, () => run(cfg, ordinary));
 
@@ -144,6 +151,9 @@ for (let r = 1; r <= cfg.rounds; r++) {
 console.log('lifetime:', rs.map(x => x.earned).join(', '));
 console.log('final claim:', rs.map(x => x.claim).join(','),
   ' orders filled:', rs.map(x => x.filled).join(','));
-const first = rs.map(x => x.rounds[0]?.inc ?? 0), lastR = rs.map(x => x.rounds.at(-1)?.inc ?? 0);
 const avg = a => Math.round(a.reduce((s, v) => s + v, 0) / a.length);
-console.log(`income R1 ${avg(first)} -> R${cfg.rounds} ${avg(lastR)}  (x${(avg(lastR) / (avg(first) || 1)).toFixed(1)} over the match)`);
+const peak = rs.map(x => Math.max(...x.rounds.map(r => r.inc)));
+console.log(`best round ${avg(peak)}  ·  lifetime ${avg(rs.map(x => x.earned))}`);
+console.log('note: this bot only ever builds one line, which caps out around $5/s of '
+  + 'floor whatever it buys. Growth past that needs parallel arms or recipes, so treat '
+  + 'these as the floor of competent play rather than the ceiling.');

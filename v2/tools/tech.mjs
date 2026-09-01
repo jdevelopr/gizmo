@@ -86,7 +86,7 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
 /* --- a whole match can reach the tree ------------------------------------- */
 {
   const eng = createEngine({
-    rounds: 8, planSecs: 2, roundSecs: 90, shopSecs: 2, tallySecs: 1, cash: 200, gridSize: 7,
+    rounds: 8, planSecs: 3, roundSecs: 90, tallySecs: 1, cash: 200, gridSize: 7,
   });
   eng.addPlayer(0, 'SCHOLAR', 0);
   eng.startGame();
@@ -111,7 +111,7 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
         eng.action(0, { t: 'act', a: { a: 'upprod' } });
       }
     }
-    if (eng.phase === 'shop' && shopDone !== eng.round) {
+    if (eng.phase === 'plan' && shopDone !== eng.round && planDone === eng.round) {
       shopDone = eng.round;
       for (const node of M.TECH) {
         if (!f.done.includes(node.id) && M.techOpen(node, f.done) && f.science >= node.cost) {
@@ -132,7 +132,6 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
           }
         }
       }
-      eng.action(0, { t: 'done' });
     }
   }
   console.log(`  ..    a research-first match banked ${Math.round(f.science + f.spent)} science `

@@ -177,11 +177,10 @@ export function startHost(show) {
       // Nothing has been taken away. The banner says what the round is actually
       // for: adding to a factory that is still standing.
       say(`ROUND ${info.round}`,
-        info.round > 1 ? 'EXTEND · CLAIM · UPGRADE' : 'PLAN YOUR LINE', 2.6);
+        info.round > 1 ? 'BUY · RESEARCH · BUILD' : 'BUILD YOUR LINE', 2.6);
     }
     if (ph === 'run') { say('SHIP IT', '', 1.2); stage.shake(4); }
     if (ph === 'tally') say('ROUND OVER', '', 2);
-    if (ph === 'shop') say('BUILD & RESEARCH', 'SPEND CASH AND SCIENCE', 2);
     if (ph === 'over') { stage.shake(6); showResults(); }
     void t;
   });
@@ -276,7 +275,7 @@ export function startHost(show) {
       $('#floor-round').textContent = engine.phase === 'over'
         ? 'FINAL' : `ROUND ${engine.round} / ${engine.cfg.rounds}`;
       $('#floor-phase').textContent = {
-        plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'BUILD', over: 'DONE',
+        plan: 'BUILD', run: 'SHIPPING', tally: 'TALLY', over: 'DONE',
       }[engine.phase] || '';
       $('#floor-timer').textContent = engine.phase === 'over'
         ? '' : String(Math.max(0, Math.ceil(engine.timer))).padStart(2, '0');
@@ -293,10 +292,9 @@ export function startHost(show) {
 
   function noteFor(p, rank) {
     if (engine.phase === 'plan') {
-      return p.planReady ? 'READY' : `PLANNING… ${p.f.claim}x${p.f.claim}`;
-    }
-    if (engine.phase === 'shop') {
-      return p.shop?.done ? 'READY' : `BUILDING… ${Math.round(p.f.science)} SCI`;
+      return p.planReady
+        ? 'READY'
+        : `BUILDING… ${p.f.claim}x${p.f.claim} · ${Math.round(p.f.science)} SCI`;
     }
     if (engine.phase === 'tally') {
       return p.metOrder ? `+$${p.lastIncome} · ORDER FILLED +$${p.orderBonus}` : '+$' + p.lastIncome;

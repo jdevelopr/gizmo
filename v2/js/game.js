@@ -1,5 +1,5 @@
 /**
- * game.js — the match engine: rounds, the shop, and per-player bookkeeping.
+ * game.js — the match engine: rounds, the catalogue, and per-player bookkeeping.
  *
  * It knows nothing about the network or the DOM. The host wires it to PeerJS and
  * practice mode wires it to itself, so both run identical rules.
@@ -18,20 +18,28 @@ import {
 
 /**
  * The machines you can always buy. None of them makes a gizmo worth more — they
- * only decide where it goes — so they sit outside the workshop's one-a-round limit
- * and share a single price ladder. See ROUTE_KINDS in machines.js.
+ * only decide where it goes — so they are on sale in every phase, including while
+ * the floor is running, and share a single price ladder. See machines.js.
  */
 const ROUTE_SPEC = { pipe: { kind: 'pipe', dir: 0 }, bal: { kind: 'bal', dir: 0 },
   sort: { kind: 'sort', dir: 0, mut: 1 } };
 
+/*
+ * Three phases, not four. BUILD and WORKSHOP were split back when the shop dealt
+ * three random cards and let you keep one — a hand you were given was a genuinely
+ * different moment from a floor you were arranging. The catalogue ended that: it is
+ * a list of what you unlocked, you buy as many as you can fit, and "spend money"
+ * and "arrange the floor" became the same activity artificially separated by a
+ * clock. Merged, you can buy a machine and immediately see where it landed, which
+ * is the order you wanted to do it in anyway.
+ */
 export const DEFAULT_CFG = {
   rounds: 8,
   roundSecs: 90,
-  shopSecs: 30,
-  planSecs: 120,      // planning phase: extend the line, spend, expand, ready up
+  planSecs: 150,      // build phase: buy, research, extend the line, expand, ready up
   gridSize: 7,        // the full plot; you start owning 3x3 of it and buy the rest
   tallySecs: 3.5,
-  cash: 200,           // enough to open with a machine and a ring of land, not both twice
+  cash: 200,          // enough to open with a machine and a ring of land, not both twice
 };
 
 export function createEngine(cfgIn = {}) {
@@ -77,10 +85,11 @@ export function createEngine(cfgIn = {}) {
     starterKit(f);
     p = {
       seat, name: name || `Player ${seat + 1}`, color: color ?? seat,
-      f, shop: null, connected: true, note: null, noteT: 0, outbox: [],
+      f, connected: true, note: null, noteT: 0, outbox: [],
       lastIncome: 0, bestIncome: 0, movers: 0, filled: 0, bonuses: 0,
       order: null,
     };
+    delete p.shop;
     p.order = openOrder(p);
     players.set(seat, p);
     return p;
@@ -113,9 +122,8 @@ export function createEngine(cfgIn = {}) {
           p.metOrder = false;
           p.orderBonus = 0;
           p.f.running = false;
-          p.shop = null;
           p.planReady = false;
-          p.movers = 0;              // belts bought this round, for the price ladder
+          p.movers = 0;              // routing bought this round, for the price ladder
           p.sellerSpots = p.f.seller.spots.map(v => ({ cell: v.cell, dir: v.dir }));
         }
         announce = `ROUND ${round}`;
@@ -148,13 +156,6 @@ export function createEngine(cfgIn = {}) {
           }
         }
         announce = 'ROUND OVER';
-        break;
-      case 'shop':
-        timer = cfg.shopSecs;
-        // No longer a hand of cards. The catalogue is whatever research has opened
-        // up, and you buy as much of it as you can afford and fit.
-        for (const p of players.values()) p.shop = { done: false };
-        announce = 'BUILD & RESEARCH';
         break;
       case 'over':
         timer = 0;
@@ -191,7 +192,6 @@ export function createEngine(cfgIn = {}) {
     for (const p of players.values()) {
       p.f = createFactory({ cash: cfg.cash, claim: Math.min(CLAIM_START, cfg.gridSize) });
       starterKit(p.f);
-      p.shop = null;
       p.lastIncome = 0;
       p.bestIncome = 0;
       p.filled = 0;
@@ -217,13 +217,10 @@ export function createEngine(cfgIn = {}) {
     if (timer <= 0) {
       if (phase === 'plan') go('run');
       else if (phase === 'run') go('tally');
-      else if (phase === 'tally') go('shop');
-      else if (phase === 'shop') nextRound();
+      else if (phase === 'tally') nextRound();
     } else if (phase === 'plan' && everyone(p => p.planReady)) {
-      // Nobody is still planning: start the round rather than burn the clock.
+      // Nobody is still building: start the round rather than burn the clock.
       go('run');
-    } else if (phase === 'shop' && everyone(p => p.shop?.done)) {
-      nextRound();
     }
   }
 
@@ -261,7 +258,7 @@ export function createEngine(cfgIn = {}) {
     }
 
     if (msg.t === 'buy') {
-      if (phase !== 'shop' || !p.shop) return note(p, 'The catalogue is closed');
+      if (phase !== 'plan') return note(p, 'The catalogue is open between rounds');
       const spec = catalogue(p.f.done, round)[msg.i];
       if (!spec) return;
       const cost = spec.cost ?? price(spec);
@@ -276,7 +273,7 @@ export function createEngine(cfgIn = {}) {
 
     /** Spend the science the floor has made. Permanent, and never taken away. */
     if (msg.t === 'research') {
-      if (phase !== 'shop') return note(p, 'Research between rounds');
+      if (phase !== 'plan') return note(p, 'Research between rounds');
       const r = research(p.f, String(msg.id || ''));
       note(p, r.msg || '');
       return;
@@ -285,7 +282,7 @@ export function createEngine(cfgIn = {}) {
     /**
      * Conveyors are plumbing, not profit: without one you cannot reach a seller
      * that has jumped to the far side, so they are on sale in every phase and do
-     * not count against the one machine a round from the workshop.
+     * are on sale in every phase, including while the floor is running.
      */
     if (msg.t === 'mover' || msg.t === 'route') {
       if (phase === 'lobby' || phase === 'over') return;
@@ -309,8 +306,7 @@ export function createEngine(cfgIn = {}) {
     /**
      * Buy the next ring of land. Planning only: growing moves the vaults out to
      * the new fence, and doing that mid-round would sell gizmos already in flight
-     * into a wall. It is not a workshop purchase and does not use up the round's
-     * one machine — land is not a machine.
+     * into a wall.
      */
     if (msg.t === 'expand') {
       if (phase !== 'plan') return note(p, 'Buy land while planning');
@@ -323,11 +319,6 @@ export function createEngine(cfgIn = {}) {
       note(p, n === RESIN_CLAIM ? `${n}x${n} — a Resin feed opened`
         : n === SECOND_VAULT_CLAIM ? `${n}x${n} — a second vault opened`
           : `${n}x${n} — the vault moved out`);
-      return;
-    }
-
-    if (msg.t === 'done') {
-      if (phase === 'shop' && p.shop) p.shop.done = true;
       return;
     }
 
@@ -348,7 +339,7 @@ export function createEngine(cfgIn = {}) {
         last: p.lastIncome, connected: p.connected,
         claim: p.f.claim, filled: p.filled || 0,
         met: phase === 'tally' ? !!p.metOrder : undefined,
-        ready: phase === 'plan' ? !!p.planReady : !!p.shop?.done,
+        ready: !!p.planReady,
       }))
       .sort((a, b) => b.earned - a.earned);
   }
@@ -365,7 +356,7 @@ export function createEngine(cfgIn = {}) {
    * costs while watching the floor decide it needs one, and only the buying is
    * gated. `done` is the one field that needs the phase to mean anything.
    */
-  function shopView(p) {
+  function buildView(p) {
     return {
       opts: catalogue(p.f.done, round).map(s => ({
         kind: s.kind, mut: s.mut, dir: s.dir,
@@ -380,7 +371,6 @@ export function createEngine(cfgIn = {}) {
         needs: (t.needs || []).map(n => TECH.find(x => x.id === n)?.name).filter(Boolean),
       })),
       science: Math.round(p.f.science),
-      done: !!p.shop?.done,
     };
   }
 
@@ -409,7 +399,7 @@ export function createEngine(cfgIn = {}) {
         seat, color: p.color, name: p.name,
         spots: (p.sellerSpots || []).map(v => DIR_NAME[v.dir]),
       },
-      shop: shopView(p),
+      shop: buildView(p),
     };
     return msg;
   }

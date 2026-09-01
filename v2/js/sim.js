@@ -541,13 +541,32 @@ export function smartDir(f, i) {
   return best;
 }
 
-/** Face a freshly landed routing machine down the line. No-op for anything else. */
+/**
+ * Face a freshly landed routing machine down the line, and — if it branches — put
+ * that branch on a side that exists. A Balancer dropped on the top row would
+ * otherwise aim half its output at the sky; flipping it is free and is what you
+ * were going to do anyway.
+ */
 function autoFace(f, i) {
+  const m = f.grid[i];
   const d = smartDir(f, i);
-  if (d != null && d !== f.grid[i].dir) {
-    f.grid[i].dir = d;
+  if (d != null && d !== m.dir) {
+    m.dir = d;
     f.fx.push({ k: 'rot', cell: i });
   }
+  if (m.kind !== 'bal' && m.kind !== 'sort') return;
+  const open = side => {
+    const dd = ((m.dir | 0) + side) % 4;
+    const nx = cx(i) + DIRS[dd][0], ny = cy(i) + DIRS[dd][1];
+    // A vault or the Lab counts as open: firing off the claim there is the point.
+    if (!inClaim(nx, ny, f.claim)) {
+      return f.seller.spots.some(v => v.cell === i && v.dir === dd)
+        || (f.lab.cell === i && f.lab.dir === dd);
+    }
+    return true;
+  };
+  if (!open(1) && open(3)) m.mir = 1;
+  else if (!open(3) && open(1)) m.mir = 0;
 }
 
 /* ---------------------------------------------------------------- actions --- */
@@ -622,6 +641,21 @@ export function applyAction(f, a) {
       m.flash = 1;
       f.fx.push({ k: 'up', cell: ref.zone === 'grid' ? ref.idx : -1 });
       return yes();
+    }
+
+    /**
+     * Put a router's branch on the other side. Rotating would move it too, but it
+     * would also move the through line — and the through line is usually the part
+     * you had already got right.
+     */
+    case 'mir': {
+      const ref = parseRef(f, a.ref);
+      const m = ref && getRef(f, ref);
+      if (!m) return no('Nothing there');
+      if (m.kind !== 'bal' && m.kind !== 'sort') return no('Nothing to flip');
+      m.mir = m.mir ? 0 : 1;
+      f.fx.push({ k: 'rot', cell: ref.zone === 'grid' ? ref.idx : -1 });
+      return yes(m.mir ? 'Branching left' : 'Branching right');
     }
 
     /**
@@ -712,7 +746,7 @@ const r2 = n => Math.round(n * 100) / 100;
 export function viewOf(f) {
   return {
     g: f.grid.map(m => m && {
-      k: m.kind, d: m.dir, l: m.level, m: m.mut,
+      k: m.kind, d: m.dir, l: m.level, m: m.mut, mi: m.mir | 0,
       b: m.buf.map(x => x.ty),                                  // queued at the mouth
       h: heldTypes(m),                                          // in hand right now
       q: r2(machineLoad(m)), c: capacity(m),                    // how full, out of how much
@@ -723,7 +757,7 @@ export function viewOf(f) {
       p: m.work.length ? r2(1 - Math.max(0, m.t) / cycleTime(m)) : 0,
       f: r2(m.flash),
     }),
-    v: f.inv.map(m => ({ k: m.kind, d: m.dir, l: m.level, m: m.mut })),
+    v: f.inv.map(m => ({ k: m.kind, d: m.dir, l: m.level, m: m.mut, mi: m.mir | 0 })),
     z: f.gizmos.map(g => [g.id, g.ty, r2(g.x), r2(g.y), g.cp | 0]),
     pl: f.producer.level,
     // One entry per running feed: [cell, gizmo type, flash, stalled]

@@ -62,7 +62,7 @@ const tabOf = () => [...window.document.querySelectorAll('#dock-tabs button')]
 window.document.body.dataset.screen = 'pad';
 
 const eng = createEngine({
-  rounds: 8, planSecs: 200, roundSecs: 90, shopSecs: 200, tallySecs: 1, cash: 4000, gridSize: 7,
+  rounds: 8, planSecs: 400, roundSecs: 90, tallySecs: 1, cash: 4000, gridSize: 7,
 });
 eng.addPlayer(0, 'YOU', 0);
 const ctrl = createController({ send: msg => { eng.action(0, msg); push(); } });
@@ -75,8 +75,9 @@ push();
 {
   ok(vis('#pad-bar') && vis('#pad-stage-wrap') && vis('#pad-dock'), 'the app shell is present');
   ok(window.document.querySelectorAll('#dock-tabs button').length === 4, 'four dock tabs');
-  ok(vis('#panel-select') && !vis('#panel-build') && !vis('#panel-tech') && !vis('#panel-crate'),
-    'exactly one panel shows at a time');
+  const shown = ['select', 'build', 'tech', 'crate'].filter(n => vis('#panel-' + n));
+  ok(shown.length === 1, 'exactly one panel shows at a time', shown.join(','));
+  ok(shown[0] === 'build', 'and a round opens on BUILD, since that is what it is for');
   ok(!$('#pad-hint') && !$('#shop-tabs') && !$('#btn-plan'),
     'the old scrolling column is gone');
 }
@@ -141,16 +142,14 @@ push();
 
 /* --- the catalogue and the tree are live, and gated by phase ---------------- */
 {
+  // Build and planning are one phase now: buying and arranging happen together.
   const rows = () => window.document.querySelectorAll('#shop-cards .cat-row').length;
-  ok(rows() > 0, 'the catalogue lists machines outside the build phase too', rows() + ' rows');
-  ok([...window.document.querySelectorAll('#shop-cards .buy')].every(b => b.disabled),
-    'but you cannot buy during planning');
-
-  while (eng.phase !== 'shop') { eng.step(1 / 4); }
-  push();
-  ok(tabOf() === 'build', 'the build phase opens the BUILD tab by itself');
-  const buyable = [...window.document.querySelectorAll('#shop-cards .buy')].filter(b => !b.disabled);
-  ok(buyable.length > 0, 'and the catalogue goes live', buyable.length + ' affordable');
+  const buys = () => [...window.document.querySelectorAll('#shop-cards .buy')];
+  ok(eng.phase === 'plan', 'a round opens in the build phase');
+  ok(rows() > 0, 'the catalogue is listed', rows() + ' rows');
+  const buyable = buys().filter(b => !b.disabled);
+  ok(buyable.length > 0, 'and live in the same phase you arrange the floor',
+    buyable.length + ' affordable');
   const had = f.grid.filter(Boolean).length;
   buyable[0].click();
   ok(f.grid.filter(Boolean).length === had + 1, 'buying installs a machine');
@@ -194,7 +193,7 @@ push();
     'the action button reads for the build phase', $('#dock-action').textContent);
   $('#dock-action').click();
   push();
-  ok(p.shop.done, 'and pressing it readies up');
+  ok(p.planReady, 'and pressing it readies up');
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nthe pad works');

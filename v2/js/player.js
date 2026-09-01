@@ -102,6 +102,7 @@ export function createController({ send }) {
     act(sel[0] === 'g' ? { a: 'rot', i: +sel.slice(1) } : { a: 'rotinv', i: +sel.slice(1) });
   });
   wire('#btn-filt', () => { if (sel) act({ a: 'filt', ref: sel }); });
+  wire('#btn-mir', () => { if (sel) act({ a: 'mir', ref: sel }); });
   wire('#btn-up', () => { if (sel) act({ a: 'up', ref: sel }); });
   wire('#btn-scrap', () => {
     if (!sel) return;
@@ -121,22 +122,16 @@ export function createController({ send }) {
   wire('#btn-sell', () => act({ a: 'upsell' }));
 
   /**
-   * One button, whatever the round is currently asking for. Two separate READY
-   * buttons for two phases that never overlap was two buttons' worth of screen for
-   * one button's worth of meaning.
+   * The one button. Build and planning used to be separate phases with a READY
+   * each; they are one phase now, so this is one button that starts the round.
    */
   wire('#dock-action', () => {
-    if (!hud) return;
-    if (hud.ph === 'plan') {
-      const next = !hud.ready;
-      send({ t: 'plan', v: next });
-      hud.ready = next;
-      buzz(next ? 18 : 10);
-      paintAction();
-    } else if (hud.ph === 'shop') {
-      send({ t: 'done' });
-      buzz(16);
-    }
+    if (!hud || hud.ph !== 'plan') return;
+    const next = !hud.ready;
+    send({ t: 'plan', v: next });
+    hud.ready = next;
+    buzz(next ? 18 : 10);
+    paintAction();
   });
 
   /* ---------------------------------------------------------------- dock --- */
@@ -195,7 +190,7 @@ export function createController({ send }) {
       && (shop.science ?? 0) >= x.cost).length;
     if (tech) { if (affordable) tech.dataset.badge = affordable; else delete tech.dataset.badge; }
     if (build) {
-      if (hud?.ph === 'shop') build.dataset.badge = '\u25cf';
+        if (hud?.ph === 'plan') build.dataset.badge = '\u25cf';
       else delete build.dataset.badge;
     }
   }
@@ -218,8 +213,8 @@ export function createController({ send }) {
     const b = hud.board || [];
     const rank = b.findIndex(r => r.seat === hud.seat) + 1;
     const label = {
-      plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY',
-      shop: 'BUILD', over: 'FINISHED', lobby: 'LOBBY',
+      plan: 'BUILD', run: 'SHIPPING', tally: 'TALLY',
+      over: 'FINISHED', lobby: 'LOBBY',
     }[hud.ph] || hud.ph;
     $('#bar-phase').textContent = hud.ph === 'over' ? 'MATCH OVER' : `R${hud.r}/${hud.rs} ${label}`;
     $('#bar-phase').dataset.ph = hud.ph;
@@ -250,16 +245,12 @@ export function createController({ send }) {
     if (!btn || !hud) return;
     if (hud.ph === 'plan') {
       btn.hidden = false;
+      btn.disabled = false;
       const others = Math.max(0, (hud.waiting ?? 0) - (hud.ready ? 0 : 1));
       btn.dataset.on = hud.ready ? 'on' : 'off';
       btn.textContent = hud.ready
         ? (others > 0 ? `READY — WAITING FOR ${others}` : 'READY')
-        : 'READY — START THE ROUND';
-    } else if (hud.ph === 'shop') {
-      btn.hidden = false;
-      btn.dataset.on = shop?.done ? 'on' : 'off';
-      btn.textContent = shop?.done ? 'WAITING…' : 'DONE BUILDING';
-      btn.disabled = !!shop?.done;
+        : 'DONE BUILDING — START THE ROUND';
     } else {
       btn.hidden = true;
     }
@@ -268,6 +259,7 @@ export function createController({ send }) {
   function paintSelect() {
     const m = selMachine();
     const fb = $('#btn-filt');
+    const mb = $('#btn-mir');
     if (!m) {
       $('#sel-name').textContent = 'Nothing selected';
       $('#sel-sub').textContent =
@@ -276,9 +268,10 @@ export function createController({ send }) {
       $('#btn-up').textContent = 'UPGRADE';
       $('#btn-scrap').textContent = 'SCRAP';
       fb.hidden = true;
+      mb.hidden = true;
       return;
     }
-    const spec = { kind: m.k, mut: m.m };
+    const spec = { kind: m.k, mut: m.m, mir: m.mi };
     const fake = { kind: m.k, mut: m.m, level: m.l };
     const rate = m.r || (1 / (cycleTime(fake) || 1));
     const state = m.x ? ' · BACKED UP' : m.s ? ' · STARVED' : '';
@@ -305,6 +298,14 @@ export function createController({ send }) {
       const next = TYPES[((m.m ?? 1) + 1) % TYPES.length];
       fb.textContent = `FILTER → ${next.name.toUpperCase()}`;
     }
+
+    // Routers branch to one side. FLIP moves that branch without turning the
+    // through line, which rotating would also do. Level 3 uses both sides, so
+    // there is nothing left to choose.
+    const router = m.k === 'bal' || m.k === 'sort';
+    mb.hidden = !router || m.l >= MAX_LEVEL;
+    mb.disabled = mb.hidden;
+    if (!mb.hidden) mb.textContent = `FLIP → ${m.mi ? 'RIGHT' : 'LEFT'}`;
   }
 
   const ROUTE_BTN = { pipe: '#btn-mover', bal: '#btn-bal', sort: '#btn-sort' };
@@ -379,7 +380,7 @@ export function createController({ send }) {
   /** Everything research has opened up, at this round's prices. */
   function paintCatalogue() {
     const list = $('#shop-cards');
-    const open = hud.ph === 'shop';
+    const open = hud.ph === 'plan';
     $('#cat-label').innerHTML = open
       ? 'CATALOGUE <span class="dim">buy all you can fit</span>'
       : 'CATALOGUE <span class="dim">opens between rounds</span>';
@@ -409,7 +410,7 @@ export function createController({ send }) {
     const list = $('#tech-list');
     if (!list) return;
     const sci = shop?.science ?? view.sc ?? 0;
-    const open = hud.ph === 'shop';
+    const open = hud.ph === 'plan';
     $('#tech-label').innerHTML = open
       ? `RESEARCH <span class="dim">${sci} science banked</span>`
       : `RESEARCH <span class="dim">${sci} banked · spend between rounds</span>`;
@@ -491,12 +492,11 @@ export function createController({ send }) {
     if (hud.ph !== lastPhase) {
       lastPhase = hud.ph;
       if (hud.ph === 'run') buzz([12, 60, 12]);
-      if (hud.ph === 'shop') buzz(30);
-      if (hud.ph === 'plan') buzz(20);
+      if (hud.ph === 'plan') buzz(24);
       document.body.dataset.phase = hud.ph;
-      // The build phase is the one moment the dock has something urgent to say,
-      // so it opens itself there — but never over an active selection.
-      if (hud.ph === 'shop' && !sel) { tab = 'build'; lastTab = 'build'; }
+      // The build phase is the one moment the dock has something to say, so it
+      // opens itself there — but never over an active selection.
+      if (hud.ph === 'plan' && !sel) { tab = 'build'; lastTab = 'build'; }
     }
 
     paintDock();

@@ -19,7 +19,14 @@ import {
 
 const gridPx = () => GRID * CELL;       // 96 on a 3x3, 224 on a 7x7
 const GUTTER = 24;                      // room outside the floor for producer/seller
-const GIZ = 3;                          // gizmo sprite, in pixel units on a 32px slot
+/*
+ * Gizmo sprites. A gizmo is a single coloured pixel and its colour is the only
+ * thing that says what it is worth, so it was drawn 3x3 and read as a speck at
+ * arm's length on a phone. Six is still small against a 32-pixel slot — a line of
+ * them still reads as a line — but the colour actually lands now.
+ */
+const GIZ = 6;                          // free-flying gizmo, in pixel units
+const CARGO = 4;                        // the same gizmo inside a machine's window
 const HEADER = 20;
 const NOTE_H = 16;
 const FONT = 16;                        // art pixels; always a multiple of 8
@@ -495,23 +502,28 @@ export function drawPanel(st, view, rect, meta = {}) {
   // copy cannot be copied and that is worth seeing at a glance.
   for (const g of view.z) {
     const ty = g[1], isCopy = g[4];
-    const gx = R(o.x + g[2] * CELL) - 1, gy = R(o.y + g[3] * CELL) - 1;
+    const gx = R(o.x + g[2] * CELL) - GIZ / 2, gy = R(o.y + g[3] * CELL) - GIZ / 2;
     if (gx < rect.x || gx > rect.x + rect.w || gy < rect.y || gy > rect.y + rect.h) continue;
     const t = TYPES[ty] || TYPES[0];
     // Brightness tracks what a gizmo is worth, not where it sits in TYPES — the
     // Part and Product families are appended after the ladder, so an index test
     // would light a $1 Resin like a Prism.
+    const mid = GIZ / 2;
     if (isCopy) {
-      px(ctx, gx, gy, GIZ, GIZ, shade(t.color, 0.5));
-      px(ctx, gx + 1, gy, 1, 1, t.color);            // one lit corner, so it still reads
-      if (t.value >= 30) glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.16);
+      // A copy is hollow: the same colour, but you can see through the middle of
+      // it, which at this size reads faster than the old dimming did.
+      px(ctx, gx, gy, GIZ, GIZ, shade(t.color, 0.55));
+      px(ctx, gx + 2, gy + 2, GIZ - 4, GIZ - 4, '#141726');
+      if (t.value >= 30) glowPx(lctx, gx + mid, gy + mid, t.glow, 4, 0.16);
       continue;
     }
     px(ctx, gx, gy, GIZ, GIZ, t.color);
-    px(ctx, gx + 1, gy, 1, 1, t.glow);               // highlight, keeps it from reading flat
-    if (t.value >= 60) glowPx(lctx, gx + 1, gy + 1, t.glow, 5, 0.5);
-    else if (t.value >= 4) glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.36);
-    else glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.2);
+    px(ctx, gx, gy, GIZ, 1, t.glow);                 // lit top edge, so it is not flat
+    px(ctx, gx, gy, 1, GIZ, shade(t.color, 1.25));
+    px(ctx, gx, gy + GIZ - 1, GIZ, 1, shade(t.color, 0.62));
+    if (t.value >= 60) glowPx(lctx, gx + mid, gy + mid, t.glow, 7, 0.5);
+    else if (t.value >= 4) glowPx(lctx, gx + mid, gy + mid, t.glow, 5, 0.36);
+    else glowPx(lctx, gx + mid, gy + mid, t.glow, 4, 0.2);
   }
 
   if (meta.note && st.shape.note) {
@@ -607,37 +619,39 @@ function drawMachine(ctx, lctx, x, y, m, t) {
       break;
     }
     case 'bal': {
-      // A junction, not a machine: two belts leaving one throat. The lamp alternates
-      // with the round-robin cursor, so you can watch it take turns.
+      // A junction, not a machine: two belts leaving one throat. The branch is drawn
+      // on whichever side it actually fires, so a flipped one looks flipped.
+      const right = !m.mi, both = m.l >= 3;
       rp(ctx, cxp, cyp, d, -13, -3, 26, 6, '#0e1526');
-      rp(ctx, cxp, cyp, d, -2, -3, 6, 14, '#0e1526');
-      if (m.l >= 3) rp(ctx, cxp, cyp, d, -2, -13, 6, 11, '#0e1526');
+      if (both || right) rp(ctx, cxp, cyp, d, -2, -3, 6, 14, '#0e1526');
+      if (both || !right) rp(ctx, cxp, cyp, d, -2, -11, 6, 14, '#0e1526');
       rp(ctx, cxp, cyp, d, -13, -2, 22, 4, trim);        // straight through
-      rp(ctx, cxp, cyp, d, -1, -2, 4, 12, trim);         // branch right
-      if (m.l >= 3) rp(ctx, cxp, cyp, d, -1, -12, 4, 12, trim);
+      if (both || right) rp(ctx, cxp, cyp, d, -1, -2, 4, 12, trim);
+      if (both || !right) rp(ctx, cxp, cyp, d, -1, -10, 4, 12, trim);
       rp(ctx, cxp, cyp, d, -6, -6, 12, 12, shade(trim, 0.5));
-      const side = (m.q || 0) > 0 ? ((m.fl | 0) % 2) : ((Math.floor(t * 2)) % 2);
-      rp(ctx, cxp, cyp, d, -3, -3, 6, 6, side ? lit : shade(lit, 0.5));
-      chevronR(ctx, cxp, cyp, d, 1, lit);
-      if (m.l >= 3) chevronR(ctx, cxp, cyp, d, 3, lit);
+      const lamp = (m.q || 0) > 0 ? ((m.fl | 0) % 2) : ((Math.floor(t * 2)) % 2);
+      rp(ctx, cxp, cyp, d, -3, -3, 6, 6, lamp ? lit : shade(lit, 0.5));
+      if (both || right) chevronR(ctx, cxp, cyp, d, 1, lit);
+      if (both || !right) chevronR(ctx, cxp, cyp, d, 3, lit);
       break;
     }
     case 'sort': {
       // Same junction, with a gem in the throat showing what it is looking for.
       const want = TYPES[m.m ?? 1] || TYPES[1];
+      const sright = !m.mi, sboth = m.l >= 3;
       rp(ctx, cxp, cyp, d, -13, -3, 26, 6, '#0e1526');
-      rp(ctx, cxp, cyp, d, -2, -3, 6, 14, '#0e1526');
-      if (m.l >= 3) rp(ctx, cxp, cyp, d, -2, -13, 6, 11, '#0e1526');
+      if (sboth || sright) rp(ctx, cxp, cyp, d, -2, -3, 6, 14, '#0e1526');
+      if (sboth || !sright) rp(ctx, cxp, cyp, d, -2, -11, 6, 14, '#0e1526');
       rp(ctx, cxp, cyp, d, -13, -2, 22, 4, shade(trim, 0.8));
-      rp(ctx, cxp, cyp, d, -1, -2, 4, 12, want.color);
-      if (m.l >= 3) rp(ctx, cxp, cyp, d, -1, -12, 4, 12, want.color);
+      if (sboth || sright) rp(ctx, cxp, cyp, d, -1, -2, 4, 12, want.color);
+      if (sboth || !sright) rp(ctx, cxp, cyp, d, -1, -10, 4, 12, want.color);
       // the gate: a lens in the filtered type's colour
       rp(ctx, cxp, cyp, d, -6, -7, 12, 14, '#0b1220');
       rp(ctx, cxp, cyp, d, -4, -5, 8, 10, shade(want.color, 0.7));
       rp(ctx, cxp, cyp, d, -2, -3, 4, 6, want.color);
       rp(ctx, cxp, cyp, d, -1, -2, 2, 2, want.glow);
-      chevronR(ctx, cxp, cyp, d, 1, want.glow);
-      if (m.l >= 3) chevronR(ctx, cxp, cyp, d, 3, want.glow);
+      if (sboth || sright) chevronR(ctx, cxp, cyp, d, 1, want.glow);
+      if (sboth || !sright) chevronR(ctx, cxp, cyp, d, 3, want.glow);
       glowPx(lctx, R(cxp), R(cyp), want.glow, 3, 0.22);
       break;
     }
@@ -714,22 +728,23 @@ function drawMachine(ctx, lctx, x, y, m, t) {
   const cargo = all.slice(0, 4);
   const over = all.length - cargo.length;
   if (cargo.length) {
-    const cw = cargo.length * 5 - 2 + (over > 0 ? 3 : 0);
+    const step = CARGO + 2;
+    const cw = cargo.length * step - 2 + (over > 0 ? 3 : 0);
     let gx = R(cxp - cw / 2), gy = y + CELL - 13;
-    px(ctx, gx - 2, gy - 2, cw + 4, GIZ + 4, '#070911');
+    px(ctx, gx - 2, gy - 2, cw + 4, CARGO + 4, '#070911');
     for (const [ty, inHand] of cargo) {
       const t = TYPES[ty] || TYPES[0];
       if (inHand) {
-        px(ctx, gx, gy, GIZ, GIZ, t.color);
-        px(ctx, gx + 1, gy, 1, 1, t.glow);
-        glowPx(lctx, gx + 1, gy + 1, t.glow, 3, 0.45);
+        px(ctx, gx, gy, CARGO, CARGO, t.color);
+        px(ctx, gx, gy, CARGO, 1, t.glow);
+        glowPx(lctx, gx + CARGO / 2, gy + CARGO / 2, t.glow, 4, 0.45);
       } else {
-        px(ctx, gx, gy + 1, 2, 2, shade(t.color, 0.55));
+        px(ctx, gx, gy + 1, CARGO - 1, CARGO - 2, shade(t.color, 0.55));
       }
-      gx += 5;
+      gx += step;
     }
     // "...and more behind these" — a Storage can be holding a dozen.
-    if (over > 0) { px(ctx, gx, gy, 1, GIZ, shade(lit, 0.8)); px(ctx, gx, gy + 1, 2, 1, shade(lit, 0.8)); }
+    if (over > 0) { px(ctx, gx, gy, 1, CARGO, shade(lit, 0.8)); px(ctx, gx, gy + 1, 2, 1, shade(lit, 0.8)); }
   }
 
   /*

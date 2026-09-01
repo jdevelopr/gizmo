@@ -253,7 +253,7 @@ function connectPhone(room, name) {
  * takes the whole screen and announces the rounds itself.
  */
 function startSolo(cfg = {}) {
-  const engine = createEngine({ shopSecs: 25, ...cfg });
+  const engine = createEngine({ ...cfg });
   engine.addPlayer(0, localStorage.getItem('gizmo-name') || 'YOU', 0);
 
   const stage = new Stage($('#stage'));
@@ -264,14 +264,11 @@ function startSolo(cfg = {}) {
   engine.on('phase', (ph, info) => {
     if (ph === 'plan') {
       bannerText = `ROUND ${info.round}`;
-      bannerSub = info.round > 1 ? 'EXTEND · CLAIM · UPGRADE' : 'PLANNING';
+      bannerSub = info.round > 1 ? 'BUY · RESEARCH · BUILD' : 'BUILD YOUR LINE';
       bannerT = 2.2;
     }
     if (ph === 'run') { bannerText = 'SHIP IT'; bannerSub = ''; bannerT = 1; stage.shake(4); }
     if (ph === 'tally') { bannerText = 'ROUND OVER'; bannerSub = ''; bannerT = 1.8; }
-    if (ph === 'shop') {
-      bannerText = 'BUILD & RESEARCH'; bannerSub = 'SPEND CASH AND SCIENCE'; bannerT = 1.8;
-    }
     // The pad says it too, which is the only place it gets said on a phone.
     ctrl.banner(bannerText, bannerSub, bannerT);
   });
@@ -331,7 +328,7 @@ function startSolo(cfg = {}) {
 
       $('#floor-round').textContent = `ROUND ${engine.round} / ${engine.cfg.rounds}`;
       $('#floor-phase').textContent = {
-        plan: 'PLANNING', run: 'SHIPPING', tally: 'TALLY', shop: 'BUILD',
+        plan: 'BUILD', run: 'SHIPPING', tally: 'TALLY',
       }[engine.phase] || '';
       $('#floor-timer').textContent = String(Math.max(0, Math.ceil(engine.timer))).padStart(2, '0');
     }

@@ -122,13 +122,15 @@ export const KINDS = {
     // without inflating it — every fork was also an economic decision. This one
     // just divides. It is plumbing, and it is priced and sold as plumbing.
     desc: 'Takes one in and sends it out one exit, alternating sides. Never copies. '
-      + 'Skips an exit that is backed up, so one blocked arm cannot stall the other.',
+      + 'Skips an exit that is backed up, so one blocked arm cannot stall the other. '
+      + 'FLIP puts its branch on the other side without turning the through line.',
     price: 36, cycle: 0.34, cap: 1, hold: 2, travel: 0.34,
     body: '#5c4a1e', trim: '#c9a23f', lit: '#ffcd75',
   },
   sort: {
     name: 'Sorter', short: 'SORTER',
-    desc: 'Sends the one type it is set to out to the side, and everything else straight ahead.',
+    desc: 'Sends the one type it is set to out to the side, and everything else straight ahead. '
+      + 'FLIP chooses which side.',
     price: 68, cycle: 0.44, cap: 1, hold: 2, travel: 0.4,
     body: '#1f3a52', trim: '#4d9fd8', lit: '#a8dcff',
   },
@@ -199,6 +201,11 @@ export function makeMachine(spec, id) {
     kind: spec.kind,
     dir: spec.dir ?? 0,
     mut: spec.mut ?? 1,
+    // Which side a router's side exit is on: 0 = right of its facing, 1 = left.
+    // A Balancer's exits are otherwise decided entirely by which way it points,
+    // and pointing it the other way to move the branch also moves the through
+    // line, which is usually the one thing you did not want to move.
+    mir: spec.mir ? 1 : 0,
     level: 1,
     buf: [],    // queued at the intake, waiting their turn: { id, ty, cp }
     work: [],   // in the machine's hands right now, for the whole cycle
@@ -230,11 +237,17 @@ export function label(spec) {
   return t ? `${TYPES[spec.mut ?? 1].name} ${t}` : KINDS[spec.kind].name;
 }
 
+/** Which way a router's branch points, in words, for the selection panel. */
+export const sideName = m => (m.mir ? 'left' : 'right');
+
 export function describe(spec) {
   if (spec.kind === 'asm') return `${recipeText(recipeOf(spec))}. Both ingredients, every time.`;
   if (spec.kind === 'mut') return `Rewrites any gizmo into ${TYPES[spec.mut].name}.`;
   if (spec.kind === 'sort') {
-    return `${TYPES[spec.mut ?? 1].name} goes out to the side; everything else goes straight ahead.`;
+    return `${TYPES[spec.mut ?? 1].name} goes ${sideName(spec)}; everything else straight ahead.`;
+  }
+  if (spec.kind === 'bal') {
+    return `Alternates between straight ahead and ${sideName(spec)}. Never copies.`;
   }
   return KINDS[spec.kind].desc;
 }
@@ -492,7 +505,7 @@ export function outputs(m, inputs) {
       // A backed-up sorter holds, and the stall walks back up the line as usual.
       const want = m.mut ?? 1;
       if (a !== want) return [{ ty: a, dir: d, cp: copy }];
-      const outs = m.level >= 3 ? [(d + 1) % 4, (d + 3) % 4] : [(d + 1) % 4];
+      const outs = m.level >= 3 ? [(d + 1) % 4, (d + 3) % 4] : [sideDir(m)];
       return [{ ty: a, dir: outs.length > 1 ? nextExit(m, outs) : outs[0], cp: copy }];
     }
 
@@ -585,7 +598,7 @@ export function exitDirs(m) {
       return balDirs(m);
     case 'sort':
       // Ahead for the pass-through, plus wherever the filtered type is sent.
-      return m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, (d + 1) % 4];
+      return m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, sideDir(m)];
     case 'trident':
       return [d, (d + 1) % 4, (d + 3) % 4];
     default:
@@ -593,10 +606,13 @@ export function exitDirs(m) {
   }
 }
 
-/** A balancer's exits: ahead and right, plus left at level 3. */
+/** The side a router branches to: right of its facing, or left if mirrored. */
+export const sideDir = m => ((m.dir | 0) + (m.mir ? 3 : 1)) % 4;
+
+/** A balancer's exits: ahead and its side, plus both sides at level 3. */
 export function balDirs(m) {
   const d = m.dir | 0;
-  return m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, (d + 1) % 4];
+  return m.level >= 3 ? [d, (d + 1) % 4, (d + 3) % 4] : [d, sideDir(m)];
 }
 
 /**

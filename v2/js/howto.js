@@ -37,10 +37,12 @@ const LEVELS = {
     'Room for fourteen — a whole round\u2019s surge, parked.'],
   dup: ['The original plus one copy.', 'Three out: the original and two copies.',
     'Four out: the original and three copies.'],
-  bal: ['One in, one out, alternating between ahead and right.', '30% faster.',
-    'A third exit opens to the left, and it takes all three in turn.'],
-  sort: ['The type it is set to goes right; everything else goes straight ahead.',
-    '30% faster.', 'A second filtered exit opens to the left, taking turns with the first.'],
+  bal: ['One in, one out, alternating between ahead and its branch. FLIP puts that '
+    + 'branch on either side without turning the through line.', '30% faster.',
+    'Both sides open at once, and it takes all three exits in turn.'],
+  sort: ['The type it is set to goes out to the branch; everything else goes straight '
+    + 'ahead. FLIP chooses the side.', '30% faster.',
+    'A second filtered exit opens on the other side, taking turns with the first.'],
   trident: ['Original ahead, copies left and right.', '30% faster.', 'Twice the speed of level 1.'],
   mut: ['Rewrites anything it eats into its type.', '30% faster.',
     'Refuses to downgrade: anything already above its tier passes through untouched.'],
@@ -121,10 +123,9 @@ function build() {
     + 'Mutator you put in it triples what the same Producer earns you.');
   const ol = el('ol', 'ht-steps');
   [
-    ['PLANNING', 'The floor is stopped and everything you built is exactly where you left it. Extend the line, upgrade it, and claim land if you can afford it — land is bought here and nowhere else, because the vault rides out to the new fence and moving it mid-round would sell gizmos into a wall. A conveyor aims itself whenever it lands on a slot, so laying a route is a row of taps. ROTATE always overrides it. The round starts as soon as everyone is ready.'],
-    ['SHIPPING', 'The producer runs and money lands. You can keep building the whole time — a live floor is a fair way to play, and sometimes the only way to unclog one.'],
+    ['BUILD', 'The floor is stopped and everything you built is exactly where you left it. Buy from the catalogue — everything you have unlocked, at this round\u2019s prices, as many as you can afford and fit. Spend science on research. Extend and upgrade the line, and claim land if you can afford it: land is bought here and nowhere else, because the vault rides out to the new fence and moving it mid-round would sell gizmos into a wall. A conveyor aims itself whenever it lands on a slot, so laying a route is a row of taps. ROTATE always overrides it. The round starts as soon as everyone is ready.'],
+    ['SHIPPING', 'The producer runs and money lands. You can keep building the whole time — a live floor is a fair way to play, and sometimes the only way to unclog one. Routing machines stay on sale; the catalogue does not.'],
     ['TALLY', 'What the round earned, and whether it filled the order.'],
-    ['BUILD & RESEARCH', 'Two sheets. BUILD is a catalogue of everything you have unlocked, at this round\u2019s prices — buy as many as you can afford, slots are the only limit. RESEARCH spends the science your Lab has collected. What you buy gets placed in the next planning phase.'],
   ].forEach(([k, t]) => {
     const li = el('li');
     li.appendChild(el('b', null, k));
@@ -132,6 +133,12 @@ function build() {
     ol.appendChild(li);
   });
   loop.appendChild(ol);
+  loop.appendChild(el('p', 'ht-note',
+    'Rotating a machine turns everything about it at once. A Balancer or a Sorter also '
+    + 'has FLIP, which moves only its branch to the other side and leaves the line running '
+    + 'straight through it exactly where it was — usually the part you had already got '
+    + 'right. A freshly bought one flips itself if its branch would otherwise fire at '
+    + 'unbought land.'));
   loop.appendChild(el('p', 'ht-custody',
     'A machine takes custody of what it eats. It pulls the gizmo in, holds it for its '
     + 'whole cycle — you can see it sitting in the machine\u2019s window, and halfway '

@@ -238,15 +238,37 @@ setTimeout(function () {
       <section id="panel-crate" class="dock-panel" hidden>
         <p class="dock-label">CRATE <span class="dim">machines with nowhere to go</span></p>
         <div id="pad-inv" class="crate"></div>
-        <button class="ghost wide" data-howto>HOW TO PLAY</button>
+      </section>
+
+      <!--
+        Every transformation in the game, in one place, generated from machines.js
+        so it cannot drift. It is here rather than only in the manual because the
+        question "what do two of these make" comes up mid-round, and leaving the
+        floor to find out is the wrong answer.
+      -->
+      <section id="panel-recipes" class="dock-panel" hidden>
+        <p class="dock-label">FUSER <span class="dim">two of a kind, one rung up</span></p>
+        <div id="rec-fuse"></div>
+        <p class="dock-label">ASSEMBLER <span class="dim">two different things, one product</span></p>
+        <div id="rec-asm"></div>
+        <p class="dock-label">MUTATOR <span class="dim">anything in, one type out</span></p>
+        <div id="rec-mut"></div>
+        <p class="dock-label">THE RULES</p>
+        <ul id="rec-rules"></ul>
+        <button class="ghost wide" data-howto>OPEN THE FULL MANUAL</button>
       </section>
     </div>
 
+<!--
+      No SELECT tab: tapping a machine opens its controls by itself, so a button
+      that goes somewhere you are already taken was a quarter of the dock spent on
+      nothing.
+    -->
     <nav id="dock-tabs">
-      <button data-tab="select" aria-pressed="true">SELECT</button>
-      <button data-tab="build" aria-pressed="false">BUILD</button>
+      <button data-tab="build" aria-pressed="true">BUILD</button>
       <button data-tab="tech" aria-pressed="false">TECH</button>
       <button data-tab="crate" aria-pressed="false">CRATE</button>
+      <button data-tab="recipes" aria-pressed="false">RECIPES</button>
     </nav>
   </div>
 </section>

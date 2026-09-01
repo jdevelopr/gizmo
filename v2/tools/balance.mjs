@@ -20,8 +20,13 @@ function run(cfg, play) {
   const dt = 1 / 20;
   while (eng.phase !== 'over' && t < 20000) {
     eng.step(dt); t += dt;
-    if (eng.phase === 'plan' && planDone !== eng.round) { planDone = eng.round; play(eng); }
-    if (eng.phase === 'plan' && shopDone !== eng.round) { shopDone = eng.round; goShopping(eng); }
+    if (eng.phase === 'plan' && planDone !== eng.round) {
+      planDone = eng.round;
+      shopDone = eng.round;
+      play(eng);              // spend and arrange
+      goShopping(eng);        // buy and install
+      reconnect(eng);         // and only then check the line still reaches the vault
+    }
     if (eng.phase === 'tally' && eng.round !== last) {
       last = eng.round;
       const p = eng.players.get(0);
@@ -119,17 +124,27 @@ const ordinary = eng => {
   const sc = M.sellerCost(f.seller.level);
   if (f.seller.level < M.MAX_UTIL && cash() > sc * 2.5) eng.action(0, { t: 'act', a: { a: 'upsell' } });
 
-  // Belts only to reach the fence the vault just rode out to. Buying them for
-  // their own sake is how the bot used to spend itself broke.
-  const vault = f.seller.spots[0];
-  for (let x = 0; x < f.claim && cash() > 40; x++) {
-    const cell = M.cellOf(x, M.cy(vault.cell));
-    if (f.grid[cell]) continue;
-    const before = cash();
-    eng.action(0, { t: 'route', k: 'pipe' });
-    if (cash() === before) break;
-  }
 };
+
+/**
+ * Fill any hole in the line, last thing before the round starts.
+ *
+ * This has to happen after buying, not before. Claiming land moves the vault out
+ * by one and installing a machine at the new end shuffles what was there into the
+ * gap behind it — so a floor that looked connected while you were shopping can be
+ * one slot short by the time you finish. A single missing belt earns nothing at all
+ * for the whole round, which is the harshest cliff in the game and the reason the
+ * cheap-belt allowance exists.
+ */
+function reconnect(eng) {
+  const f = eng.players.get(0).f;
+  for (let x = 0; x < f.claim; x++) {
+    if (f.grid[M.cellOf(x, 0)]) continue;
+    const before = f.cash;
+    eng.action(0, { t: 'route', k: 'pipe' });
+    if (f.cash === before) break;          // cannot afford it; nothing more to try
+  }
+}
 
 const cfg = { rounds: 8, planSecs: 3, roundSecs: 90, tallySecs: 1, cash: 200, gridSize: 7 };
 const N = 7;

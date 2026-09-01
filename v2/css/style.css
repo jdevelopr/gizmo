@@ -468,6 +468,48 @@ input::placeholder { color: #414a68; }
 .tech-row button { margin-left: auto; }
 .tech-cost { color: #a8dcff; font-size: 9px; }
 
+/* --- recipes --- */
+.rec-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  background: var(--plate);
+  border-left: 3px solid var(--tint, var(--line));
+  padding: 6px 9px;
+  margin-bottom: 3px;
+  font-size: 9px;
+}
+.rec-row.locked { opacity: .45; }
+.rec-in { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.rec-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dim);
+  letter-spacing: .03em;
+}
+.rec-chip i {
+  width: 8px; height: 8px;
+  background: var(--c, var(--line));
+  box-shadow: 0 0 0 1px #0b0d16;
+}
+.rec-chip b { color: #cfd6ea; font-weight: 400; }
+.rec-arrow { color: var(--gold); padding: 0 2px; }
+.rec-out { color: #ffe9a8; white-space: nowrap; }
+.rec-note { color: var(--dim); font-size: 8px; }
+#rec-rules { list-style: none; margin: 0; padding: 0; }
+#rec-rules li {
+  font-size: 9px;
+  color: var(--dim);
+  line-height: 1.6;
+  padding: 5px 0 5px 10px;
+  border-left: 2px solid var(--line);
+  margin-bottom: 4px;
+}
+#rec-rules li b { color: var(--gold); }
+#panel-recipes .ghost.wide { margin-top: 10px; }
+
 /* --- crate --- */
 .crate { display: flex; gap: 5px; flex-wrap: wrap; min-height: 36px; align-items: center; }
 .crate-empty { font-size: 9px; color: var(--dim); }

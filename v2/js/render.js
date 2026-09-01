@@ -188,6 +188,63 @@ export class Stage {
   }
 
   /**
+   * Which fixture is under this point, if any: a Producer in the west gutter, a
+   * vault or the Lab on the fence. Fixtures are drawn outside the grid, so a tap on
+   * one lands nowhere as far as `cellAt` is concerned — which meant the three most
+   * important objects on a floor were the three you could not ask about.
+   *
+   * @returns {{kind:string,idx:number,cell:number,dir:number,ty:number}|null}
+   */
+  fixtureAt(bx, by, view) {
+    if (!view) return null;
+    const o = this.floorOrigin(this.panelRect(0));
+    const gut = this.gutter || GUTTER;
+    // Never steal a tap that landed on owned floor. `cellAt` is deliberately
+    // forgiving — up to ten pixels outside the grid still snaps to a slot — and on
+    // a phone the gutter is only eighteen pixels wide, so without this the two hit
+    // tests overlap and the Producer swallows the corner slot. The bound is the
+    // *claim*, not the plot: the vaults and the Lab sit on the fence, which for
+    // anything short of a full plot is well inside it.
+    const cp = (view.cl || GRID) * CELL;
+    if (bx >= o.x && by >= o.y && bx <= o.x + cp && by <= o.y + cp) return null;
+    const hit = (x, y, w, h) => bx >= x && by >= y && bx <= x + w && by <= y + h;
+
+    // Producers sit in the gutter, west of the row they feed.
+    const ports = view.pp || [];
+    for (let k = 0; k < ports.length; k++) {
+      const [cell, ty, , stalled] = ports[k];
+      const y = o.y + cy(cell) * CELL;
+      if (hit(o.x - gut, y, gut, CELL)) {
+        return { kind: 'prod', idx: k, cell, dir: 2, ty, stalled: !!stalled };
+      }
+    }
+
+    /*
+     * Vaults and the Lab sit just outside the fence, on the face they trade from.
+     * The target is the whole strip of gutter beside that face rather than the
+     * sixteen pixels actually painted — the drawn block leaves a gap on either
+     * side, and a gap between a thumb and the thing it is aimed at is a miss.
+     */
+    const outside = (cell, dir) => {
+      const [dx, dy] = DIRS[dir];
+      const x = o.x + cx(cell) * CELL, y = o.y + cy(cell) * CELL;
+      if (dx > 0) return [x + CELL, y, gut, CELL];
+      if (dx < 0) return [x - gut, y, gut, CELL];
+      if (dy > 0) return [x, y + CELL, CELL, gut];
+      return [x, y - gut, CELL, gut];
+    };
+    const vaults = view.sv || [];
+    for (let k = 0; k < vaults.length; k++) {
+      const [cell, dir] = vaults[k];
+      if (hit(...outside(cell, dir))) return { kind: 'vault', idx: k, cell, dir, ty: -1 };
+    }
+    if (view.lb && hit(...outside(view.lb[0], view.lb[1]))) {
+      return { kind: 'lab', idx: 0, cell: view.lb[0], dir: view.lb[1], ty: -1 };
+    }
+    return null;
+  }
+
+  /**
    * Which slot a point lands in. Anything inside the floor plus a forgiving
    * margin snaps to the nearest slot, so a thumb landing on a grid line still
    * picks the machine the player meant. Returns -1 well outside.

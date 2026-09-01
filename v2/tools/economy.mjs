@@ -13,31 +13,31 @@ const $ = n => '$' + Math.round(n);
 const pad = (s, n) => String(s).padStart(n);
 const ROUNDS = [1, 2, 4, 6, 8];
 
-console.log('\n=== SHOP, per round (base price x markup) ===');
-console.log(pad('', 20) + ROUNDS.map(r => pad('R' + r, 9)).join(''));
+console.log('\n=== CATALOGUE (one price, every round) ===');
 const shopRows = [
   ['Storage', { kind: 'store' }],
   ['Doubler', { kind: 'dup' }],
   ['Copper Mutator', { kind: 'mut', mut: 1 }],
   ['Cobalt Mutator', { kind: 'mut', mut: 4 }],
+  ['Prism Mutator', { kind: 'mut', mut: 7 }],
   ['Fuser', { kind: 'fuse' }],
   ['Engine Assembler', { kind: 'asm', mut: 0 }],
   ['Turbine Assembler', { kind: 'asm', mut: 1 }],
+  ['Reactor Assembler', { kind: 'asm', mut: 2 }],
   ['Trident', { kind: 'trident' }],
 ];
 for (const [name, spec] of shopRows) {
-  console.log(pad(name, 20) + ROUNDS.map(r => pad($(M.shopCost(spec, r)), 9)).join(''));
+  console.log(pad(name, 20) + pad($(M.shopCost(spec)), 9)
+    + '   all-in at L3 ' + pad($(M.investedIn({ ...spec, level: 3 })), 8));
 }
-console.log(pad('markup', 20) + ROUNDS.map(r => pad('x' + M.costMult(r).toFixed(1), 9)).join(''));
 
-console.log('\n=== ROUTING, first one each round (cheap allowance) ===');
-console.log(pad('', 20) + ROUNDS.map(r => pad('R' + r, 9)).join(''));
+console.log('\n=== ROUTING, within one round (the ladder resets each round) ===');
+console.log(pad('', 20) + [1, 2, 3, 4, 5, 6].map(n => pad('#' + n, 9)).join(''));
 for (const k of M.ROUTE_KINDS) {
   console.log(pad(M.KINDS[k].name, 20)
-    + ROUNDS.map(r => pad($(M.routeCost(k, r, 0, 4)), 9)).join(''));
+    + [0, 1, 2, 3, 4, 5].map(n => pad($(M.routeCost(k, n, 4)), 9)).join(''));
 }
-console.log(pad('past allowance', 20)
-  + ROUNDS.map(r => pad($(M.routeCost('pipe', r, 6, 4)), 9)).join(''));
+console.log(pad('(4x4 claim: first 4 at base price)', 20));
 
 console.log('\n=== LADDERS (round-independent) ===');
 console.log('land      ' + [3, 4, 5, 6].map(n => `${n}->${n + 1} ${$(M.expandCost(n))}`).join('   ')

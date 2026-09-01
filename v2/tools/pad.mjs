@@ -75,9 +75,12 @@ push();
 {
   ok(vis('#pad-bar') && vis('#pad-stage-wrap') && vis('#pad-dock'), 'the app shell is present');
   ok(window.document.querySelectorAll('#dock-tabs button').length === 4, 'four dock tabs');
-  const shown = ['select', 'build', 'tech', 'crate'].filter(n => vis('#panel-' + n));
+  const PANELS = ['select', 'build', 'tech', 'crate', 'recipes'];
+  const shown = PANELS.filter(n => vis('#panel-' + n));
   ok(shown.length === 1, 'exactly one panel shows at a time', shown.join(','));
   ok(shown[0] === 'build', 'and a round opens on BUILD, since that is what it is for');
+  ok(!$('#dock-tabs button[data-tab="select"]'), 'there is no SELECT tab to tap');
+  ok(!!$('#dock-tabs button[data-tab="recipes"]'), 'RECIPES took the fourth slot');
   ok(!$('#pad-hint') && !$('#shop-tabs') && !$('#btn-plan'),
     'the old scrolling column is gone');
 }
@@ -94,15 +97,18 @@ push();
 
 /* --- selecting a machine snaps the dock, and dropping it snaps back --------- */
 {
-  $('#dock-tabs button[data-tab="build"]').click();
-  ok(tabOf() === 'build', 'tabs switch on tap');
+  $('#dock-tabs button[data-tab="crate"]').click();
+  ok(tabOf() === 'crate', 'tabs switch on tap');
   ctrl.selectCell(M.cellOf(0, 0));
-  ok(tabOf() === 'select', 'selecting a machine snaps to SELECT');
-  ok(/Conveyor/.test($('#sel-name').textContent), 'and names it', $('#sel-name').textContent);
+  ok(vis('#panel-select') && !vis('#panel-crate'), 'selecting a machine covers the dock');
+  ok(!tabOf(), 'and no tab claims to be open while it does');
+  ok(/Conveyor/.test($('#sel-name').textContent), 'it names the machine',
+    $('#sel-name').textContent);
   ok(/\/s/.test($('#sel-sub').textContent), 'and gives its rate', $('#sel-sub').textContent);
   ok(!$('#btn-rot').disabled, 'ROTATE is live');
   ctrl.selectCell(M.cellOf(0, 0));                    // tap again to deselect
-  ok(tabOf() === 'build', 'dropping it returns to where you were');
+  ok(tabOf() === 'crate' && vis('#panel-crate'), 'dropping it uncovers what was underneath');
+  $('#dock-tabs button[data-tab="build"]').click();
 }
 
 /* --- the level ceiling is explained, not just greyed out ------------------- */
@@ -168,6 +174,67 @@ push();
   go.click();
   ok(f.done.length === known + 1, 'and clicking it completes one', f.done.join(','));
   ok($('#dock-tabs button[data-tab="tech"]').dataset.badge, 'tabs badge what is waiting');
+}
+
+/* --- the recipes tab ---------------------------------------------------------- */
+{
+  $('#dock-tabs button[data-tab="recipes"]').click();
+  ok(tabOf() === 'recipes' && vis('#panel-recipes'), 'RECIPES opens');
+  const fuse = window.document.querySelectorAll('#rec-fuse .rec-row');
+  // Every rung of every family except the top one of each has a fusing recipe.
+  const rungs = (M.FAM_LEN[M.ALLOY] - 1) + (M.FAM_LEN[M.PART] - 1);
+  ok(fuse.length === rungs, 'every fusing step is listed', `${fuse.length} of ${rungs}`);
+  ok(/2x/.test(fuse[0].textContent) && /Copper/.test(fuse[0].textContent),
+    'starting with two Scrap', fuse[0].textContent.replace(/\s+/g, ' ').trim());
+  ok([...fuse].some(r => /Resin/.test(r.textContent) && /Cord/.test(r.textContent)),
+    'and covering the Part family too');
+
+  const asm = window.document.querySelectorAll('#rec-asm .rec-row');
+  ok(asm.length === M.RECIPES.length, 'every Assembler recipe is listed', asm.length + '');
+  const locked = [...asm].filter(r => r.className.includes('locked'));
+  ok(locked.length < asm.length, 'the researched ones are not greyed out',
+    `${locked.length} of ${asm.length} still locked`);
+  ok(/needs research/.test(locked[0]?.textContent || 'needs research'),
+    'and the locked ones say why');
+
+  ok(window.document.querySelectorAll('#rec-mut .rec-row').length === M.FAM_LEN[M.ALLOY] - 1,
+    'every Mutator tier is listed');
+  ok(window.document.querySelectorAll('#rec-rules li').length >= 4, 'the rules are spelled out');
+}
+
+/* --- tapping a fixture ---------------------------------------------------------- */
+{
+  // Producers, vaults and the Lab are drawn outside the grid, so they need their
+  // own hit test — without it they were the three things you could not ask about.
+  const o = ctrl.stage.floorOrigin(ctrl.stage.panelRect(0));
+  const gut = ctrl.stage.gutter || 24;
+  const st = eng.stateFor(0);
+
+  const prod = ctrl.stage.fixtureAt(o.x - gut / 2, o.y + 8, st.v);
+  ok(prod?.kind === 'prod', 'the west gutter hit-tests as a Producer', JSON.stringify(prod));
+  ctrl.tapPoint(o.x - gut / 2, o.y + 8);
+  ok(vis('#panel-select'), 'tapping one opens the info panel');
+  ok(/Producer A/.test($('#sel-name').textContent), 'and says which feed it is',
+    $('#sel-name').textContent);
+  ok(/Scrap/.test($('#sel-sub').textContent) && /\/s\)/.test($('#sel-sub').textContent),
+    'what it drops and how fast', $('#sel-sub').textContent);
+  ok(/SPEED UP|MAX/.test($('#btn-up').textContent), 'and offers the upgrade that runs it',
+    $('#btn-up').textContent);
+  ok($('#btn-scrap').disabled && $('#btn-rot').disabled, 'a fixture cannot be moved or sold');
+
+  const vaultCell = st.v.sv[0][0];
+  const vx = o.x + (M.cx(vaultCell) + 1) * 32 + 6, vy = o.y + M.cy(vaultCell) * 32 + 16;
+  ctrl.tapPoint(vx, vy);
+  ok(/Vault/.test($('#sel-name').textContent), 'the vault answers too',
+    $('#sel-name').textContent);
+
+  const labCell = st.v.lb[0];
+  ctrl.tapPoint(o.x + M.cx(labCell) * 32 + 16, o.y - gut / 2);
+  ok(/Lab/.test($('#sel-name').textContent), 'and so does the Lab', $('#sel-name').textContent);
+  ok(/science/i.test($('#sel-sub').textContent), 'explaining what it pays in');
+
+  ctrl.tapPoint(o.x + M.cx(labCell) * 32 + 16, o.y - gut / 2);   // tap again
+  ok(!vis('#panel-select'), 'tapping the same fixture again closes it');
 }
 
 /* --- solo is reachable from inside the join flow ---------------------------- */

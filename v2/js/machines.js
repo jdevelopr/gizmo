@@ -288,9 +288,6 @@ export const UP_STEP = 2.2;
 /** Producer and Seller levels climb on the same ladder. */
 export const UTIL_STEP = 2.1;
 
-/** Workshop markup, compounding per round. Reaches about 3.5x by round eight. */
-export const SHOP_STEP = 1.2;
-
 /**
  * Belts bought at base price each round before the ladder starts: one row's worth,
  * so a bigger floor gets the longer runs it actually needs. A 3x3 gets three, a 7x7
@@ -800,9 +797,19 @@ export const levelCap = (done = []) =>
 export const routeKindsFor = (done = []) =>
   ROUTE_KINDS.filter(k => k !== 'sort' || unlockedBy(done).has('sort'));
 
-/** Shop prices compound with the rounds, so a late purchase is a real commitment. */
-export const costMult = round => Math.pow(SHOP_STEP, Math.max(0, round - 1));
-export const shopCost = (spec, round) => Math.max(4, Math.round(price(spec) * costMult(round)));
+/**
+ * What a machine costs. The same in round eight as in round one.
+ *
+ * The catalogue used to mark everything up a little each round, compounding, which
+ * is a reasonable instinct — a late purchase should feel like a commitment — but it
+ * makes the wrong thing expensive. Growth in this game already costs more the
+ * further you go: land climbs steeply, levels climb steeply, and each routing
+ * machine in a round costs more than the last. Inflation on top of that punishes
+ * the player who is behind, taxes a plan made in round two and paid for in round
+ * five, and turns a price list you could learn into one you have to re-read every
+ * round. A stable price is a thing you can build a plan around.
+ */
+export const shopCost = spec => Math.max(4, Math.round(price(spec)));
 
 /**
  * Everything buildable right now, priced for this round.
@@ -813,10 +820,10 @@ export const shopCost = (spec, round) => Math.max(4, Math.round(price(spec) * co
  * what it costs, as many as you can afford and can fit. Slots are the limit now,
  * which is the limit it should always have been.
  */
-export function catalogue(done = [], round = 1) {
+export function catalogue(done = []) {
   const on = unlockedBy(done);
   const out = [];
-  const add = spec => out.push({ ...spec, dir: 0, cost: shopCost(spec, round) });
+  const add = spec => out.push({ ...spec, dir: 0, cost: shopCost(spec) });
 
   if (on.has('store')) add({ kind: 'store' });
   add({ kind: 'fuse' });
@@ -828,23 +835,25 @@ export function catalogue(done = [], round = 1) {
 }
 
 /**
- * What the next conveyor costs. The first few each round go for base price whatever
- * the round, because a player who cannot reach a vault cannot score at all and that
- * is not a game. Past those, each belt in the same round costs nearly double the
- * last on top of the round's markup — sprawl is a luxury, reconnecting is a right.
- * @param {number} round
+ * What the next routing machine costs.
+ *
+ * A number of them equal to your plot's width go for base price every round,
+ * because a player who cannot reach a vault cannot score at all and that is not a
+ * game. Past that allowance each one in the same round costs nearly double the
+ * last — sprawl is a luxury, reconnecting is a right. The ladder resets every
+ * round, so it prices a single round's sprawl rather than the whole match.
+ *
  * @param {number} bought how many have already been bought this round
  */
-export function routeCost(kind, round, bought = 0, claim = GRID) {
+export function routeCost(kind, bought = 0, claim = GRID) {
   const base = KINDS[kind]?.price ?? KINDS.pipe.price;
   const free = moverFree(claim);
   if (bought < free) return base;
-  return Math.round(base * costMult(round) * Math.pow(ROUTE_STEP, bought - free + 1));
+  return Math.round(base * Math.pow(ROUTE_STEP, bought - free + 1));
 }
 
 /** The conveyor's price, which is the one every explanation is written around. */
-export const moverCost = (round, bought = 0, claim = GRID) =>
-  routeCost('pipe', round, bought, claim);
+export const moverCost = (bought = 0, claim = GRID) => routeCost('pipe', bought, claim);
 
 /** Deterministic-ish RNG so a round can be replayed from a seed if ever needed. */
 export function rng(seed) {

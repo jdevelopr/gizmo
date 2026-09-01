@@ -226,7 +226,7 @@ export function createEngine(cfgIn = {}) {
 
   /** What the next routing machine of each kind costs this player, right now. */
   const routePrices = p => Object.fromEntries(routeKindsFor(p?.f?.done || []).map(k => [
-    k, routeCost(k, Math.max(1, round), p?.movers || 0, p?.f?.claim ?? CLAIM_START),
+    k, routeCost(k, p?.movers || 0, p?.f?.claim ?? CLAIM_START),
   ]));
   const nextMover = p => routePrices(p).pipe;
 
@@ -259,7 +259,7 @@ export function createEngine(cfgIn = {}) {
 
     if (msg.t === 'buy') {
       if (phase !== 'plan') return note(p, 'The catalogue is open between rounds');
-      const spec = catalogue(p.f.done, round)[msg.i];
+      const spec = catalogue(p.f.done)[msg.i];
       if (!spec) return;
       const cost = spec.cost ?? price(spec);
       if (p.f.cash < cost) return note(p, `Need $${cost}`);
@@ -358,7 +358,7 @@ export function createEngine(cfgIn = {}) {
    */
   function buildView(p) {
     return {
-      opts: catalogue(p.f.done, round).map(s => ({
+      opts: catalogue(p.f.done).map(s => ({
         kind: s.kind, mut: s.mut, dir: s.dir,
         name: label(s), desc: describe(s), cost: s.cost ?? price(s),
         tint: s.kind === 'mut' ? TYPES[s.mut].color

@@ -10,7 +10,10 @@ import { Stage, drawPanel, playFx, PLAYER_COLORS } from './render.js';
 import {
   KINDS, DIR_NAME, MAX_LEVEL, MAX_UTIL, GRID, setGridSize,
   upgradeCost, scrapValue, producerCost, sellerCost, label,
-  cycleTime, claimed, describe, TYPES, ROUTE_KINDS,
+  cycleTime, claimed, describe, TYPES, ROUTE_KINDS, cy,
+  RECIPES, MUT_CYCLE, unlockedBy, upFam, FAM_START, FAM_LEN,
+  ALLOY, PART, PRODUCT, COPY_MAX_VALUE,
+  producerCycle, sellerMult, RESIN_CLAIM, SECOND_VAULT_CLAIM, SCIENCE_RATE,
 } from './machines.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -24,6 +27,7 @@ export function createController({ send }) {
   let view = null, prev = null, tNext = 0, tPrev = 0;
   let hud = null, shop = null;
   let sel = null;              // 'g3' | 'i1' | null
+  let info = null;             // a tapped fixture: producer, vault or Lab
   let lastPhase = '';
   let raf = 0, last = 0;
 
@@ -47,9 +51,13 @@ export function createController({ send }) {
     const bx = (e.clientX - r.left) / (r.width / stage.W);
     const by = (e.clientY - r.top) / (r.height / stage.H);
     // Near-misses snap to the nearest slot; a real miss clears the selection.
+    // Fixtures first: they are drawn outside the floor, and `cellAt` is forgiving
+    // enough that a tap on the gutter would otherwise snap to the nearest slot.
+    const fx = stage.fixtureAt(bx, by, view);
+    if (fx) { setInfo(fx); buzz(10); return; }
     const i = stage.cellAt(bx, by);
     if (i < 0) {
-      if (sel) { setSel(null); buzz(8); }
+      if (sel || info) { setSel(null); buzz(8); }
       return;
     }
     tapCell(i);
@@ -103,7 +111,11 @@ export function createController({ send }) {
   });
   wire('#btn-filt', () => { if (sel) act({ a: 'filt', ref: sel }); });
   wire('#btn-mir', () => { if (sel) act({ a: 'mir', ref: sel }); });
-  wire('#btn-up', () => { if (sel) act({ a: 'up', ref: sel }); });
+  // UPGRADE means whatever is on screen: a machine's level, or a fixture's.
+  wire('#btn-up', () => {
+    if (info) return act({ a: info.kind === 'prod' ? 'upprod' : 'upsell' });
+    if (sel) act({ a: 'up', ref: sel });
+  });
   wire('#btn-scrap', () => {
     if (!sel) return;
     act({ a: 'scrap', ref: sel });
@@ -136,46 +148,62 @@ export function createController({ send }) {
 
   /* ---------------------------------------------------------------- dock --- */
 
-  const TABS = ['select', 'build', 'tech', 'crate'];
-  let tab = 'select';
-  let lastTab = 'build';        // where to go back to when a selection is dropped
+  /*
+   * The dock's tabs. SELECT is not among them: tapping a machine opens its controls
+   * by itself, so a button that takes you somewhere you have already been taken was
+   * a quarter of the dock spent on nothing. The selection panel simply covers
+   * whichever tab is open, and uncovers it again when the selection is dropped.
+   */
+  const TABS = ['build', 'tech', 'crate', 'recipes'];
+  let tab = 'build';
 
   for (const b of document.querySelectorAll('#dock-tabs button')) {
     b.addEventListener('click', e => {
       e.preventDefault();
-      setTab(b.dataset.tab, true);
+      setTab(b.dataset.tab);
       buzz(10);
     });
   }
 
-  function setTab(next, manual = false) {
-    if (!TABS.includes(next) || next === tab) return;
-    if (manual && next !== 'select') lastTab = next;
+  function setTab(next) {
+    if (!TABS.includes(next)) return;
+    // Choosing a tab is also a way of saying you are done with the machine you had
+    // selected, so it clears the selection rather than being covered by it.
+    if (sel || info) { sel = null; info = null; paintAll(); }
     tab = next;
     paintDock();
   }
 
   /**
-   * Selecting a machine snaps the dock to its controls and dropping the selection
-   * snaps back to whatever you were doing before. The alternative — a permanent
-   * selection strip — costs the same pixels whether or not anything is selected.
+   * Selecting a machine covers the dock with its controls; dropping the selection
+   * uncovers whatever tab was underneath. The alternative — a permanent selection
+   * strip — costs the same pixels whether or not anything is selected.
    */
   function setSel(next) {
-    const had = !!sel;
     sel = next;
-    if (sel && tab !== 'select') { tab = 'select'; }
-    else if (!sel && had && tab === 'select') { tab = lastTab; }
+    if (next) info = null;
+    paintDock();
+    paintAll();
+  }
+
+  /** Show a fixture in the same panel a machine uses. Tapping it again closes it. */
+  function setInfo(next) {
+    const same = info && next && info.kind === next.kind && info.idx === next.idx;
+    info = same ? null : next;
+    if (info) sel = null;
     paintDock();
     paintAll();
   }
 
   function paintDock() {
-    for (const b of document.querySelectorAll('#dock-tabs button')) {
-      b.setAttribute('aria-pressed', b.dataset.tab === tab ? 'true' : 'false');
-    }
+    const showSel = !!sel || !!info;
+    $('#panel-select').hidden = !showSel;
     for (const name of TABS) {
       const el = $('#panel-' + name);
-      if (el) el.hidden = name !== tab;
+      if (el) el.hidden = showSel || name !== tab;
+    }
+    for (const b of document.querySelectorAll('#dock-tabs button')) {
+      b.setAttribute('aria-pressed', !showSel && b.dataset.tab === tab ? 'true' : 'false');
     }
     badges();
   }
@@ -205,6 +233,7 @@ export function createController({ send }) {
     paintBuild();
     paintTech();
     paintCrate();
+    paintRecipes();
     paintAction();
     badges();
   }
@@ -256,10 +285,66 @@ export function createController({ send }) {
     }
   }
 
+  /**
+   * A Producer, a vault or the Lab, described in the panel a machine would use.
+   * None of them occupies a slot, so none of them can be moved, rotated or sold —
+   * but every one of them is something a player wants to be able to ask about, and
+   * two of the three carry the upgrade that matters most.
+   */
+  function paintFixture() {
+    const fb = $('#btn-filt'), mb = $('#btn-mir');
+    fb.hidden = true; mb.hidden = true;
+    for (const id of ['#btn-scrap', '#btn-rot', '#btn-stow']) $(id).disabled = true;
+    $('#btn-scrap').textContent = 'SCRAP';
+
+    const up = $('#btn-up');
+    if (info.kind === 'prod') {
+      const t = TYPES[info.ty];
+      const cyc = producerCycle(view.pl);
+      const feeds = (view.pp || []).length;
+      $('#sel-name').textContent = `Producer ${'AB'[info.idx] || '?'} · ${t.name} · L${view.pl}`;
+      $('#sel-sub').textContent =
+        `Drops ${t.name} ($${t.value}) into row ${cy(info.cell) + 1} every ${cyc.toFixed(2)}s `
+        + `(${(1 / cyc).toFixed(2)}/s).`
+        + (feeds > 1
+          ? ' One level runs both feeds, which is what makes this upgrade worth its price.'
+          : ` A second feed drops Resin once your plot is ${RESIN_CLAIM}x${RESIN_CLAIM}.`)
+        + (info.stalled ? ' STALLED — the floor has nowhere to put the next one.' : '');
+      const c = producerCost(view.pl);
+      up.hidden = false;
+      up.disabled = view.pl >= MAX_UTIL || view.c < c;
+      up.textContent = view.pl >= MAX_UTIL ? 'PRODUCERS MAX' : `SPEED UP $${c}`;
+      return;
+    }
+    if (info.kind === 'vault') {
+      const n = (view.sv || []).length;
+      const c = sellerCost(view.sl);
+      $('#sel-name').textContent = `Vault · L${view.sl} · pays x${sellerMult(view.sl).toFixed(1)}`;
+      $('#sel-sub').textContent =
+        `Anything pushed out of the floor at this face sells. Welded to the east fence, so `
+        + `it only moves when you claim land.`
+        + (n > 1 ? ' Both vaults share this level.' : ` A second vault opens at ${SECOND_VAULT_CLAIM}x${SECOND_VAULT_CLAIM}.`);
+      up.hidden = false;
+      up.disabled = view.sl >= MAX_UTIL || view.c < c;
+      up.textContent = view.sl >= MAX_UTIL ? 'VAULTS MAX' : `BETTER PRICES $${c}`;
+      return;
+    }
+    $('#sel-name').textContent = `The Lab · ${view.sc || 0} science banked`;
+    $('#sel-sub').textContent =
+      `Pays in science instead of cash: ${SCIENCE_RATE === 1
+        ? 'a gizmo is worth exactly what the vault would have paid for it'
+        : `a gizmo is worth ${SCIENCE_RATE}x its value here`}, so the only cost of research `
+      + 'is the money you did not take. One face round from the vault, which is why a '
+      + 'Balancer on this slot splits your output between money and growth.';
+    up.hidden = true;
+  }
+
   function paintSelect() {
-    const m = selMachine();
     const fb = $('#btn-filt');
     const mb = $('#btn-mir');
+    $('#btn-up').hidden = false;
+    if (info) return paintFixture();
+    const m = selMachine();
     if (!m) {
       $('#sel-name').textContent = 'Nothing selected';
       $('#sel-sub').textContent =
@@ -369,7 +454,7 @@ export function createController({ send }) {
 
   let expandFlash = 0;
   function flashExpand() {
-    setTab('build', true);
+    setTab('build');
     const b = $('#btn-expand');
     if (!b || b.hidden) return;
     b.dataset.nudge = 'on';
@@ -438,6 +523,101 @@ export function createController({ send }) {
     }
   }
 
+  /**
+   * Every transformation in the game, generated from the same data the simulation
+   * runs on. Built once — none of it changes during a match except which Assembler
+   * recipes are unlocked, which is the one thing repainted.
+   */
+  let recipesBuilt = false;
+
+  const chip = (ty, prefix = '') => {
+    const t = TYPES[ty];
+    return `<span class="rec-chip"><i style="--c:${t.color}"></i>${prefix}<b>${t.name}</b></span>`;
+  };
+
+  function recRow(inner, out, note, locked = false, tint = null) {
+    const row = document.createElement('div');
+    row.className = 'rec-row' + (locked ? ' locked' : '');
+    if (tint) row.style.setProperty('--tint', tint);
+    row.innerHTML = `<div class="rec-in">${inner}</div>`
+      + `<div class="rec-out">${out}${note ? `<div class="rec-note">${note}</div>` : ''}</div>`;
+    return row;
+  }
+
+  function buildRecipes() {
+    // --- fusing: two of a kind, one rung up, within a family ---
+    const fuse = $('#rec-fuse');
+    fuse.innerHTML = '';
+    for (const fam of [ALLOY, PART]) {
+      for (let k = 0; k < FAM_LEN[fam] - 1; k++) {
+        const ty = FAM_START[fam] + k;
+        const up = upFam(ty);
+        fuse.appendChild(recRow(
+          `${chip(ty, '2x ')}<span class="rec-arrow">→</span>${chip(up)}`,
+          '$' + TYPES[up].value,
+          `from $${TYPES[ty].value * 2}`,
+          false, TYPES[up].color,
+        ));
+      }
+    }
+
+    // --- mutators: anything in, one type out, at a tier-dependent pace ---
+    const mut = $('#rec-mut');
+    mut.innerHTML = '';
+    for (let t = 1; t < FAM_LEN[ALLOY]; t++) {
+      const cyc = MUT_CYCLE[t];
+      mut.appendChild(recRow(
+        `<span class="rec-chip">anything</span><span class="rec-arrow">→</span>${chip(t)}`,
+        '$' + TYPES[t].value,
+        `${(1 / cyc).toFixed(2)}/s · $${(TYPES[t].value / cyc).toFixed(1)}/s`,
+        false, TYPES[t].color,
+      ));
+    }
+
+    // --- the rules that are not obvious from any single row ---
+    const rules = $('#rec-rules');
+    rules.innerHTML = '';
+    for (const [head, body] of [
+      ['Fusing barely gains value',
+        `two Cobalt are worth $${TYPES[4].value * 2} and make a $${TYPES[5].value} Void. What you buy is `
+        + 'density: one gizmo where there were two, on a belt that only fits so many.'],
+      ['Mismatched tiers take the higher, plus one',
+        'Scrap and Cobalt fuse to Void — the cheap one is pure waste, so do not merge '
+        + 'two lines carelessly into a Fuser.'],
+      ['A level 3 Fuser jumps two rungs',
+        'but only on a matching pair. Mismatched still gains one.'],
+      ['Families never mix',
+        'a Fuser holding Resin refuses Scrap outright and the belt behind it backs up. '
+        + 'Products are terminal: nothing fuses an Engine.'],
+      ['Two originals make an original',
+        `feed a copy in and a copy comes out. Nothing worth more than $${COPY_MAX_VALUE} is copied at all.`],
+    ]) {
+      const li = document.createElement('li');
+      li.innerHTML = `<b>${head}</b> — ${body}`;
+      rules.appendChild(li);
+    }
+    recipesBuilt = true;
+  }
+
+  function paintRecipes() {
+    if (!recipesBuilt) buildRecipes();
+    // Assembler recipes are the only part that changes: research opens them.
+    const on = unlockedBy(view.dn || []);
+    const asm = $('#rec-asm');
+    asm.innerHTML = '';
+    RECIPES.forEach((r, i) => {
+      const locked = !on.has('asm:' + i);
+      asm.appendChild(recRow(
+        `${chip(r.ins[0])}<span class="rec-arrow">+</span>${chip(r.ins[1])}`
+          + `<span class="rec-arrow">→</span>${chip(r.out)}`,
+        '$' + TYPES[r.out].value,
+        locked ? 'needs research' : `${r.cycle}s · $${(TYPES[r.out].value / r.cycle).toFixed(1)}/s`,
+        locked, TYPES[r.out].color,
+      ));
+    });
+    void PRODUCT;
+  }
+
   function paintCrate() {
     const row = $('#pad-inv');
     if (!row) return;
@@ -480,7 +660,7 @@ export function createController({ send }) {
     if (sel) {
       const i = parseInt(sel.slice(1), 10);
       const still = sel[0] === 'g' ? view.g[i] : view.v[i];
-      if (!still) { sel = null; if (tab === 'select') tab = lastTab; }
+      if (!still) sel = null;
     }
 
     if (msg.fx?.length) {
@@ -496,7 +676,7 @@ export function createController({ send }) {
       document.body.dataset.phase = hud.ph;
       // The build phase is the one moment the dock has something to say, so it
       // opens itself there — but never over an active selection.
-      if (hud.ph === 'plan' && !sel) { tab = 'build'; lastTab = 'build'; }
+      if (hud.ph === 'plan' && !sel) tab = 'build';
     }
 
     paintDock();
@@ -574,7 +754,16 @@ export function createController({ send }) {
     if (text) bannerT = setTimeout(() => { el.hidden = true; }, secs * 1000);
   }
 
-  // selectCell is exposed so the headless pad harness can tap the board without a
-  // pointer event; banner so solo mode can drive announcements.
-  return { applyState, start, destroy, fit, stage, banner, selectCell: tapCell };
+  /** A tap at art coordinates, taking the same path a real pointer would. */
+  function tapPoint(bx, by) {
+    const fx = stage.fixtureAt(bx, by, view);
+    if (fx) return setInfo(fx);
+    const i = stage.cellAt(bx, by);
+    if (i >= 0) return tapCell(i);
+    if (sel || info) setSel(null);
+  }
+
+  // selectCell and tapPoint are exposed so the headless pad harness can drive the
+  // board without pointer events; banner so solo mode can drive announcements.
+  return { applyState, start, destroy, fit, stage, banner, selectCell: tapCell, tapPoint };
 }

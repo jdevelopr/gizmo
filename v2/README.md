@@ -47,15 +47,24 @@ magnitude — any single ladder of numbers is either free for a good player or
 impossible for a new one. A floor under it keeps the target climbing even after a
 flat round, so standing still stops paying.
 
+**A machine costs the same in round eight as in round one.** The catalogue used to
+mark everything up a little each round, compounding, which is a reasonable instinct —
+a late purchase should feel like a commitment — but it makes the wrong thing
+expensive. Growth here already costs more the further you go: land climbs steeply, so
+do machine levels, and so does each routing machine after the first few in a round.
+Inflation on top of that punishes whoever is behind, taxes a plan made in round two
+and paid for in round five, and turns a price list you could learn into one you have
+to re-read every round. Stable prices are something you can build a plan around.
+
 **The economy is calibrated, not guessed.** Prices in GIZMO all multiply, and
 multiplications compound quietly: the inherited numbers marked the shop up 55% a
-round, which is 21x by round eight, and put maxing the Producer — the one upgrade
-that raises the raw ceiling everything else depends on — at $8,670 against an
-opening income of $67 a round. Every ladder has been reset against what a floor can
-actually earn. `tools/economy.mjs` prints the whole cost structure plus worked
-builds run through the real simulation, so the question "can I afford the thing I am
-trying to build" has an answer rather than a vibe. Every build in that table now
-pays for itself inside two rounds.
+round — 21x by round eight — and put maxing the Producer, the one upgrade that raises
+the raw ceiling everything else depends on, at $8,670 against an opening income of $67
+a round. Every ladder has been reset against what a floor can actually earn, and the
+per-round markup is gone entirely. `tools/economy.mjs` prints the whole cost structure
+plus worked builds run through the real simulation, so the question "can I afford the
+thing I am trying to build" has an answer rather than a vibe. Every build in that
+table pays for itself inside two rounds.
 
 **Routing is its own thing now.** The old Splitter copied — original ahead, copy to
 the right — which meant the only way to send gizmos two ways was to make more of
@@ -186,6 +195,25 @@ It got that way because it had to. Each phase of this project appended its contr
 to the end of a single scrolling column: the order strip, two more routing buttons,
 CLAIM LAND, a FILTER button, a tabbed build sheet. By the end that was about 600px
 of chrome above the fold on a phone, and the board — the actual game — was a sliver.
+
+The four tabs are **BUILD**, **TECH**, **CRATE** and **RECIPES**. There is no SELECT
+tab: tapping a machine opens its controls by itself, so a button that took you
+somewhere you had already been taken was a quarter of the dock spent on nothing. The
+selection panel simply covers whichever tab is open and uncovers it again when you
+drop the selection.
+
+RECIPES is every transformation in the game in one place — fusing, Assembler recipes
+(greyed until researched), Mutator rates, and the handful of rules that are not
+obvious from any single row. It is generated from `machines.js` like the manual is,
+so it cannot drift. It exists because "what do two of these make" is a question that
+comes up mid-round, and leaving the floor to answer it is the wrong shape.
+
+**The Producers, the vaults and the Lab are tappable.** They are drawn outside the
+grid, so they fell through the slot hit test and were the three most important
+objects on a floor that you could not ask about. Tapping one opens it in the same
+panel a machine uses: what it drops and how fast, what a vault pays, what the Lab
+converts — and the upgrade that runs it, which also gives those two upgrades a
+second and far more discoverable home than a heading in the BUILD tab.
 
 Three things the dock buys beyond room:
 

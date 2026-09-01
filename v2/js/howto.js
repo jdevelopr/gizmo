@@ -12,8 +12,8 @@ import {
   KINDS, TYPES, MUT_PRICE, MAX_LEVEL, MAX_UTIL, DIR_NAME,
   cycleTime, upgradeCost, scrapValue, outputs, capacity, EMPTY_HOLD,
   exitDirs as machineExits, routeCost, ROUTE_KINDS,
-  moverCost, moverFree, SCRAP_RATE, UP_STEP, UTIL_STEP, SHOP_STEP,
-  producerCycle, producerCost, sellerMult, sellerCost, shopCost, costMult,
+  moverFree, SCRAP_RATE, UP_STEP, UTIL_STEP, investedIn,
+  producerCycle, producerCost, sellerMult, sellerCost, shopCost,
   GRID, CLAIM_START, SECOND_VAULT_CLAIM, expandCost,
   RECIPES, recipeText, RESIN_CLAIM, FAM_START, FAM_LEN, ALLOY, PART, PRODUCT, price,
   TECH, unlockedBy, levelCap, COPY_MAX_VALUE, SCIENCE_RATE, KIND_LIST,
@@ -415,38 +415,52 @@ function build() {
   fix.appendChild(pair);
   body.appendChild(fix);
 
-  /* --- shop -------------------------------------------------------------- */
-  const shop = section('WHAT THE SHOP CHARGES',
-    `Everything a floor earns multiplies — machine level times producer rate times seller `
-    + `take — so the prices multiply too. Each level of anything costs ${UTIL_STEP}x the last, and the `
-    + `workshop marks up ${Math.round((SHOP_STEP - 1) * 100)}% every round, compounding. Buy one more thing a round, not `
-    + `everything.`);
-  shop.appendChild(table(['Round', 'Markup', 'Conveyor', 'Storage', 'Fuser', 'Engine Asm', 'Cobalt Mut'],
-    [1, 2, 3, 4, 5, 6, 7, 8].map(r => ['R' + r, 'x' + r2(costMult(r)),
-      { v: money(shopCost({ kind: 'pipe' }, r)), cls: 'ht-buy' },
-      { v: money(shopCost({ kind: 'store' }, r)), cls: 'ht-buy' },
-      { v: money(shopCost({ kind: 'fuse' }, r)), cls: 'ht-buy' },
-      { v: money(shopCost({ kind: 'asm', mut: 0 }, r)), cls: 'ht-buy' },
-      { v: money(shopCost({ kind: 'mut', mut: 4 }, r)), cls: 'ht-buy' }])));
+  /* --- prices ------------------------------------------------------------ */
+  const shop = section('WHAT THINGS COST',
+    'A machine costs the same in the last round as it does in the first. Growth in this '
+    + 'game is already expensive — land climbs steeply, so do levels, and so does each '
+    + 'routing machine after the first few in a round — and inflation on top of that only '
+    + `punishes whoever is behind. Each level of a fixture costs ${UTIL_STEP}x the last; each level `
+    + `of a machine costs ${UP_STEP}x the last, worked out from its base price.`);
+  shop.appendChild(table(['Machine', 'Buy', 'Level 2', 'Level 3', 'All in', 'Scrap back'],
+    [
+      ['Conveyor', { kind: 'pipe' }],
+      ['Balancer', { kind: 'bal' }],
+      ['Sorter', { kind: 'sort' }],
+      ['Storage', { kind: 'store' }],
+      ['Fuser', { kind: 'fuse' }],
+      ['Doubler', { kind: 'dup' }],
+      ['Trident', { kind: 'trident' }],
+      ['Engine Assembler', { kind: 'asm', mut: 0 }],
+      ['Turbine Assembler', { kind: 'asm', mut: 1 }],
+      ['Reactor Assembler', { kind: 'asm', mut: 2 }],
+    ].map(([name, spec]) => [
+      name,
+      { v: money(shopCost(spec)), cls: 'ht-buy' },
+      { v: money(upgradeCost({ ...spec, level: 1 })), cls: 'ht-buy' },
+      { v: money(upgradeCost({ ...spec, level: 2 })), cls: 'ht-buy' },
+      money(investedIn({ ...spec, level: MAX_LEVEL })),
+      { v: '+' + money(scrapValue({ ...spec, level: MAX_LEVEL })), cls: 'ht-sell' },
+    ])));
+
   shop.appendChild(el('p', 'ht-custody',
-    `Routing machines are the exception. A Conveyor, a Balancer and a Sorter all only `
-    + `decide where a gizmo goes — none of them makes one worth more — so all three are on `
-    + `sale from your phone in any phase, in any number you can pay for, and none of them `
-    + `counts against the one machine a round from the workshop. They also share one price `
-    + `ladder and one counter: each round, a number of them equal to your plot's width go `
-    + `for base price whatever the round it is, and that allowance is a budget you spend `
-    + `how you like — a long belt run, or one Balancer and a Sorter. Past it, each one in `
-    + `the same round costs nearly double the last on top of the round's markup. Sprawl is `
-    + `a luxury; reconnecting is a right.`));
+    'Routing machines are priced differently, because they are the one thing you cannot '
+    + 'be allowed to run out of. A Conveyor, a Balancer and a Sorter only decide where a '
+    + 'gizmo goes — none of them makes one worth more — so all three are on sale from your '
+    + 'phone in every phase, including while the floor is running. They share one ladder '
+    + "and one counter: each round, a number of them equal to your plot's width go for "
+    + 'base price, and that allowance is a budget you spend how you like — a long belt '
+    + 'run, or one Balancer and a Sorter. Past it, each one in the same round costs nearly '
+    + 'double the last, and the ladder resets when the next round starts. Sprawl is a '
+    + 'luxury; reconnecting is a right.'));
   shop.appendChild(table(['Routing', '1st this round', '2nd', '3rd', '4th', '5th', '6th'],
     ROUTE_KINDS.map(k => [KINDS[k].name, ...[0, 1, 2, 3, 4, 5].map(n =>
-      ({ v: money(routeCost(k, 1, n, CLAIM_START)),
+      ({ v: money(routeCost(k, n, CLAIM_START)),
         cls: n < moverFree(CLAIM_START) ? 'ht-sell' : 'ht-buy' }))])));
   shop.appendChild(el('p', 'ht-note',
-    `Round 1 on a ${CLAIM_START} x ${CLAIM_START} claim, where the first ${moverFree(CLAIM_START)} routing machines are cheap. `
-    + `A wider plot gets more of them at base price, and later rounds mark up everything past the allowance. `
-    + `The counter is shared: buying a Balancer uses up one of the cheap belts, and the other way round. `
-    + `A conveyor in round 8 past the allowance runs to ${money(moverCost(8, moverFree(CLAIM_START) + 2, CLAIM_START))}.`));
+    `Shown for a ${CLAIM_START} x ${CLAIM_START} claim, where the first ${moverFree(CLAIM_START)} are cheap. A wider plot gets more `
+    + 'of them at base price. The counter is shared: buying a Balancer uses up one of the '
+    + 'cheap belts, and the other way round.'));
   body.appendChild(shop);
 
   /* --- families ---------------------------------------------------------- */

@@ -25,13 +25,13 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
   const open = M.unlockedBy([]);
   ok(!open.has('dup') && !open.has('store') && !open.has('sort') && !open.has('trident'),
     'the tree really starts locked', [...open].join(','));
-  ok(M.catalogue([], 1).every(s => s.kind !== 'dup' && s.kind !== 'asm'),
+  ok(M.catalogue([]).every(s => s.kind !== 'dup' && s.kind !== 'asm'),
     'the catalogue offers nothing unresearched');
   ok(!M.routeKindsFor([]).includes('sort'), 'the Sorter is not on the plumbing shelf yet');
   ok(M.routeKindsFor(['sorting']).includes('sort'), 'Sorting puts it there');
-  ok(M.catalogue(['assembly'], 1).some(s => s.kind === 'asm' && s.mut === 0),
+  ok(M.catalogue(['assembly']).some(s => s.kind === 'asm' && s.mut === 0),
     'Assembly opens the Engine recipe');
-  ok(!M.catalogue(['assembly'], 1).some(s => s.kind === 'asm' && s.mut === 1),
+  ok(!M.catalogue(['assembly']).some(s => s.kind === 'asm' && s.mut === 1),
     'but not the Turbine, which is its own node');
   ok(M.levelCap([]) === 2 && M.levelCap(['overclock']) === 3, 'Overclocking raises the ceiling');
 
@@ -118,7 +118,7 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
           eng.action(0, { t: 'research', id: node.id });
         }
       }
-      const cat = M.catalogue(f.done, eng.round);
+      const cat = M.catalogue(f.done);
       const buy = cat.map((c, i) => ({ i, c })).filter(x => x.c.kind === 'mut' && x.c.cost <= f.cash)
         .sort((a, b) => b.c.cost - a.c.cost)[0];
       if (buy) {

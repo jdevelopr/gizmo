@@ -14,7 +14,7 @@ import {
   exitDirs as machineExits, routeCost, ROUTE_KINDS,
   moverFree, SCRAP_RATE, UP_STEP, UTIL_STEP, investedIn,
   producerCycle, producerCost, sellerMult, sellerCost, shopCost,
-  GRID, CLAIM_START, SECOND_VAULT_CLAIM, expandCost,
+  GRID, CLAIM_START, SECOND_VAULT_CLAIM, expandCost, RUBBLE_COST,
   RECIPES, recipeText, RESIN_CLAIM, FAM_START, FAM_LEN, ALLOY, PART, PRODUCT, price,
   TECH, unlockedBy, levelCap, COPY_MAX_VALUE, SCIENCE_RATE, KIND_LIST,
   ORDER_GROWTH, ORDER_FLOOR_GROWTH, ORDER_BONUS,
@@ -161,6 +161,26 @@ function build() {
     + 'the end wins, and money you spend still counts, so buying is never a penalty.'));
   body.appendChild(loop);
 
+  /* --- the map ----------------------------------------------------------- */
+  const map = section('THE MAP',
+    'Every match generates a plot: which rows the feeds enter on, which faces the '
+    + 'vaults and the Lab trade from, and what is lying on the ground. Everyone in a '
+    + 'match plays the same one — the map is what differs between games, never between '
+    + 'the people in one. The seed is on your CRATE tab if you want to play it again.');
+  map.appendChild(el('p', 'ht-custody',
+    `Rubble is loose stone on an otherwise good slot: clear it for ${money(RUBBLE_COST)} and build `
+    + 'there. Bedrock never moves — it is the shape of the plot, and routing around it is '
+    + 'the map\u2019s whole contribution to the game. Both are drawn on land you have not '
+    + 'bought yet as well, so you can see what a ring holds before you pay for it. A belt '
+    + 'aimed at either loses what it sends, exactly as if it were the edge of the world.'));
+  map.appendChild(el('p', 'ht-note',
+    'Where the Lab lands relative to the vault is the most interesting thing the '
+    + 'generator decides. Next door, and a Balancer on that slot splits your output '
+    + 'between money and research. Across the floor, and serving both is a routing '
+    + 'problem worth a Sorter. Every map is guaranteed to have a way through to every '
+    + 'fixture, and a clear route for the line you start with.'));
+  body.appendChild(map);
+
   /* --- the plot ---------------------------------------------------------- */
   const plot = section('YOUR PLOT',
     `You start owning a ${CLAIM_START} x ${CLAIM_START} corner of a ${GRID} x ${GRID} plot. `
@@ -175,7 +195,7 @@ function build() {
     + 'and that is the point at which running two arms starts to pay for the slots.'));
   plot.appendChild(el('p', 'ht-custody',
     `Land is also how the factory gets its second half. At ${RESIN_CLAIM} x ${RESIN_CLAIM} a second Producer `
-    + 'bolts onto the west face one row below the first and starts dropping Resin — the '
+    + 'bolts onto the west face and starts dropping Resin — the '
     + 'material every recipe needs and nothing else makes. Nine slots is not enough floor '
     + 'to run two feeds into an Assembler, which is why it waits for the first ring rather '
     + 'than being there from the start.'));

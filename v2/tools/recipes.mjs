@@ -9,10 +9,10 @@
  *
  *   node tools/recipes.mjs
  */
-import { createFactory, stepFactory, beginRound, expandFloor } from '../js/sim.js';
+import { createFactory, stepFactory, beginRound, expandFloor, portsOf } from '../js/sim.js';
 import {
   makeMachine, cellOf, setGridSize, TYPES, RECIPES, wants, outputs,
-  activePorts, RESIN_CLAIM, famOf, PART, PRODUCT,
+  RESIN_CLAIM, famOf, PART, PRODUCT, plainPlot,
 } from '../js/machines.js';
 import * as M from '../js/machines.js';
 
@@ -27,10 +27,10 @@ const nm = ty => TYPES[ty].name;
 
 /* --- the second feed opens with the land ---------------------------------- */
 {
-  const f = createFactory({ cash: 0, claim: 3 });
-  ok(activePorts(f.claim).length === 1, 'one feed on the opening claim');
+  const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
+  ok(portsOf(f).length === 1, 'one feed on the opening claim');
   expandFloor(f);
-  const ports = activePorts(f.claim);
+  const ports = portsOf(f);
   ok(f.claim === RESIN_CLAIM && ports.length === 2, `a second feed opens at ${RESIN_CLAIM}x${RESIN_CLAIM}`);
   ok(ports[0].ty === 0 && ports[1].ty === 8, 'the feeds drop Scrap and Resin', ports.map(p => nm(p.ty)).join(' + '));
   ok(ports[0].cell !== ports[1].cell, 'the feeds enter at different slots');
@@ -91,7 +91,7 @@ const nm = ty => TYPES[ty].name;
   //   A(Scrap) > [Amber Mutator] > belt south
   //                                    v
   //   B(Resin) > [Fuser: Cord]  > [ASSEMBLER ] > belt north > belt east > VAULT
-  const f = createFactory({ cash: 0, claim: 3 });
+  const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
   expandFloor(f);                              // 4x4, which is where Resin starts
   put(f, 0, 0, { kind: 'mut', dir: 0, mut: 2 });      // Scrap -> Amber
   put(f, 1, 0, { kind: 'pipe', dir: 1 });             // Amber south into the assembler

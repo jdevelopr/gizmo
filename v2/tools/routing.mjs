@@ -12,7 +12,7 @@
  *   node tools/routing.mjs
  */
 import { createFactory, stepFactory, beginRound, giveMachine } from '../js/sim.js';
-import { makeMachine, cellOf, setGridSize, GRID } from '../js/machines.js';
+import { makeMachine, cellOf, setGridSize, GRID, plainPlot } from '../js/machines.js';
 import * as M from '../js/machines.js';
 
 setGridSize(7);
@@ -29,7 +29,7 @@ const run = (f, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepF
 {
   // producer -> belt -> BALANCER. East arm runs to the vault; south arm runs to a
   // dead edge, so "sold" counts one exit and "lost" counts the other.
-  const f = createFactory({ cash: 0, claim: 3 });
+  const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
   put(f, 0, 0, { kind: 'pipe', dir: 0 });
   put(f, 1, 0, { kind: 'bal', dir: 0 });
   put(f, 2, 0, { kind: 'pipe', dir: 0 });     // east arm -> vault at (2,0)
@@ -52,7 +52,7 @@ const run = (f, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepF
 
 /* --- 2: a blocked arm must not stall the other --------------------------- */
 {
-  const f = createFactory({ cash: 0, claim: 3 });
+  const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
   put(f, 0, 0, { kind: 'pipe', dir: 0 });
   put(f, 1, 0, { kind: 'bal', dir: 0 });
   put(f, 2, 0, { kind: 'pipe', dir: 0 });     // east arm -> vault
@@ -68,7 +68,7 @@ const run = (f, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepF
 
 /* --- 3: the sorter ------------------------------------------------------- */
 {
-  const f = createFactory({ cash: 0, claim: 3 });
+  const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
   put(f, 1, 1, { kind: 'sort', dir: 0, mut: 1 });   // Copper right (south), rest ahead (east)
   const sorter = f.grid[cellOf(1, 1)];
   f.running = true;
@@ -132,7 +132,7 @@ const run = (f, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepF
   };
 
   for (const fill of [0, 3, 6]) {
-    const f = createFactory({ cash: 0, claim: 3 });
+    const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
     for (const c of M.claimCells(3).slice(0, fill)) {
       f.grid[c] = makeMachine({ kind: 'pipe', dir: 0 }, 90 + c);
     }
@@ -146,7 +146,7 @@ const run = (f, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepF
 
 /* --- 3b: a full filtered arm makes the sorter hold, never misroute -------- */
 {
-  const f = createFactory({ cash: 0, claim: 3 });
+  const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
   put(f, 1, 1, { kind: 'sort', dir: 0, mut: 1 });
   put(f, 1, 2, { kind: 'pipe', dir: 3 });      // side exit points straight back: fills up
   const sorter = f.grid[cellOf(1, 1)];

@@ -13,7 +13,7 @@ import {
   price, label, describe, setGridSize, GRID,
   routeCost, moverFree, routeKindsFor, KINDS, TYPES, DIR_NAME,
   CLAIM_START, expandCost, firstOrder, nextOrder, orderBonus, SECOND_VAULT_CLAIM,
-  RECIPES, RESIN_CLAIM, catalogue, TECH, techOpen, levelCap,
+  RECIPES, RESIN_CLAIM, catalogue, TECH, techOpen, levelCap, generatePlot,
 } from './machines.js';
 
 /**
@@ -34,6 +34,7 @@ const ROUTE_SPEC = { pipe: { kind: 'pipe', dir: 0 }, bal: { kind: 'bal', dir: 0 
  * is the order you wanted to do it in anyway.
  */
 export const DEFAULT_CFG = {
+  seed: 0,            // 0 picks one; anything else replays that exact plot
   rounds: 8,
   endless: false,     // when true, `rounds` is ignored and the floor screen calls it
   roundSecs: 90,
@@ -56,6 +57,11 @@ export function createEngine(cfgIn = {}) {
   let timer = 0;
   let round = 0;
   let announce = '';
+  /**
+   * This match's plot. Generated once and handed to every player, so the map is
+   * what differs between playthroughs and never between the people in one.
+   */
+  let layout = null;
 
   /**
    * Every player carries their own order, measured against their own best round.
@@ -82,7 +88,7 @@ export function createEngine(cfgIn = {}) {
       p.connected = true;
       return p;
     }
-    const f = createFactory({ cash: cfg.cash });
+    const f = createFactory({ cash: cfg.cash, layout });
     starterKit(f);
     p = {
       seat, name: name || `Player ${seat + 1}`, color: color ?? seat,
@@ -143,6 +149,21 @@ export function createEngine(cfgIn = {}) {
           p.bestIncome = Math.max(p.bestIncome, p.f.income);
           // The order board is pure upside: filling it pays a bonus, missing it
           // costs nothing but the bonus. Nobody gets buried by one bad round.
+          /*
+           * The one thing a player must never be able to do is lose by accident.
+           * A floor whose line does not reach a vault earns nothing, and a player
+           * with nothing earned and nothing banked cannot buy the conveyor that
+           * would fix it — which on a generated plot is a real dead end rather
+           * than a theoretical one. So the workshop advances them enough for a
+           * belt. It is not charity; it is the difference between a hard round and
+           * an unplayable match.
+           */
+          const belt = KINDS.pipe.price;
+          if (p.f.income === 0 && p.f.cash < belt) {
+            p.f.cash = belt;
+            note(p, 'Advanced a conveyor — your line reaches nothing');
+          }
+
           const tgt = p.order?.target ?? 0;
           p.metOrder = p.f.income >= tgt;
           p.orderBonus = 0;
@@ -172,8 +193,10 @@ export function createEngine(cfgIn = {}) {
     // Set the plot before any factory is built. Every player owns CLAIM_START of
     // it to begin with and buys their way out toward this fence at their own pace.
     setGridSize(cfg.gridSize);
+    cfg.seed = cfg.seed || (1 + Math.floor(Math.random() * 99999));
+    layout = generatePlot(cfg.seed, cfg.gridSize, Math.min(CLAIM_START, cfg.gridSize));
     for (const p of players.values()) {
-      p.f = createFactory({ cash: cfg.cash, claim: Math.min(CLAIM_START, cfg.gridSize) });
+      p.f = createFactory({ cash: cfg.cash, claim: Math.min(CLAIM_START, cfg.gridSize), layout });
       starterKit(p.f);
       p.lastIncome = 0;
       p.bestIncome = 0;
@@ -190,8 +213,9 @@ export function createEngine(cfgIn = {}) {
     round = 0;
     timer = 0;
     setGridSize(cfg.gridSize);
+    layout = generatePlot(cfg.seed || 1, cfg.gridSize, Math.min(CLAIM_START, cfg.gridSize));
     for (const p of players.values()) {
-      p.f = createFactory({ cash: cfg.cash, claim: Math.min(CLAIM_START, cfg.gridSize) });
+      p.f = createFactory({ cash: cfg.cash, claim: Math.min(CLAIM_START, cfg.gridSize), layout });
       starterKit(p.f);
       p.lastIncome = 0;
       p.bestIncome = 0;
@@ -408,7 +432,7 @@ export function createEngine(cfgIn = {}) {
         mover: nextMover(p),
         routes: routePrices(p),
         moverLeft: Math.max(0, moverFree(p.f.claim) - (p.movers || 0)),
-        claim: p.f.claim, plot: GRID,
+        claim: p.f.claim, plot: GRID, seed: cfg.seed,
         science: Math.round(p.f.science), levelCap: levelCap(p.f.done),
         expand: p.f.claim < GRID ? expandCost(p.f.claim) : 0,
         order: { target: p.order?.target ?? 0, bonus: p.order?.bonus ?? 0 },

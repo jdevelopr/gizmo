@@ -11,6 +11,9 @@
 import { createFactory, stepFactory, beginRound, research } from '../js/sim.js';
 import { createEngine } from '../js/game.js';
 import * as M from '../js/machines.js';
+import { layPath, putOnLine, setBotGrid } from './bot.mjs';
+const { plainPlot } = M;
+setBotGrid(M.GRID);
 
 M.setGridSize(7);
 let fails = 0;
@@ -36,13 +39,13 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
   ok(M.levelCap([]) === 2 && M.levelCap(['overclock']) === 3, 'Overclocking raises the ceiling');
 
   // Prerequisites must actually bind.
-  const f = createFactory({ cash: 0, claim: 3 });
+  const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
   f.science = 99999;
   ok(!research(f, 'replication').ok, 'a node with unmet prerequisites is refused');
   research(f, 'storage'); research(f, 'overclock');
   ok(research(f, 'replication').ok, 'and allowed once they are met');
   ok(!research(f, 'replication').ok, 'and cannot be bought twice');
-  const poor = createFactory({ cash: 0, claim: 3 });
+  const poor = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
   poor.science = 10;
   ok(!research(poor, 'sorting').ok, 'and cannot be bought without the science');
 }
@@ -51,7 +54,7 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
 {
   // Same line twice: once aimed east at the vault, once north into the Lab.
   const build = dir => {
-    const f = createFactory({ cash: 0, claim: 3 });
+    const f = createFactory({ cash: 0, claim: 3, layout: plainPlot() });
     put(f, 0, 0, { kind: 'mut', dir: 0, mut: 2 });
     put(f, 1, 0, { kind: 'pipe', dir: 0 });
     put(f, 2, 0, { kind: 'pipe', dir });
@@ -97,14 +100,10 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
     eng.step(1 / 20); t += 1 / 20;
     if (eng.phase === 'plan' && planDone !== eng.round) {
       planDone = eng.round;
-      // Aim the end of the line into the Lab rather than the vault, and keep the
-      // line reaching the fence as the claim grows.
+      // Run the line into the Lab rather than the vault, wherever this map put it,
+      // and keep it connected as the claim grows.
       if (f.claim < M.GRID && f.cash > M.expandCost(f.claim) * 2) eng.action(0, { t: 'expand' });
-      for (let x = 0; x < f.claim; x++) {
-        if (!f.grid[M.cellOf(x, 0)] && f.cash > 40) eng.action(0, { t: 'route', k: 'pipe' });
-      }
-      const endCell = M.cellOf(f.claim - 1, 0);
-      if (f.grid[endCell]) f.grid[endCell].dir = 3;      // north, into the Lab
+      layPath(eng, 0, f, f.lab.cell, f.lab.dir);
       for (let k = 0; k < 3; k++) {
         const pc = M.producerCost(f.producer.level);
         if (f.producer.level >= M.MAX_UTIL || f.cash < pc * 1.5) break;
@@ -122,15 +121,10 @@ const put = (f, x, y, spec) => { f.grid[M.cellOf(x, y)] = M.makeMachine(spec, f.
       const buy = cat.map((c, i) => ({ i, c })).filter(x => x.c.kind === 'mut' && x.c.cost <= f.cash)
         .sort((a, b) => b.c.cost - a.c.cost)[0];
       if (buy) {
+        const had = new Set(f.grid.map((m, i) => (m ? i : -1)).filter(i => i >= 0));
         eng.action(0, { t: 'buy', i: buy.i });
-        const at = f.grid.findIndex((m, i) => m && m.kind === 'mut' && M.cy(i) > 0);
-        if (at >= 0) {
-          for (let x = 1; x < f.claim - 1; x++) {
-            if (f.grid[M.cellOf(x, 0)]?.kind !== 'pipe') continue;
-            eng.action(0, { t: 'act', a: { a: 'move', from: 'g' + at, to: 'g' + M.cellOf(x, 0) } });
-            break;
-          }
-        }
+        const at = f.grid.findIndex((m, i) => m && !had.has(i));
+        if (at >= 0) putOnLine(eng, 0, f, at, 'mut');
       }
     }
   }

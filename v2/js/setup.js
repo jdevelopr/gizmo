@@ -32,6 +32,9 @@ export function readSetupCfg() {
     planSecs: num('#cfg-plan', DEFAULT_CFG.planSecs),
     roundSecs: num('#cfg-secs', DEFAULT_CFG.roundSecs),
     cash: num('#cfg-cash', DEFAULT_CFG.cash),
+    // 0 means "pick one" — the engine fills it in and reports it back, so a map
+    // worth replaying can always be found again.
+    seed: clamp(num('#cfg-seed', 0), 0, 99999),
     gridSize: clamp(num('#cfg-grid', DEFAULT_CFG.gridSize), MIN_GRID, MAX_GRID),
   };
 }
@@ -120,7 +123,7 @@ if (endless) {
   });
 }
 
-for (const id of ['#cfg-grid', '#cfg-rounds', '#cfg-secs', '#cfg-plan', '#cfg-cash']) {
+for (const id of ['#cfg-grid', '#cfg-rounds', '#cfg-secs', '#cfg-plan', '#cfg-cash', '#cfg-seed']) {
   const el = $(id);
   if (!el) continue;
   el.addEventListener('change', paintNote);

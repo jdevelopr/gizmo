@@ -11,8 +11,9 @@ import {
   intake, outputs, exitDirs, sizeOf, capacity, EMPTY_HOLD,
   producerCycle, producerCost, sellerMult, sellerCost,
   cellOf, cx, cy, inClaim, claimed, claimCells,
-  CLAIM_START, sellerSpotsFor, labSpotFor, expandCost, PRODUCER_PORT, activePorts,
+  CLAIM_START, expandCost,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
+  generatePlot, faceCell, OPEN, RUBBLE, RUBBLE_COST, SECOND_VAULT_CLAIM,
 } from './machines.js';
 
 const INV_CAP = 8;
@@ -21,7 +22,33 @@ const EPS = 1e-6;
 /** Hard ceiling on live gizmos: enough to fill a floor, few enough to send 15x a second. */
 const maxGizmos = () => Math.min(400, 24 * GRID * GRID + 60);
 
-export function createFactory({ cash = 120, claim = CLAIM_START } = {}) {
+/* ------------------------------------------------------------------ plot --- */
+
+/** Where this layout's feeds enter, at this claim. */
+export function portsOf(f) {
+  return f.layout.feeds
+    .filter(p => f.claim >= (p.claim || 0))
+    .map(p => ({ ...p, cell: cellOf(0, Math.min(p.row, f.claim - 1)), dir: 2 }));
+}
+
+/** Where this layout's vaults trade from, at this claim. */
+export function vaultsOf(f) {
+  const n = f.claim >= SECOND_VAULT_CLAIM ? 2 : 1;
+  return f.layout.spots.slice(0, n)
+    .map(sp => ({ cell: faceCell(sp.face, sp.along, f.claim), dir: sp.face }));
+}
+
+/** Where this layout's Lab trades from, at this claim. */
+export function labOf(f) {
+  const sp = f.layout.lab;
+  return { cell: faceCell(sp.face, sp.along, f.claim), dir: sp.face };
+}
+
+/** Is this slot owned, and is there nothing lying on it? */
+export const openAt = (f, x, y) =>
+  inClaim(x, y, f.claim) && f.terrain[cellOf(x, y)] === OPEN;
+
+export function createFactory({ cash = 120, claim = CLAIM_START, layout = null } = {}) {
   const f = {
     n: GRID,
     // The plot is always the full board. `claim` is how much of it you own — the
@@ -29,6 +56,11 @@ export function createFactory({ cash = 120, claim = CLAIM_START } = {}) {
     // it exist in the array and are never touched, which is why growing the claim
     // costs nothing to the simulation: no machine moves and no index changes.
     claim: Math.max(CLAIM_START, Math.min(GRID, claim)),
+    // The plot: what is lying on each slot, and where the fixtures trade from.
+    // Everyone in a match is handed the same one — a generated map that differed
+    // per player would put "nobody wins on a kinder roll" straight back in the bin.
+    layout: layout || generatePlot(1, GRID, CLAIM_START),
+    terrain: null,
     grid: new Array(GRID * GRID).fill(null),
     inv: [],
     // One level, one or more feeds. Producer A drops Scrap from the first round;
@@ -55,32 +87,64 @@ export function createFactory({ cash = 120, claim = CLAIM_START } = {}) {
     running: false,
     expansions: 0,
   };
-  f.seller.spots = sellerSpotsFor(f.claim).map(v => ({ ...v, flash: 0 }));
-  f.lab = { ...labSpotFor(f.claim), flash: 0 };
+  f.terrain = Uint8Array.from(f.layout.terrain);
+  f.seller.spots = vaultsOf(f).map(v => ({ ...v, flash: 0 }));
+  f.lab = { ...labOf(f), flash: 0 };
   return f;
 }
 
 /**
- * The starting line: producer -> conveyors -> vault, filling the top row of the
- * opening claim. Nothing but plumbing, which is the point — it moves raw Scrap to
- * the vault at a dollar a piece and that is all. The first Mutator you buy triples
- * it, which is the fastest way to teach what this game is actually about.
+ * The starting line: a belt run from the first feed to the first vault, laid along
+ * whatever route this map allows. Nothing but plumbing, which is the point — it
+ * moves raw Scrap at a dollar a piece and that is all, and the first Mutator you
+ * buy triples it.
  *
- * It used to open with a free Doubler, from back when the Doubler was a shop
- * machine. Duplication is deep research now, and handing someone the endgame
- * machine in round one taught the wrong lesson twice over: it hid the ladder behind
- * a flat multiplier, and it made the one thing you cannot buy the one thing you
- * started with.
- *
- * Unlike GIZMO 1 this line is never invalidated — it is the seed of the factory you
- * finish the match with, and every round after this one is spent adding to it.
+ * It used to be "fill the top row", which was right exactly once: when the feed was
+ * always west of row 0 and the vault always east of it. On a generated plot the two
+ * can be anywhere on the fence with rubble in between, so the kit is pathfound.
+ * Round one still teaches the loop; it teaches it on this map.
  */
 export function starterKit(f) {
-  for (let x = 0; x < f.claim; x++) {
-    place(f, makeMachine({ kind: 'pipe', dir: 0 }, f.nid++), cellOf(x, 0));
+  f.seller.spots = vaultsOf(f).map(v => ({ ...v, flash: 0 }));
+  f.lab = { ...labOf(f), flash: 0 };
+  const from = portsOf(f)[0];
+  const vault = f.seller.spots[0];
+  const path = routeBetween(f, from.cell, vault.cell);
+  for (let k = 0; k < path.length; k++) {
+    const cell = path[k];
+    const next = path[k + 1];
+    const dir = next == null ? vault.dir
+      : DIRS.findIndex(([dx, dy]) => cx(cell) + dx === cx(next) && cy(cell) + dy === cy(next));
+    place(f, makeMachine({ kind: 'pipe', dir: dir < 0 ? 0 : dir }, f.nid++), cell);
   }
-  f.seller.spots = sellerSpotsFor(f.claim).map(v => ({ ...v, flash: 0 }));
-  f.lab = { ...labSpotFor(f.claim), flash: 0 };
+}
+
+/**
+ * The shortest way from one slot to another over open ground, both ends included.
+ * Breadth-first, so it is the shortest there is.
+ * @returns {number[]} empty if there is no way through
+ */
+export function routeBetween(f, from, to) {
+  if (from === to) return [from];
+  const prev = new Map([[from, -1]]);
+  const queue = [from];
+  while (queue.length) {
+    const at = queue.shift();
+    for (let d = 0; d < 4; d++) {
+      const nx = cx(at) + DIRS[d][0], ny = cy(at) + DIRS[d][1];
+      if (!openAt(f, nx, ny)) continue;
+      const n = cellOf(nx, ny);
+      if (prev.has(n)) continue;
+      prev.set(n, at);
+      if (n === to) {
+        const path = [];
+        for (let c = to; c !== -1; c = prev.get(c)) path.push(c);
+        return path.reverse();
+      }
+      queue.push(n);
+    }
+  }
+  return [];
 }
 
 /**
@@ -98,9 +162,9 @@ export function expandFloor(f) {
   if (f.claim >= GRID) return f.claim;
   f.claim++;
   f.expansions = (f.expansions || 0) + 1;
-  const want = sellerSpotsFor(f.claim);
+  const want = vaultsOf(f);
   f.seller.spots = want.map((v, i) => ({ ...v, flash: f.seller.spots[i]?.flash || 0 }));
-  f.lab = { ...labSpotFor(f.claim), flash: f.lab?.flash || 0 };
+  f.lab = { ...labOf(f), flash: f.lab?.flash || 0 };
   f.fx.push({ k: 'grow', claim: f.claim });
   return f.claim;
 }
@@ -183,7 +247,7 @@ export function stepFactory(f, dt) {
   retally(f);
 
   if (f.running) {
-    const ports = activePorts(f.claim);
+    const ports = portsOf(f);
     for (let k = 0; k < ports.length; k++) {
       const port = ports[k];
       f.producer.ts[k] -= dt;
@@ -289,7 +353,7 @@ function pickExit(f, i, m, o) {
   }
   for (const d of cands) {
     const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
-    if (!inClaim(nx, ny, f.claim)) return d;
+    if (!openAt(f, nx, ny)) return d;      // off the claim, or blocked: it leaves
     if (canAccept(f, cellOf(nx, ny), o.ty)) return d;
   }
   return null;
@@ -305,7 +369,7 @@ function release(f, m, i) {
     if (d == null) { stay.push(o); continue; }
     o.dir = d;
     const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
-    if (inClaim(nx, ny, f.claim)) {
+    if (openAt(f, nx, ny)) {
       f.load[cellOf(nx, ny)] += sizeOf(o.ty);   // claim the space now, before it flies
     }
     sent.push(o);
@@ -346,7 +410,7 @@ function emit(f, from, out, dur, n, total) {
   const spread = total > 1 ? (n / (total - 1) - 0.5) * 0.34 : 0;
   const ox = -dy * spread, oy = dx * spread;
   const nx = cx(from) + dx, ny = cy(from) + dy;
-  const inside = inClaim(nx, ny, f.claim);
+  const inside = openAt(f, nx, ny);
 
   f.gizmos.push({
     id: f.nid++, ty: out.ty, cp: out.cp ? 1 : 0, st: 'fly',
@@ -499,10 +563,10 @@ export function smartDir(f, i) {
   // Directions we are fed from: the neighbour that way aims at us. The producer
   // is bolted to the floor's edge and counts as a feeder too.
   const fed = new Set();
-  if (i === PRODUCER_PORT.cell) fed.add(PRODUCER_PORT.dir);
+  for (const port of portsOf(f)) if (port.cell === i) fed.add(port.dir);
   for (let d = 0; d < 4; d++) {
     const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
-    if (!inClaim(nx, ny, f.claim)) continue;
+    if (!openAt(f, nx, ny)) continue;
     const nm = f.grid[cellOf(nx, ny)];
     if (nm && exitDirs(nm).includes((d + 2) % 4)) fed.add(d);
   }
@@ -516,10 +580,10 @@ export function smartDir(f, i) {
     const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
     let score = 0;
 
-    if (!inClaim(nx, ny, f.claim)) {
-      // Off the claim is a loss, unless it is some vault's window. Unbought land
-      // is exactly as fatal as the edge of the world, which is what stops a belt
-      // from politely aiming into a field you do not own yet.
+    if (!openAt(f, nx, ny)) {
+      // Off the claim, or blocked, is a loss unless it is some vault's window.
+      // Unbought land and bedrock are exactly as fatal as the edge of the world,
+      // which is what stops a belt from politely aiming into either.
       // A vault is the obvious place to aim; the Lab is a real destination too,
       // just not the one a belt should choose on its own.
       score += f.seller.spots.some(v => v.cell === i && v.dir === d) ? 100
@@ -559,7 +623,7 @@ function autoFace(f, i) {
     const dd = ((m.dir | 0) + side) % 4;
     const nx = cx(i) + DIRS[dd][0], ny = cy(i) + DIRS[dd][1];
     // A vault or the Lab counts as open: firing off the claim there is the point.
-    if (!inClaim(nx, ny, f.claim)) {
+    if (!openAt(f, nx, ny)) {
       return f.seller.spots.some(v => v.cell === i && v.dir === dd)
         || (f.lab.cell === i && f.lab.dir === dd);
     }
@@ -574,7 +638,7 @@ function autoFace(f, i) {
 /** Drop a bought machine onto owned land, or into the crate if there is none free. */
 export function giveMachine(f, spec) {
   const m = makeMachine(spec, f.nid++);
-  const slot = claimCells(f.claim).find(i => !f.grid[i]);
+  const slot = claimCells(f.claim).find(i => !f.grid[i] && f.terrain[i] === OPEN);
   if (slot != null) { f.grid[slot] = m; autoFace(f, slot); return { where: 'grid', idx: slot }; }
   if (f.inv.length < INV_CAP) { f.inv.push(m); return { where: 'inv', idx: f.inv.length - 1 }; }
   return { where: 'none', idx: -1 };
@@ -614,6 +678,7 @@ export function applyAction(f, a) {
       const a1 = getRef(f, from), b1 = getRef(f, to);
       if (!a1) return no('Nothing to move');
       if (to.zone === 'grid' && !claimed(to.idx, f.claim)) return no('You do not own that land');
+      if (to.zone === 'grid' && f.terrain[to.idx] !== OPEN) return no('Something is in the way');
       if (to.zone === 'inv' && !b1 && f.inv.length >= INV_CAP) return no('Crate is full');
 
       setRef(f, from, b1 || null);
@@ -641,6 +706,24 @@ export function applyAction(f, a) {
       m.flash = 1;
       f.fx.push({ k: 'up', cell: ref.zone === 'grid' ? ref.idx : -1 });
       return yes();
+    }
+
+    /**
+     * Clear a slot of rubble. Bedrock is the shape of the plot and never moves —
+     * routing around it is the map's whole contribution to the game.
+     */
+    case 'clear': {
+      const i = a.i;
+      if (!okGrid(f, i)) return no('Nothing there');
+      if (!claimed(i, f.claim)) return no('You do not own that land');
+      if (f.terrain[i] !== RUBBLE) {
+        return no(f.terrain[i] === OPEN ? 'Nothing to clear' : 'Bedrock will not move');
+      }
+      if (f.cash < RUBBLE_COST) return no(`Clearing costs $${RUBBLE_COST}`);
+      f.cash -= RUBBLE_COST;
+      f.terrain[i] = OPEN;
+      f.fx.push({ k: 'clear', cell: i });
+      return yes('Cleared');
     }
 
     /**
@@ -735,6 +818,36 @@ function compactInv(f) {
   f.inv = f.inv.filter(Boolean).slice(0, INV_CAP);
 }
 
+/**
+ * Does anything this floor makes actually reach somewhere that pays?
+ *
+ * Walk from each feed along the machines' facings and see where it comes out. A
+ * floor that answers no earns nothing at all, which on a generated plot is a much
+ * easier state to fall into than it used to be — expanding moves the vault, and on
+ * some maps reconnecting to it is three belts rather than one. It is worth saying
+ * so on screen rather than leaving someone to watch a dead factory for a round.
+ */
+export function reachesPayout(f) {
+  for (const port of portsOf(f)) {
+    const seen = new Set();
+    let at = port.cell;
+    while (at != null && f.grid[at] && !seen.has(at)) {
+      seen.add(at);
+      const m = f.grid[at];
+      for (const d of exitDirs(m)) {
+        const nx = cx(at) + DIRS[d][0], ny = cy(at) + DIRS[d][1];
+        if (openAt(f, nx, ny)) continue;
+        if (f.seller.spots.some(v => v.cell === at && v.dir === d)) return true;
+        if (f.lab.cell === at && f.lab.dir === d) return true;
+      }
+      const d = m.dir | 0;
+      const nx = cx(at) + DIRS[d][0], ny = cy(at) + DIRS[d][1];
+      at = openAt(f, nx, ny) ? cellOf(nx, ny) : null;
+    }
+  }
+  return false;
+}
+
 /* ------------------------------------------------------------------- view --- */
 
 const r2 = n => Math.round(n * 100) / 100;
@@ -761,7 +874,7 @@ export function viewOf(f) {
     z: f.gizmos.map(g => [g.id, g.ty, r2(g.x), r2(g.y), g.cp | 0]),
     pl: f.producer.level,
     // One entry per running feed: [cell, gizmo type, flash, stalled]
-    pp: activePorts(f.claim).map((port, k) => [
+    pp: portsOf(f).map((port, k) => [
       port.cell, port.ty, r2(f.producer.flash[k] || 0), f.producer.stall[k] ? 1 : 0,
     ]),
     sl: f.seller.level,
@@ -770,6 +883,8 @@ export function viewOf(f) {
     sc: Math.round(f.science), dn: f.done.slice(), lc: levelCap(f.done),
     c: Math.round(f.cash), e: Math.round(f.earned), n: Math.round(f.income),
     cl: f.claim, xc: f.claim < GRID ? expandCost(f.claim) : 0,
+    tr: Array.from(f.terrain).join(''), rc: RUBBLE_COST,
+    ok: reachesPayout(f) ? 1 : 0,
   };
 }
 

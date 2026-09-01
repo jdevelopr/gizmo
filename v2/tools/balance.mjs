@@ -10,6 +10,8 @@
  */
 import { createEngine } from '../js/game.js';
 import * as M from '../js/machines.js';
+import { layPath, putOnLine, setBotGrid } from './bot.mjs';
+setBotGrid(M.GRID);
 
 function run(cfg, play) {
   const eng = createEngine(cfg);
@@ -81,7 +83,7 @@ function goShopping(eng) {
 }
 
 /**
- * Put a freshly bought Mutator at the end of the line, and scrap any other.
+ * Put a freshly bought Mutator at the far end of the line, and scrap any other.
  *
  * Chaining Mutators is a beginner's mistake the bot used to make every round: each
  * one rewrites the whole stream, so a line of four produces whatever the last one
@@ -89,12 +91,7 @@ function goShopping(eng) {
  * end of the line is where it belongs.
  */
 function placeInLine(eng, f, at) {
-  const end = M.cellOf(f.claim - 1, 0);
-  if (at !== end) eng.action(0, { t: 'act', a: { a: 'move', from: 'g' + at, to: 'g' + end } });
-  for (let x = 0; x < f.claim - 1; x++) {
-    const cell = M.cellOf(x, 0);
-    if (f.grid[cell]?.kind === 'mut') eng.action(0, { t: 'act', a: { a: 'scrap', ref: 'g' + cell } });
-  }
+  putOnLine(eng, 0, f, at, 'mut');
 }
 
 /**
@@ -138,12 +135,8 @@ const ordinary = eng => {
  */
 function reconnect(eng) {
   const f = eng.players.get(0).f;
-  for (let x = 0; x < f.claim; x++) {
-    if (f.grid[M.cellOf(x, 0)]) continue;
-    const before = f.cash;
-    eng.action(0, { t: 'route', k: 'pipe' });
-    if (f.cash === before) break;          // cannot afford it; nothing more to try
-  }
+  const vault = f.seller.spots[0];
+  layPath(eng, 0, f, vault.cell, vault.dir);
 }
 
 const cfg = { rounds: 8, planSecs: 3, roundSecs: 90, tallySecs: 1, cash: 200, gridSize: 7 };

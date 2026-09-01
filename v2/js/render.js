@@ -68,6 +68,10 @@ const DIM = '#7c86a6';
 const DIRT = '#101321';     // land you have not bought
 const DIRT2 = '#161a2b';
 const FENCE = '#4a5578';    // the edge of your claim
+const ROCK = '#4a4433';     // rubble: clearable
+const ROCK2 = '#6b6146';
+const STONE = '#2c3346';    // bedrock: never moves
+const STONE2 = '#454f6b';
 
 /* ------------------------------------------------------------------- stage --- */
 
@@ -502,19 +506,28 @@ export function drawPanel(st, view, rect, meta = {}) {
   px(ctx, o.x + cp, o.y - 2, 2, cp + 4, FENCE);
   px(ctx, o.x - 2, o.y + cp, cp + 4, 2, FENCE);
 
+  const terr = view.tr || '';
+  const groundAt = i => (terr.charCodeAt(i) - 48) || 0;
+
   for (let i = 0; i < GRID * GRID; i++) {
     const ax = cx(i), ay = cy(i);
     const gx = o.x + ax * CELL, gy = o.y + ay * CELL;
+    const ground = groundAt(i);
     if (ax >= claim || ay >= claim) {
       // unbought: a sparse speckle, enough to read as ground rather than a void
       px(ctx, gx + 7, gy + 11, 2, 2, DIRT2);
       px(ctx, gx + 18, gy + 6, 2, 2, DIRT2);
       px(ctx, gx + 13, gy + 21, 2, 2, DIRT2);
       px(ctx, gx + 24, gy + 17, 2, 2, DIRT2);
+      // Terrain is drawn on land you have not bought as well, dimmed. Knowing what
+      // is lying on the next ring before you pay for it is the entire reason for
+      // putting anything on the ground.
+      if (ground) drawGround(ctx, gx, gy, ground, true);
       continue;
     }
     px(ctx, gx, gy, CELL - 2, 2, '#20243a');
     px(ctx, gx, gy, 2, CELL - 2, '#20243a');
+    if (ground) { drawGround(ctx, gx, gy, ground, false); continue; }
     if (!view.g[i]) {
       // empty slot: corner ticks, so the grid reads as slots and not a blank sheet
       px(ctx, gx + 4, gy + 4, 5, 2, '#252b45');
@@ -595,6 +608,34 @@ export function drawPanel(st, view, rect, meta = {}) {
     ctx.globalAlpha = 1;
     st.text(rect.x + rect.w / 2, rect.y + rect.h / 2 - 8, 'OFFLINE', DIM, { align: 'center' });
   }
+}
+
+/**
+ * What is lying on a slot. Rubble is loose and warm-toned — it looks like something
+ * you could shift, which you can, for a fee. Bedrock is cold and squared off and
+ * reads as part of the floor plan rather than an obstacle on it, because that is
+ * what it is: routing around bedrock is the map's whole contribution to the game.
+ */
+function drawGround(ctx, x, y, kind, faded) {
+  const a = faded ? 0.4 : 1;
+  ctx.globalAlpha = a;
+  if (kind === 2) {
+    px(ctx, x + 3, y + 3, CELL - 6, CELL - 6, STONE);
+    px(ctx, x + 3, y + 3, CELL - 6, 2, STONE2);
+    px(ctx, x + 3, y + 3, 2, CELL - 6, shade(STONE2, 0.8));
+    px(ctx, x + 9, y + 9, 5, 5, shade(STONE, 0.7));
+    px(ctx, x + 17, y + 14, 7, 6, shade(STONE, 0.7));
+    px(ctx, x + 11, y + 19, 4, 4, STONE2);
+  } else {
+    px(ctx, x + 6, y + 12, 9, 7, ROCK);
+    px(ctx, x + 6, y + 12, 9, 2, ROCK2);
+    px(ctx, x + 16, y + 8, 7, 6, ROCK);
+    px(ctx, x + 16, y + 8, 7, 2, ROCK2);
+    px(ctx, x + 13, y + 20, 6, 4, shade(ROCK, 0.8));
+    px(ctx, x + 20, y + 18, 4, 4, shade(ROCK, 0.8));
+    px(ctx, x + 8, y + 7, 3, 3, shade(ROCK, 0.75));
+  }
+  ctx.globalAlpha = 1;
 }
 
 /* ---------------------------------------------------------------- machines --- */
@@ -1074,6 +1115,12 @@ export function playFx(st, fx, o, opts = {}) {
           String(e.name || '').toUpperCase(), '#a8dcff');
         st.burst(o.x + (GRID * CELL) / 2, o.y + (GRID * CELL) / 2, '#a8dcff', 24, 70, 0.9);
         st.shake(5 * boost);
+        break;
+      }
+      case 'clear': {
+        const x = o.x + (cx(e.cell) + 0.5) * CELL, y = o.y + (cy(e.cell) + 0.5) * CELL;
+        st.burst(x, y, ROCK2, 16, 58, 0.6);
+        st.shake(3 * boost);
         break;
       }
       case 'order': {

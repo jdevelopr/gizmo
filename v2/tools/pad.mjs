@@ -61,8 +61,13 @@ const tabOf = () => [...window.document.querySelectorAll('#dock-tabs button')]
 
 window.document.body.dataset.screen = 'pad';
 
+// The plot is generated, so nothing in here may assume where anything is. These
+// resolve against the match that actually started.
+const firstMachine = () => eng.players.get(0).f.grid.findIndex(Boolean);
+const feedCell = () => eng.players.get(0).f.layout.feeds[0].row;
+
 const eng = createEngine({
-  rounds: 8, planSecs: 400, roundSecs: 90, tallySecs: 1, cash: 4000, gridSize: 7,
+  seed: 12345, rounds: 8, planSecs: 400, roundSecs: 90, tallySecs: 1, cash: 4000, gridSize: 7,
 });
 eng.addPlayer(0, 'YOU', 0);
 const ctrl = createController({ send: msg => { eng.action(0, msg); push(); } });
@@ -99,22 +104,24 @@ push();
 {
   $('#dock-tabs button[data-tab="crate"]').click();
   ok(tabOf() === 'crate', 'tabs switch on tap');
-  ctrl.selectCell(M.cellOf(0, 0));
+  const belt = firstMachine();
+  ctrl.selectCell(belt);
   ok(vis('#panel-select') && !vis('#panel-crate'), 'selecting a machine covers the dock');
   ok(!tabOf(), 'and no tab claims to be open while it does');
   ok(/Conveyor/.test($('#sel-name').textContent), 'it names the machine',
     $('#sel-name').textContent);
   ok(/\/s/.test($('#sel-sub').textContent), 'and gives its rate', $('#sel-sub').textContent);
   ok(!$('#btn-rot').disabled, 'ROTATE is live');
-  ctrl.selectCell(M.cellOf(0, 0));                    // tap again to deselect
+  ctrl.selectCell(belt);                              // tap again to deselect
   ok(tabOf() === 'crate' && vis('#panel-crate'), 'dropping it uncovers what was underneath');
   $('#dock-tabs button[data-tab="build"]').click();
 }
 
 /* --- the level ceiling is explained, not just greyed out ------------------- */
 {
-  ctrl.selectCell(M.cellOf(0, 0));
-  eng.action(0, { t: 'act', a: { a: 'up', ref: 'g' + M.cellOf(0, 0) } });   // L2
+  const up = firstMachine();
+  ctrl.selectCell(up);
+  eng.action(0, { t: 'act', a: { a: 'up', ref: 'g' + up } });               // L2
   push();
   ok(/OVERCLOCK/i.test($('#btn-up').textContent), 'a capped machine says why',
     $('#btn-up').textContent);
@@ -122,7 +129,7 @@ push();
   push();
   ok(/UPGRADE \$/.test($('#btn-up').textContent), 'and stops saying it once researched',
     $('#btn-up').textContent);
-  ctrl.selectCell(M.cellOf(0, 0));
+  ctrl.selectCell(up);
 }
 
 /* --- routing respects research ---------------------------------------------- */
@@ -211,9 +218,10 @@ push();
   const gut = ctrl.stage.gutter || 24;
   const st = eng.stateFor(0);
 
-  const prod = ctrl.stage.fixtureAt(o.x - gut / 2, o.y + 8, st.v);
+  const feedY = o.y + feedCell() * 32 + 16;
+  const prod = ctrl.stage.fixtureAt(o.x - gut / 2, feedY, st.v);
   ok(prod?.kind === 'prod', 'the west gutter hit-tests as a Producer', JSON.stringify(prod));
-  ctrl.tapPoint(o.x - gut / 2, o.y + 8);
+  ctrl.tapPoint(o.x - gut / 2, feedY);
   ok(vis('#panel-select'), 'tapping one opens the info panel');
   ok(/Producer A/.test($('#sel-name').textContent), 'and says which feed it is',
     $('#sel-name').textContent);
@@ -223,19 +231,61 @@ push();
     $('#btn-up').textContent);
   ok($('#btn-scrap').disabled && $('#btn-rot').disabled, 'a fixture cannot be moved or sold');
 
-  const vaultCell = st.v.sv[0][0];
-  const vx = o.x + (M.cx(vaultCell) + 1) * 32 + 6, vy = o.y + M.cy(vaultCell) * 32 + 16;
+  // The vault trades from whichever face the map gave it, so aim at the gutter
+  // strip on that side rather than assuming east.
+  const [vaultCell, vaultDir] = st.v.sv[0];
+  const off = [[1, 0], [0, 1], [-1, 0], [0, -1]][vaultDir];
+  const vx = o.x + (M.cx(vaultCell) + 0.5 + off[0] * 0.7) * 32;
+  const vy = o.y + (M.cy(vaultCell) + 0.5 + off[1] * 0.7) * 32;
   ctrl.tapPoint(vx, vy);
   ok(/Vault/.test($('#sel-name').textContent), 'the vault answers too',
     $('#sel-name').textContent);
 
-  const labCell = st.v.lb[0];
-  ctrl.tapPoint(o.x + M.cx(labCell) * 32 + 16, o.y - gut / 2);
+  const [labCell, labDir] = st.v.lb;
+  const loff = [[1, 0], [0, 1], [-1, 0], [0, -1]][labDir];
+  const lx = o.x + (M.cx(labCell) + 0.5 + loff[0] * 0.7) * 32;
+  const ly = o.y + (M.cy(labCell) + 0.5 + loff[1] * 0.7) * 32;
+  ctrl.tapPoint(lx, ly);
   ok(/Lab/.test($('#sel-name').textContent), 'and so does the Lab', $('#sel-name').textContent);
   ok(/science/i.test($('#sel-sub').textContent), 'explaining what it pays in');
 
-  ctrl.tapPoint(o.x + M.cx(labCell) * 32 + 16, o.y - gut / 2);   // tap again
+  ctrl.tapPoint(lx, ly);                                          // tap again
   ok(!vis('#panel-select'), 'tapping the same fixture again closes it');
+}
+
+/* --- terrain ------------------------------------------------------------------- */
+{
+  // Rubble and bedrock are the map's contribution to the game, so tapping one has
+  // to say which it is and whether it can be shifted.
+  const stone = Array.from(f.terrain)
+    .map((t, i) => ({ t, i }))
+    .filter(x => x.t && M.claimed(x.i, f.claim));
+  const rub = stone.find(x => x.t === M.RUBBLE);
+  if (rub) {
+    f.cash = 5000;
+    push();
+    ctrl.selectCell(rub.i);
+    ok(/Rubble/.test($('#sel-name').textContent), 'tapping rubble says what it is',
+      $('#sel-name').textContent);
+    ok(/CLEAR \$/.test($('#btn-up').textContent), 'and offers to clear it',
+      $('#btn-up').textContent);
+    $('#btn-up').click();
+    ok(f.terrain[rub.i] === M.OPEN, 'clearing it works');
+    ok(!vis('#panel-select'), 'and the panel closes, since there is nothing there now');
+  } else {
+    ok(true, 'no rubble on this map to tap (skipped)');
+  }
+  const bed = stone.find(x => x.t === M.BEDROCK);
+  if (bed) {
+    ctrl.selectCell(bed.i);
+    ok(/Bedrock/.test($('#sel-name').textContent), 'tapping bedrock says what it is');
+    ok($('#btn-up').disabled, 'and does not offer to move it');
+    ctrl.selectCell(bed.i);
+  } else {
+    ok(true, 'no bedrock inside the claim to tap (skipped)');
+  }
+  ok(!!$('#map-seed') && /seed/.test($('#map-seed').textContent),
+    'the map seed is shown so it can be played again', $('#map-seed').textContent);
 }
 
 /* --- the setup panel ---------------------------------------------------------- */

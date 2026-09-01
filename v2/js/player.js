@@ -74,6 +74,10 @@ export function createController({ send, solo = false, onEnd = null }) {
       buzz(6);
       return;
     }
+    // Nor is a slot with something lying on it. Tapping it says what, and offers
+    // to shift it if it is the kind that shifts.
+    const ground = (view.tr || '').charCodeAt(i) - 48;
+    if (ground) { setInfo({ kind: 'ground', idx: i, ground }); buzz(8); return; }
 
     if (!sel) {
       if (!here) return;
@@ -112,7 +116,10 @@ export function createController({ send, solo = false, onEnd = null }) {
   wire('#btn-filt', () => { if (sel) act({ a: 'filt', ref: sel }); });
   wire('#btn-mir', () => { if (sel) act({ a: 'mir', ref: sel }); });
   // UPGRADE means whatever is on screen: a machine's level, or a fixture's.
+  // UPGRADE means whatever is on screen: a machine's level, a fixture's, or
+  // shifting the rubble off a slot.
   wire('#btn-up', () => {
+    if (info?.kind === 'ground') return act({ a: 'clear', i: info.idx });
     if (info) return act({ a: info.kind === 'prod' ? 'upprod' : 'upsell' });
     if (sel) act({ a: 'up', ref: sel });
   });
@@ -276,6 +283,14 @@ export function createController({ send, solo = false, onEnd = null }) {
     const got = view.n || 0;
     ord.hidden = hud.ph === 'lobby' || hud.ph === 'over' || !tgt;
     if (ord.hidden) return;
+    // Nothing you make is reaching anywhere that pays. Say so: it is the one state
+    // where the answer is not "build more" but "look at where the line ends".
+    if (view.ok === 0) {
+      ord.dataset.met = 'off';
+      $('#order-fill').style.width = '0%';
+      $('#order-text').textContent = 'YOUR LINE REACHES NO VAULT — nothing you make will sell';
+      return;
+    }
     ord.dataset.met = got >= tgt ? 'on' : 'off';
     $('#order-fill').style.width = Math.min(100, Math.round((got / tgt) * 100)) + '%';
     $('#order-text').textContent =
@@ -311,6 +326,19 @@ export function createController({ send, solo = false, onEnd = null }) {
     $('#btn-scrap').textContent = 'SCRAP';
 
     const up = $('#btn-up');
+    if (info.kind === 'ground') {
+      const rubble = info.ground === 1;
+      $('#sel-name').textContent = rubble ? 'Rubble' : 'Bedrock';
+      $('#sel-sub').textContent = rubble
+        ? `Loose stone on an otherwise good slot. Clear it for $${view.rc ?? 45} and build here. `
+          + 'Nothing crosses it until you do — a belt aimed at rubble loses what it sends.'
+        : 'Part of the shape of the plot, and it never moves. Route around it: a belt '
+          + 'aimed at bedrock loses what it sends, exactly as if it were the edge of the world.';
+      up.hidden = false;
+      up.disabled = !rubble || view.c < (view.rc ?? 45);
+      up.textContent = rubble ? `CLEAR $${view.rc ?? 45}` : 'WILL NOT MOVE';
+      return;
+    }
     if (info.kind === 'prod') {
       const t = TYPES[info.ty];
       const cyc = producerCycle(view.pl);
@@ -635,6 +663,8 @@ export function createController({ send, solo = false, onEnd = null }) {
   }
 
   function paintCrate() {
+    const seed = $('#map-seed');
+    if (seed) seed.textContent = hud?.seed ? `seed ${hud.seed}` : '—';
     const end = $('#btn-endmatch');
     if (end) end.hidden = !(solo && hud?.endless && hud.ph !== 'over');
     const row = $('#pad-inv');
@@ -675,11 +705,15 @@ export function createController({ send, solo = false, onEnd = null }) {
       if (stage.gridN !== GRID) { stage.layout(1); fit(); }
     }
 
+    // Drop a selection whose subject has stopped existing, before anything is
+    // painted: a cleared slot is no longer rubble, and a scrapped machine is no
+    // longer a machine.
     if (sel) {
       const i = parseInt(sel.slice(1), 10);
       const still = sel[0] === 'g' ? view.g[i] : view.v[i];
       if (!still) sel = null;
     }
+    if (info?.kind === 'ground' && (view.tr || '').charCodeAt(info.idx) - 48 === 0) info = null;
 
     if (msg.fx?.length) {
       const o = stage.floorOrigin(stage.panelRect(0));

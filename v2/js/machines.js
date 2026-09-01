@@ -673,6 +673,230 @@ export function claimCells(claim) {
  */
 export const SECOND_VAULT_CLAIM = 5;
 
+/* ------------------------------------------------------------------ plot --- */
+
+/**
+ * What is standing on a slot before anyone builds there.
+ *
+ * The map is the only thing GIZMO randomises, and it is randomised for the same
+ * reason Factorio does it: the rules of a factory game are worth learning once and
+ * keeping, while the ground they are built on is worth changing every time. Rubble
+ * can be cleared for a fee. Bedrock never can — it is the shape of the plot, and
+ * routing around it is the puzzle.
+ */
+export const OPEN = 0, RUBBLE = 1, BEDROCK = 2;
+
+/** What clearing one rubble slot costs. Flat: it is a chore, not an investment. */
+export const RUBBLE_COST = 45;
+
+/**
+ * Faces a vault or the Lab may trade from, as [dx, dy] direction indices. West is
+ * missing on purpose — that is where the feeds come in, and a vault beside the
+ * Producer is a floor with no factory on it.
+ */
+const TRADE_FACES = [0, 1, 3];
+
+/**
+ * A fixture's slot, from a face and how far along that face it sits.
+ *
+ * Fixtures ride the fence: their position is stored as a face plus a fraction, and
+ * resolved against whatever the claim currently is. That is what lets a generated
+ * layout survive expansion — a vault two thirds of the way down the east face is
+ * still two thirds of the way down it when the plot grows.
+ */
+export function faceCell(face, along, claim) {
+  const last = claim - 1;
+  const at = Math.max(0, Math.min(last, Math.round(along * last)));
+  if (face === 0) return cellOf(last, at);      // east
+  if (face === 1) return cellOf(at, last);      // south
+  if (face === 3) return cellOf(at, 0);         // north
+  return cellOf(0, at);                         // west
+}
+
+/** Every slot index of the plot, whatever the claim. */
+const allCells = plot => Array.from({ length: plot * plot }, (_, i) => i);
+
+/** Stir a seed so that neighbouring numbers give unrelated maps. */
+export function hashSeed(n) {
+  let h = (n >>> 0) || 0x9e3779b9;
+  h ^= h >>> 16; h = Math.imul(h, 0x21f0aaad); h >>>= 0;
+  h ^= h >>> 15; h = Math.imul(h, 0x735a2d97); h >>>= 0;
+  h ^= h >>> 15;
+  return h >>> 0;
+}
+
+/**
+ * Generate one match's plot: where the feeds enter, where the vaults and the Lab
+ * trade, and what is lying on the ground.
+ *
+ * Everyone in a match gets this same plot. The whole point of the rewrite that
+ * removed the jumping seller was that nobody should win on a kinder roll, and a
+ * generated map would put that straight back if it were rolled per player.
+ *
+ * @param {number} seed
+ * @param {number} plot full board size
+ * @param {number} claimStart the square everyone owns to begin with
+ */
+export function generatePlot(seed, plot = GRID, claimStart = CLAIM_START) {
+  // A raw xorshift correlates badly on small neighbouring seeds — 1, 2 and 3 all
+  // open with nearly the same number — so the seed is stirred before it is used.
+  // Otherwise "seed 4418" is the same map as "seed 4417" with a pebble moved.
+  const rnd = rng(hashSeed(seed));
+  const pick = arr => arr[Math.floor(rnd() * arr.length) % arr.length];
+
+  // --- the feeds. They stay on the west face: raw material comes in from the
+  // left, the art is drawn for it, and the row each one enters is variety enough.
+  const rows = [];
+  while (rows.length < 2) {
+    const r = Math.floor(rnd() * claimStart);
+    if (!rows.includes(r)) rows.push(r);
+  }
+  const feeds = [{ row: rows[0], ty: 0 }, { row: rows[1], ty: 8, claim: RESIN_CLAIM }];
+
+  /*
+   * The vaults and the Lab: three fixtures on the fence, none of them on top of
+   * another. Where the Lab lands relative to the vault is the most interesting
+   * thing the generator decides. Next door, and a Balancer on that slot splits your
+   * output between money and research. Across the floor, and serving both is a
+   * routing problem worth a Sorter. Both are good games; having only ever played
+   * the first one is why this exists.
+   */
+  const spots = [];
+  const clear = (face, along) => spots.every(s =>
+    s.face !== face || Math.abs(s.along - along) > 0.34);
+  while (spots.length < 3) {
+    let placed = false;
+    for (let guard = 0; guard < 60 && !placed; guard++) {
+      const face = pick(TRADE_FACES);
+      const along = pick([0, 0.5, 1]);
+      if (!clear(face, along)) continue;
+      spots.push({ face, along });
+      placed = true;
+    }
+    if (!placed) break;      // nine positions, three fixtures: this cannot happen
+  }
+  const lab = spots.pop();
+
+  // --- terrain.
+  const terrain = new Uint8Array(plot * plot);
+  const protect = new Set();
+  for (const f of feeds) protect.add(cellOf(0, Math.min(f.row, claimStart - 1)));
+  for (let c = claimStart; c <= plot; c++) {
+    for (const sp of [...spots, lab]) protect.add(faceCell(sp.face, sp.along, c));
+  }
+
+  for (const i of allCells(plot)) {
+    if (protect.has(i)) continue;
+    const x = cx(i), y = cy(i);
+    const inStart = x < claimStart && y < claimStart;
+    // Thin near the start and thicker further out, so the opening is playable and
+    // the land you buy later is worth looking at before you buy it.
+    const ring = Math.max(x, y);
+    const chance = inStart ? 0.1 : 0.14 + ring * 0.03;
+    if (rnd() >= chance) continue;
+    // Bedrock never appears in the opening claim: round one should be a factory,
+    // not a maze.
+    terrain[i] = (!inStart && rnd() < 0.4) ? BEDROCK : RUBBLE;
+  }
+
+  carveRoutes(terrain, plot, claimStart, feeds, spots, lab);
+  clearOpening(terrain, claimStart, feeds[0], spots[0]);
+  return { seed, plot, feeds, spots, lab, terrain };
+}
+
+/**
+ * The plot GIZMO had before it generated any: feeds on the west face at rows 0 and
+ * 1, vaults down the east one, the Lab north of the first, and nothing lying on the
+ * ground anywhere. Useful as a fixed board to test against, and as the map to hand
+ * someone who is learning the game and does not need the terrain yet.
+ */
+export function plainPlot(plot = GRID, claimStart = CLAIM_START) {
+  return {
+    seed: 0,
+    plot,
+    feeds: [{ row: 0, ty: 0 }, { row: 1, ty: 8, claim: RESIN_CLAIM }],
+    spots: [{ face: 0, along: 0 }, { face: 0, along: 1 }],
+    lab: { face: 3, along: 1 },
+    terrain: new Uint8Array(plot * plot),
+  };
+}
+
+/**
+ * Open one clean route from the first feed to the first vault inside the starting
+ * claim, and leave it that way.
+ *
+ * Everything else on the map can be worked around or paid to remove, but the
+ * starter line is laid for free before anyone has a penny — so its route has to be
+ * walkable ground, not rubble somebody would have to clear first. Two seeds in four
+ * hundred fell foul of this, which is exactly the sort of thing nobody finds until
+ * the night it matters.
+ */
+function clearOpening(terrain, claim, feed, vault) {
+  const from = cellOf(0, Math.min(feed.row, claim - 1));
+  const to = faceCell(vault.face, vault.along, claim);
+  const prev = new Map([[from, -1]]);
+  const queue = [from];
+  while (queue.length) {
+    const at = queue.shift();
+    if (at === to) break;
+    for (let d = 0; d < 4; d++) {
+      const nx = cx(at) + DIRS[d][0], ny = cy(at) + DIRS[d][1];
+      if (nx < 0 || ny < 0 || nx >= claim || ny >= claim) continue;
+      const n = cellOf(nx, ny);
+      if (prev.has(n)) continue;         // rubble and bedrock are both walkable here:
+      prev.set(n, at);                   // carveRoutes has already promised a way
+      queue.push(n);
+    }
+  }
+  for (let c = to; c !== undefined && c !== -1; c = prev.get(c)) terrain[c] = OPEN;
+}
+
+/**
+ * Make sure the map is playable: from every feed to every fixture there has to be
+ * a way through that does not involve moving bedrock, at the claim where both are
+ * available. Anything in the way of the last resort gets downgraded to rubble, and
+ * failing that cleared — a generated map that cannot be finished is not a map.
+ */
+function carveRoutes(terrain, plot, claimStart, feeds, spots, lab) {
+  const reach = (from, to, claim, blocked) => {
+    const seen = new Set([from]);
+    const queue = [from];
+    while (queue.length) {
+      const at = queue.shift();
+      if (at === to) return true;
+      for (let d = 0; d < 4; d++) {
+        const nx = cx(at) + DIRS[d][0], ny = cy(at) + DIRS[d][1];
+        if (nx < 0 || ny < 0 || nx >= claim || ny >= claim) continue;
+        const n = cellOf(nx, ny);
+        if (seen.has(n) || blocked(n)) continue;
+        seen.add(n);
+        queue.push(n);
+      }
+    }
+    return false;
+  };
+
+  for (let claim = claimStart; claim <= plot; claim++) {
+    for (const f of feeds) {
+      if (claim < (f.claim || 0)) continue;
+      const from = cellOf(0, Math.min(f.row, claim - 1));
+      for (const sp of [...spots, lab]) {
+        const to = faceCell(sp.face, sp.along, claim);
+        if (reach(from, to, claim, i => terrain[i] === BEDROCK)) continue;
+        // Bedrock is in the way. Soften it along a simple L, which is always a
+        // legal route on a square, and try again.
+        const ax = cx(from), ay = cy(from), bx = cx(to), by = cy(to);
+        for (let x = Math.min(ax, bx); x <= Math.max(ax, bx); x++) {
+          if (terrain[cellOf(x, ay)] === BEDROCK) terrain[cellOf(x, ay)] = RUBBLE;
+        }
+        for (let y = Math.min(ay, by); y <= Math.max(ay, by); y++) {
+          if (terrain[cellOf(bx, y)] === BEDROCK) terrain[cellOf(bx, y)] = RUBBLE;
+        }
+      }
+    }
+  }
+}
+
 /**
  * Where the Lab sits: the north face of the very slot the first vault trades from.
  *

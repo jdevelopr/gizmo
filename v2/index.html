@@ -238,6 +238,10 @@ setTimeout(function () {
       </section>
 
       <section id="panel-crate" class="dock-panel" hidden>
+        <p class="dock-label">THIS MAP <span class="dim" id="map-seed">—</span></p>
+        <p class="fine">The plot is generated: where the feeds enter, where the vaults and
+          the Lab trade, and what is lying on the ground. Everyone here plays the same one.
+          Note the seed to play it again.</p>
         <p class="dock-label">CRATE <span class="dim">machines with nowhere to go</span></p>
         <div id="pad-inv" class="crate"></div>
         <button id="btn-endmatch" class="ghost wide" hidden>END THE MATCH</button>
@@ -351,6 +355,13 @@ setTimeout(function () {
         <option value="150">150 seconds</option>
       </select>
     </div>
+
+    <label for="cfg-seed">MAP SEED <span class="dim">blank for a new one</span></label>
+    <input id="cfg-seed" type="number" min="0" max="99999" step="1" placeholder="RANDOM"
+           inputmode="numeric" autocomplete="off">
+    <p class="fine">The plot is generated: where the feeds enter, where the vaults and
+      the Lab trade, and what is lying on the ground. Everyone in a match plays the same
+      one. Type a seed to replay a map you liked.</p>
 
     <label for="cfg-cash">STARTING CASH</label>
     <div class="pick">

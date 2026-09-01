@@ -194,6 +194,46 @@ cool blue corner ticks mean STARVED (standing idle, fix the feed behind).
 
 ---
 
+## The map
+
+Every match generates a plot: which rows the feeds enter on, which faces the vaults
+and the Lab trade from, and what is lying on the ground. Everyone in a match plays
+the same one — the map is what differs between playthroughs, never between the people
+in one, because the whole point of the rewrite that removed the jumping seller was
+that nobody should win on a kinder roll.
+
+This is Factorio's answer, and it is worth being precise about why. Factorio never
+randomises its rules: same two hundred recipes, same tech tree, same costs, every
+game forever. What it randomises is the map, and then it gets its depth from scale —
+the same recipes stay interesting because ten items a second is a different
+engineering problem from a thousand. GIZMO cannot borrow that half: it is thirty
+minutes on forty-nine slots, not a hundred hours on an infinite one. So it borrows
+the map generation and accepts that it needs a little more variety per match than
+Factorio itself does.
+
+**Rubble** is loose stone on an otherwise good slot — clear it for $45 and build
+there. **Bedrock** never moves; it is the shape of the plot, and routing around it is
+the map's contribution to the game. Both are drawn on land you have not bought yet,
+so you can see what a ring holds before you pay for it, and a belt aimed at either
+loses what it sends.
+
+The most interesting thing the generator decides is where the **Lab** lands relative
+to the vault. Next door, and a Balancer on that slot splits your output between money
+and research. Across the floor, and serving both is a routing problem worth a Sorter.
+Both are good games; having only ever played the first one is why this exists.
+
+`tools/plot.mjs` walks four hundred seeds and checks the things that would ruin a
+match on a seed nobody tries until the night it matters: a vault standing on bedrock,
+a feed walled in, a fixture that stops existing when the plot grows, a starter line
+that cannot be laid, or two players handed different ground.
+
+**And a floor that reaches no vault now says so.** Generated maps made that state far
+easier to fall into — expanding moves the vault, and on some maps reconnecting is
+three belts rather than one — so the order strip calls it out, and a player with no
+income and no money is advanced the price of a conveyor at the tally. Losing a round
+to a bad decision is the game; losing a match because you cannot afford the fifteen
+dollars that would fix it is not.
+
 ## Setting up a match
 
 The Setup panel is shared by the floor screen and solo, so a solo run is exactly the
@@ -299,6 +339,8 @@ tools/recipes.mjs proves an Assembler cannot deadlock, and the chain runs
 tools/economy.mjs every price at every round, and what real builds pay back
 tools/tech.mjs    proves research gates the game and the Lab pays what a vault does
 tools/pad.mjs     drives the phone UI headlessly against the real index.html
+tools/plot.mjs    walks 400 generated maps looking for one that cannot be played
+tools/bot.mjs     the shared "play badly but legally" helpers the harnesses use
 tools/balance.mjs an ordinary-player bot, for calibrating the numbers
 tools/verify.mjs  headless assertions over a whole match
 ```
@@ -315,6 +357,7 @@ node tools/routing.mjs    # the Balancer divides evenly; the Sorter never misrou
 node tools/recipes.mjs    # two feeds, two lines, one Assembler, no deadlock
 node tools/economy.mjs    # the cost tables, and what worked builds earn back
 node tools/tech.mjs       # the gate binds, the Lab pays, duplication stays capped
+node tools/plot.mjs       # every generated map is playable, and a seed replays exactly
 
 npm i jsdom               # once, anywhere; the pad harness is the only thing needing it
 JSDOM_PATH=$PWD/node_modules/jsdom node tools/pad.mjs

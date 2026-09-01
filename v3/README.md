@@ -207,7 +207,7 @@ differently because they want opposite fixes.
 |---|---|
 | `1`–`0` | pick a machine up to build |
 | click | place it, or select what is already there |
-| drag | lay a whole run of belts at once, following the drag |
+| drag the map | move around — with a Conveyor in hand, a drag lays a whole run instead |
 | `R` / `Shift R` | rotate |
 | `F` | flip a Balancer or Sorter's branch to the other side |
 | `Q` | pipette — copy what is under the cursor into your hand |
@@ -217,8 +217,8 @@ differently because they want opposite fixes.
 | `V` | show the power grid |
 | `C` | buy the next ring of land |
 | `E` | clear rubble |
-| `WASD` / arrows / middle-drag | pan |
-| wheel | zoom, on the cursor |
+| `WASD` / arrows / middle-drag | pan (middle-drag works with a machine in hand) |
+| `+` / `−` | zoom one step — the two buttons beside the speed controls do the same |
 | `Space` | pause · `[` and `]` change speed |
 | `Esc` | drop what you are holding, then open the menu |
 | `?` | the manual, generated from `machines.js` so it cannot drift |
@@ -333,8 +333,8 @@ On Amplify this folder deploys with the rest of the repository and is served at
 `/v3/`. It needs no network at all once it has loaded — there is no signalling
 server, no peers and no backend, because there is nobody else in the game.
 
-**A word on the browser.** It wants a desktop: a keyboard, a mouse with a wheel,
-and about 1,180 pixels of width for all three columns. Narrower than that and the
+**A word on the browser.** It wants a desktop: a keyboard, a mouse or trackpad you
+can drag with, and about 1,180 pixels of width for all three columns. Narrower than that and the
 right-hand panel goes; narrower still and it is not really playable, which is the
 honest answer for a game whose main verb is dragging a belt across a map.
 

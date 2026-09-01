@@ -10,10 +10,10 @@
  */
 
 import {
-  WORLD, CLAIM_START, TYPES, KINDS, cellOf, cx, cy, money, num,
+  WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
   expandCost, buyCost, label, PASSIVE,
 } from './machines.js';
-import { View } from './render.js';
+import { View, ZOOMS } from './render.js';
 import {
   build, buildCheck, moveMachine, scrapMachine, applyAction, research,
   countKind, rebuild,
@@ -102,6 +102,8 @@ function wireChrome() {
   for (const b of document.querySelectorAll('.speeds button')) {
     b.onclick = () => act('setSpeed', +b.dataset.speed);
   }
+  $('z-in').onclick = () => act('zoom', 1);
+  $('z-out').onclick = () => act('zoom', -1);
   $('mini').onclick = e => {
     const r = $('mini').getBoundingClientRect();
     const x = Math.floor((e.clientX - r.left) / r.width * WORLD);
@@ -144,6 +146,7 @@ function frame(now) {
   });
 
   hud.update(g);
+  updateZoom();
   palette.price(g);
   panel.update(g, S);
   updateHint();
@@ -186,6 +189,20 @@ function updateGhost() {
   if (S.tool.kind === 'gen') S.reach = reachFrom(g.f, S.hover, { level: 1 });
 }
 
+/**
+ * The zoom readout, as a percentage of the art's own size, and the two buttons
+ * greyed out at the ends of the ladder so it is obvious when there is no further
+ * to go.
+ */
+function updateZoom() {
+  const i = ZOOMS.indexOf(view.cam.zoom);
+  const pct = Math.round(view.cam.zoom / CELL * 100) + '%';
+  const label = $('z-label');
+  if (label.textContent !== pct) label.textContent = pct;
+  $('z-in').disabled = i >= ZOOMS.length - 1;
+  $('z-out').disabled = i <= 0;
+}
+
 /** The one line at the bottom, which always says what to do next. */
 function updateHint() {
   const n = $('hint');
@@ -198,9 +215,9 @@ function updateHint() {
       (drag ? 'click, or drag to lay a run  ·  ' : '') +
       '<b>R</b> turn  <b>F</b> flip  <b>Esc</b> drop';
   } else if (S.selected >= 0 && g.f.grid[S.selected]) {
-    txt = '<b>R</b> turn  <b>M</b> move  <b>X</b> scrap  <b>Q</b> copy to hand  ·  <b>V</b> power  <b>?</b> controls';
+    txt = '<b>R</b> turn  <b>M</b> move  <b>X</b> scrap  <b>Q</b> copy to hand  ·  drag to pan  ·  <b>V</b> power  <b>?</b> controls';
   } else {
-    txt = '<b>1</b>–<b>0</b> build  ·  drag a conveyor to lay a run  ·  <b>Q</b> copy  <b>V</b> power  <b>C</b> buy land  <b>?</b> controls';
+    txt = '<b>drag</b> to move the map  ·  <b>1</b>–<b>0</b> build  ·  <b>Q</b> copy  <b>V</b> power  <b>C</b> buy land  <b>?</b> controls';
   }
   if (n.dataset.txt !== txt) { n.dataset.txt = txt; n.innerHTML = txt; }
 }
@@ -217,7 +234,14 @@ function act(name, payload, extra) {
     /* --- what is in your hand --- */
     case 'tool': {
       S.hand = -1;
-      if (!payload) { S.tool = null; palette.select(null); panel.key = ''; return; }
+      if (!payload) {
+        S.tool = null;
+        palette.select(null);
+        panel.key = '';
+        $('stage').classList.remove('build');
+        return;
+      }
+      $('stage').classList.add('build');
       const keep = S.tool && S.tool.kind === payload.kind ? S.tool : null;
       S.tool = { dir: keep?.dir ?? 0, mir: keep?.mir ?? 0, mut: 1, ...payload };
       palette.select(S.tool);
@@ -237,6 +261,7 @@ function act(name, payload, extra) {
       S.tool = { kind: m.kind, dir: m.dir, mut: m.mut, mir: m.mir };
       S.hand = -1;
       palette.select(S.tool);
+      $('stage').classList.add('build');
       return;
     }
 
@@ -328,6 +353,11 @@ function act(name, payload, extra) {
       else { palette.key = ''; palette.build(g); panel.key = ''; }
       return r;
     }
+
+    /* --- the camera --- */
+    case 'zoom':
+      view.zoomBy(payload > 0 ? 1 : -1);
+      return;
 
     /* --- the clock --- */
     case 'setSpeed': {

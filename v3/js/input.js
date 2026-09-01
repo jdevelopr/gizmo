@@ -19,9 +19,16 @@
  *   right-dragging scraps a line of it, which is how you take a wrong belt run out
  *   as fast as you put it in.
  *
- * Everything else is the standard set — WASD and middle-drag to pan, wheel to zoom
- * on the cursor, R to rotate, Space to pause — because a factory player already
- * knows those and being clever with them would only cost them time.
+ *   **Dragging the map moves the map.** With nothing in hand, a press is held as
+ *   a pending selection and becomes a pan the moment the cursor travels more than
+ *   a few pixels, so the same button both picks a machine and hauls the world
+ *   around and neither gets in the other's way.
+ *
+ * Everything else is the standard set — WASD and middle-drag to pan, R to rotate,
+ * Space to pause — because a factory player already knows those and being clever
+ * with them would only cost them time. Zoom is the one deliberate omission: it is
+ * on buttons and on + / - rather than on the wheel, because a trackpad reports
+ * scroll in continuous pixels and one flick used to cross three zoom levels.
  */
 
 import { DIRS, cellOf, cx, cy, inWorld } from './machines.js';
@@ -29,6 +36,14 @@ import { HOTKEYS } from './ui.js';
 
 /** Kinds you can lay in a run by dragging. Belts, and the belt with a tank on it. */
 const DRAGGABLE = new Set(['pipe', 'store']);
+
+/**
+ * How far the pointer has to travel, in pixels, before a press with nothing in
+ * hand stops being a click on a slot and becomes a drag of the map. Small enough
+ * that dragging feels immediate, large enough that a click on a conveyor does not
+ * nudge the camera because a hand twitched.
+ */
+const DRAG_SLOP = 4;
 
 export function makeState() {
   return {
@@ -66,7 +81,11 @@ export class Input {
     st.addEventListener('pointerdown', e => { if (this.onWorld(e)) this.down(e); });
     window.addEventListener('pointermove', e => this.move(e));
     window.addEventListener('pointerup', e => this.up(e));
-    st.addEventListener('wheel', e => { if (this.onWorld(e)) this.wheel(e); }, { passive: false });
+    // The wheel is deliberately not bound to zoom. A trackpad delivers scroll in
+    // continuous pixels rather than in notches, so one flick used to jump three
+    // zoom levels and lose the part of the map you were looking at. Zoom is on the
+    // two buttons in the HUD and on + / - instead, where one press is one step.
+    st.addEventListener('wheel', e => { if (this.onWorld(e)) e.preventDefault(); }, { passive: false });
     st.addEventListener('contextmenu', e => e.preventDefault());
     window.addEventListener('keydown', e => this.key(e, true));
     window.addEventListener('keyup', e => this.key(e, false));
@@ -105,10 +124,9 @@ export class Input {
     const cell = this.cellOfEvent(e);
     this.stage.setPointerCapture?.(e.pointerId);
 
-    if (e.button === 1) {                       // middle: pan
+    if (e.button === 1) {                       // middle: pan, immediately
       const [x, y] = this.at(e);
-      S.pan = { x, y, camx: this.view.cam.x, camy: this.view.cam.y };
-      this.stage.classList.add('grab');
+      this.startPan(x, y, -1);
       e.preventDefault();
       return;
     }
@@ -141,18 +159,45 @@ export class Input {
       return;
     }
 
-    S.selected = cell;
-    this.act('select', cell);
+    // Nothing in hand, so this press is ambiguous: it is either the start of a
+    // drag across the map or a click on one slot, and which one it is depends on
+    // what the mouse does next. So it is held as a pending selection, and turns
+    // into a pan the moment the cursor travels further than a fingertip's wobble.
+    const [x, y] = this.at(e);
+    this.startPan(x, y, cell);
+  }
+
+  /**
+   * Begin a pan. `pending` is the slot to select if the pointer never actually
+   * moves; pass -1 for a middle-drag, which is a pan and nothing else.
+   */
+  startPan(x, y, pending) {
+    this.S.pan = {
+      x, y, pending,
+      camx: this.view.cam.x, camy: this.view.cam.y,
+      moved: pending < 0,
+    };
+    if (pending < 0) this.stage.classList.add('grab');
   }
 
   move(e) {
     const S = this.S;
     const [sx, sy] = this.at(e);
     if (S.pan) {
+      const dx = sx - S.pan.x, dy = sy - S.pan.y;
+      if (!S.pan.moved) {
+        if (Math.abs(dx) < DRAG_SLOP && Math.abs(dy) < DRAG_SLOP) {
+          S.hover = this.onWorld(e) ? this.view.cellAt(sx, sy) : S.hover;
+          return;                       // still could be a click; do not move yet
+        }
+        S.pan.moved = true;
+        this.stage.classList.add('grab');
+      }
       const z = this.view.cam.zoom;
-      this.view.cam.x = S.pan.camx - (sx - S.pan.x) / z;
-      this.view.cam.y = S.pan.camy - (sy - S.pan.y) / z;
+      this.view.cam.x = S.pan.camx - dx / z;
+      this.view.cam.y = S.pan.camy - dy / z;
       this.view.clampCam();
+      S.hover = this.view.cellAt(sx, sy);
       return;
     }
 
@@ -171,7 +216,16 @@ export class Input {
 
   up(e) {
     const S = this.S;
-    if (S.pan) { S.pan = null; this.stage.classList.remove('grab'); }
+    if (S.pan) {
+      const p = S.pan;
+      S.pan = null;
+      this.stage.classList.remove('grab');
+      // A press that never travelled was a click on a slot after all.
+      if (p.pending >= 0 && !p.moved) {
+        S.selected = p.pending;
+        this.act('select', p.pending);
+      }
+    }
     if (S.drag?.mode === 'build') {
       const path = S.drag.path;
       S.drag = null;
@@ -179,12 +233,6 @@ export class Input {
     } else if (S.drag) {
       S.drag = null;
     }
-  }
-
-  wheel(e) {
-    e.preventDefault();
-    const [x, y] = this.at(e);
-    this.view.zoomBy(e.deltaY < 0 ? 1 : -1, x, y);
   }
 
   /* ------------------------------------------------------------ belt runs --- */
@@ -280,6 +328,8 @@ export class Input {
       case 'x': case 'delete': case 'backspace':
         if (this.target() >= 0) this.act('scrap', this.target());
         break;
+      case '+': case '=': this.act('zoom', 1); break;
+      case '-': case '_': this.act('zoom', -1); break;
       case 'v': S.showPower = !S.showPower; this.view.showPower = S.showPower; break;
       case 'c': this.act('expand'); break;
       case 'e': this.act('clear', this.target()); break;

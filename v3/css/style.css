@@ -178,8 +178,11 @@ h1 span { color: var(--gold); }
 #px { image-rendering: pixelated; }
 #tx { pointer-events: none; }
 
+/* The map is draggable, so it says so — until you pick a machine up, at which
+   point the cursor is a crosshair and a drag lays belts instead. */
+#stage { cursor: grab; }
 #stage.grab { cursor: grabbing; }
-#stage.build { cursor: crosshair; }
+#stage.build, #stage.build canvas { cursor: crosshair; }
 
 /* HUD ------------------------------------------------------------------- */
 
@@ -208,6 +211,15 @@ h1 span { color: var(--gold); }
 .hud-btn.can { border-color: var(--gold); color: var(--gold); }
 
 .spacer { flex: 1; }
+
+.zooms { display: flex; gap: 2px; align-items: stretch; margin-right: 8px; }
+.zooms button { padding: 5px 0; font-size: 13px; width: 26px; line-height: 1; }
+.zooms span {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 46px; font-size: 11px; color: var(--dim);
+  border: 2px solid var(--line); border-left: 0; border-right: 0;
+  background: var(--plate);
+}
 
 .speeds { display: flex; gap: 2px; }
 .speeds button { padding: 5px 9px; font-size: 11px; min-width: 34px; }

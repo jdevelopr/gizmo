@@ -874,7 +874,7 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <table>
 <tr><td>1 – 0</td><td class="k">Pick a machine up to build</td></tr>
 <tr><td>Click</td><td class="k">Place it, or select what is already there</td></tr>
-<tr><td>Drag</td><td class="k">Lay a whole run of belts at once, following the drag</td></tr>
+<tr><td>Drag the map</td><td class="k">Move around. With a Conveyor in hand a drag lays a whole run instead</td></tr>
 <tr><td>R / Shift R</td><td class="k">Rotate</td></tr>
 <tr><td>F</td><td class="k">Flip a Balancer or Sorter's branch to the other side</td></tr>
 <tr><td>Q</td><td class="k">Pipette — copy whatever is under the cursor into your hand</td></tr>
@@ -883,8 +883,8 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <tr><td>Right click</td><td class="k">Put down what you are holding, or scrap what is there</td></tr>
 <tr><td>V</td><td class="k">Show the power grid</td></tr>
 <tr><td>C</td><td class="k">Buy the next ring of land</td></tr>
-<tr><td>WASD / arrows</td><td class="k">Pan · middle-drag also pans</td></tr>
-<tr><td>Wheel</td><td class="k">Zoom, on the cursor</td></tr>
+<tr><td>WASD / arrows</td><td class="k">Pan · middle-drag pans whatever is in your hand</td></tr>
+<tr><td>+ / −</td><td class="k">Zoom, one step at a time · the two buttons by the speed controls do the same</td></tr>
 <tr><td>Space</td><td class="k">Pause · [ and ] change speed</td></tr>
 <tr><td>Esc</td><td class="k">Drop what you are holding, then open the menu</td></tr>
 </table>`;

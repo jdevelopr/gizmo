@@ -265,8 +265,14 @@ export function createEngine(cfgIn = {}) {
       return;
     }
 
+    /**
+     * The catalogue is open while the floor is running as well as between rounds.
+     * Watching a line jam and being told to wait ninety seconds before you may buy
+     * the Storage that fixes it is the wrong answer to the most interesting moment
+     * in the game — a live floor is where you learn what it needs.
+     */
     if (msg.t === 'buy') {
-      if (phase !== 'plan') return note(p, 'The catalogue is open between rounds');
+      if (phase !== 'plan' && phase !== 'run') return note(p, 'The catalogue is closed');
       const spec = catalogue(p.f.done)[msg.i];
       if (!spec) return;
       const cost = spec.cost ?? price(spec);
@@ -281,7 +287,7 @@ export function createEngine(cfgIn = {}) {
 
     /** Spend the science the floor has made. Permanent, and never taken away. */
     if (msg.t === 'research') {
-      if (phase !== 'plan') return note(p, 'Research between rounds');
+      if (phase !== 'plan' && phase !== 'run') return note(p, 'Research is closed');
       const r = research(p.f, String(msg.id || ''));
       note(p, r.msg || '');
       return;
@@ -317,7 +323,10 @@ export function createEngine(cfgIn = {}) {
      * into a wall.
      */
     if (msg.t === 'expand') {
-      if (phase !== 'plan') return note(p, 'Buy land while planning');
+      // Land is the one purchase that stays between rounds. Growing moves the vault
+      // out to the new fence, and anything already in the air toward the old one
+      // would be sold into a wall.
+      if (phase !== 'plan') return note(p, 'Claim land between rounds');
       if (p.f.claim >= GRID) return note(p, 'You own the whole plot');
       const cost = expandCost(p.f.claim);
       if (p.f.cash < cost) return note(p, `Land costs $${cost}`);

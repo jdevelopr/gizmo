@@ -478,10 +478,12 @@ export function createController({ send, solo = false, onEnd = null }) {
   /** Everything research has opened up, at this round's prices. */
   function paintCatalogue() {
     const list = $('#shop-cards');
-    const open = hud.ph === 'plan';
+    // Open while the floor is stopped and while it is running: a jam is the best
+    // possible moment to buy the machine that unjams it.
+    const open = hud.ph === 'plan' || hud.ph === 'run';
     $('#cat-label').innerHTML = open
       ? 'CATALOGUE <span class="dim">buy all you can fit</span>'
-      : 'CATALOGUE <span class="dim">opens between rounds</span>';
+      : 'CATALOGUE <span class="dim">closed</span>';
     if (!list) return;
     list.innerHTML = '';
     for (const [i, o] of (shop?.opts || []).entries()) {
@@ -508,7 +510,7 @@ export function createController({ send, solo = false, onEnd = null }) {
     const list = $('#tech-list');
     if (!list) return;
     const sci = shop?.science ?? view.sc ?? 0;
-    const open = hud.ph === 'plan';
+    const open = hud.ph === 'plan' || hud.ph === 'run';
     $('#tech-label').innerHTML = open
       ? `RESEARCH <span class="dim">${sci} science banked</span>`
       : `RESEARCH <span class="dim">${sci} banked · spend between rounds</span>`;

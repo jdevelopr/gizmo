@@ -162,6 +162,7 @@ push();
   buyable[0].click();
   ok(f.grid.filter(Boolean).length === had + 2, 'and there is no one-a-round cap any more');
 
+
   $('#dock-tabs button[data-tab="tech"]').click();
   const techRows = window.document.querySelectorAll('#tech-list .tech-row');
   ok(techRows.length === M.TECH.length, 'every tech node is listed', techRows.length + ' nodes');
@@ -314,6 +315,41 @@ push();
   $('#dock-action').click();
   push();
   ok(p.planReady, 'and pressing it readies up');
+}
+
+/* --- building while the floor runs --------------------------------------------- */
+{
+  // The catalogue and the tech tree stay open during SHIPPING. Watching a line jam
+  // and being told to wait ninety seconds before you may buy the Storage that fixes
+  // it is the wrong answer to the most interesting moment in the game.
+  for (const s2 of [0]) eng.action(s2, { t: 'plan', v: true });
+  while (eng.phase !== 'run') eng.step(0.25);
+  push();
+  ok(eng.phase === 'run', 'the round starts');
+
+  $('#dock-tabs button[data-tab="build"]').click();
+  const live = [...window.document.querySelectorAll('#shop-cards .buy')].filter(b => !b.disabled);
+  ok(live.length > 0, 'the catalogue is still live', live.length + ' affordable');
+  const mid = f.grid.filter(Boolean).length;
+  live[0].click();
+  ok(f.grid.filter(Boolean).length === mid + 1, 'you can buy a machine mid-round');
+
+  f.science = 99999;
+  push();
+  $('#dock-tabs button[data-tab="tech"]').click();
+  const open = [...window.document.querySelectorAll('#tech-list button')]
+    .filter(b => b.textContent === 'RESEARCH');
+  ok(open.length > 0, 'research is offered mid-round', open.length + ' nodes ready');
+  const known = f.done.length;
+  open[0]?.click();
+  ok(f.done.length === known + 1, 'and can be bought there', f.done.join(','));
+
+  // Land is the exception, and for a simulation reason rather than a rule: growing
+  // moves the vault out, and anything already in the air toward the old one would
+  // be sold into a wall.
+  const claimWas = f.claim;
+  eng.action(0, { t: 'expand' });
+  ok(f.claim === claimWas, 'but land still waits for the floor to stop');
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nthe pad works');

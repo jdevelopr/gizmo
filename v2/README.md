@@ -132,6 +132,18 @@ what a Balancer is for.
  ... -> [Mutator] -> [Balancer] -> [VAULT]  cash
 ```
 
+**The catalogue is open while the floor is running.** Watching a line jam and being
+told to wait ninety seconds before you may buy the Storage that fixes it is the wrong
+answer to the most interesting moment in the game — a live floor is where you learn
+what it needs. Buying and research both work during SHIPPING, alongside the moving,
+rotating and upgrading that already did.
+
+Claiming land is the one thing that still waits for the floor to stop, and for a
+simulation reason rather than a rule: growing moves the vault out to the new fence,
+and anything already in the air toward the old one would be sold into a wall. So the
+BUILD phase now gives you exactly one thing SHIPPING does not — room to rearrange
+without gizmos moving under your hands.
+
 **Three phases, not four.** BUILD and WORKSHOP were split back when the shop dealt
 three random cards and let you keep one — a hand you were *given* was a genuinely
 different moment from a floor you were *arranging*. The catalogue ended that, so they

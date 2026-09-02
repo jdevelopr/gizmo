@@ -12,15 +12,17 @@ so all three ship from the same Amplify site — the original at `/`, GIZMO 2 at
 
 ## What it is
 
-You own a **three-slot square** in the middle of a fifty-six-slot world. All nine of
-those slots are ore, and three of them already hold a factory: an Extractor, one
-Conveyor, and a Market Depot. It earns from the first second, it is running at a
-fifth speed because nothing is powering it, and there are six slots left to do
-something about that.
+You own a **three-slot square** in the middle of a fifty-six-slot world, and nothing
+else. All nine of those slots are ore. Put an Extractor on one, a Market Depot a
+couple of slots away and a Conveyor between them, and that is a factory: ore out of
+the ground, along a belt, into money.
 
 Everything after that is making the line longer, wider, and worth more — and finding
 room for it. Ore gets richer the further out you go, land gets steeply dearer, and
 the second ore you need is a dozen rings away.
+
+The **first** time you play, a card in the corner walks you through building that
+opening line. Every time after that, a new world just opens empty.
 
 There are no rounds, no phases, no other players and no clock. The factory runs
 from the moment you open it until you close the tab, and it is still there when you
@@ -246,6 +248,31 @@ when it passed. Sweeping pays nothing:
 it is a change of mind rather than production, and paying for it would turn
 demolishing a line into a way of laundering gizmos into cash.
 
+### The map starts empty, and the first visit is walked through
+
+The game used to hand you a working line and let you work out the rest. That is a
+fine way to open a game somebody already understands and a poor way to open one they
+do not: the single most important thing about this map — ore comes out of the ground,
+goes along a belt, and turns into money at the other end — was something you were
+shown the *result* of rather than something you did. And the very first hint the game
+gave you was about **power**, which is the fourth thing to learn, not the first.
+
+So nothing is built. On a first visit a card in the corner asks for six things in
+order, and between them they cover every verb this game has that other games do not:
+an Extractor that only works standing on ore, a Depot that is a building rather than
+a wall, belts laid by dragging, a Generator that has to *touch* the line, fuel that
+is the ore you just dug up, and a fence you pay to push outward.
+
+It watches the factory rather than the mouse. There is nothing to click through, no
+order it insists on — build the Depot first and two steps tick together — and it
+never blocks anything. It takes the alert box's corner while it runs, because the
+alert would only be saying a terser version of the same thing. Skip is always there,
+it survives a reload mid-lesson, and it is one line in the menu to see again.
+
+Once it has run once, this browser never sees it again unless it is asked for. Every
+new world after that opens with an empty claim and $650 — enough for the Extractor,
+the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
+
 ### The claim is centred, and it starts at three
 
 Both earlier games anchored the floor at the top left and grew it down and right,
@@ -253,7 +280,7 @@ which is fine when the floor is the world. Here the claim is a square in the mid
 of the map and every purchase adds a ring, so expansion is a **direction you
 choose** rather than a diagonal you get pushed along.
 
-It starts at **3x3**. Nine slots holds the starting line and leaves six, which is
+It starts at **3x3**. Nine slots holds the opening line and leaves six, which is
 exactly enough to fit a Generator and the Balancer that feeds it if you think about
 where they go. The opening is a packing puzzle with one obvious first move and a
 fence you want to push outward inside a minute, which is a better first ten minutes

@@ -86,6 +86,19 @@
 
     <div id="hint"></div>
     <div id="alert" hidden></div>
+
+    <!-- The first-visit walkthrough. It sits where the alert does and takes its
+         place while it is running, because the alert would only be saying a
+         terser version of the same thing. -->
+    <div id="tutorial" hidden>
+      <div class="tut-head">
+        <span id="tut-count"></span>
+        <button id="tut-skip">SKIP</button>
+      </div>
+      <h4 id="tut-title"></h4>
+      <p id="tut-body"></p>
+      <div id="tut-dots" class="tut-dots"></div>
+    </div>
   </main>
 
   <!-- right: what you are looking at, and what to spend on -->
@@ -118,6 +131,7 @@
     <button id="m-resume" class="big">RESUME</button>
     <button id="m-save" class="ghost">SAVE NOW</button>
     <button id="m-howto" class="ghost">HOW TO PLAY</button>
+    <button id="m-tutorial" class="ghost">REPLAY THE WALKTHROUGH</button>
     <button id="m-quit" class="ghost danger">ABANDON THIS WORLD</button>
     <p class="fine" id="m-note"></p>
   </div>

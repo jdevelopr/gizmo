@@ -22,9 +22,9 @@ import {
 import { reachFrom } from './power.js';
 import {
   createGame, stepGame, saveGame, loadGame, hasSave, clearSave,
-  ageToasts, toast, SPEEDS,
+  ageToasts, toast, endTutorial, SPEEDS,
 } from './game.js';
-import { Palette, Crate, Hud, Panel, drawMinimap, howtoHtml, health } from './ui.js';
+import { Palette, Crate, Hud, Panel, Tutorial, drawMinimap, howtoHtml, health } from './ui.js';
 import { Input, makeState } from './input.js';
 
 const $ = id => document.getElementById(id);
@@ -33,6 +33,7 @@ let g = null;                       // the game, once one is running
 let view = null;
 let palette = null;
 let crate = null;
+let tutorial = null;
 let hud = null;
 let panel = null;
 let input = null;
@@ -62,6 +63,7 @@ function boot(game) {
     view = new View($('px'), $('tx'));
     palette = new Palette($('palette'), spec => act('tool', spec));
     crate = new Crate($('crate'), st => act('takeFromCrate', st), key => act('scrapCrate', key));
+    tutorial = new Tutorial(() => act('endTutorial'));
     hud = new Hud();
     panel = new Panel(g, act);
     input = new Input(view, S, act, () => g);
@@ -70,7 +72,7 @@ function boot(game) {
   }
   panel.g = g;
   view.resize();
-  view.centreOn(g.f.world.start.ext);
+  view.centreOn(g.f.world.start.belts[0] ?? g.f.world.start.ext);
   view.groundKey = '';
   palette.key = '';
   palette.build(g);
@@ -93,6 +95,7 @@ function wireChrome() {
     $('m-note').textContent = saveGame(g) ? 'Saved.' : 'Could not save — storage is blocked.';
   };
   $('m-howto').onclick = () => act('help');
+  $('m-tutorial').onclick = () => act('replayTutorial');
   $('m-quit').onclick = () => {
     if ($('m-quit').dataset.armed) {
       clearSave();
@@ -151,7 +154,7 @@ function frame(now) {
     reach: S.reach,
   });
 
-  hud.update(g);
+  hud.update(g, tutorial.update(g));
   updateZoom();
   palette.price(g);
   crate.update(g, S);
@@ -471,6 +474,19 @@ function act(name, payload, extra) {
     }
 
     /* --- chrome --- */
+    case 'endTutorial': {
+      endTutorial(g);
+      tutorial.key = '';
+      hud.last.alert = '';
+      return;
+    }
+    case 'replayTutorial': {
+      g.tut = 0;
+      tutorial.key = '';
+      $('menu').hidden = true;
+      resume();
+      return;
+    }
     case 'help': {
       $('howto-body').innerHTML = howtoHtml(f);
       $('menu').hidden = true;

@@ -20,9 +20,9 @@
  */
 
 import {
-  TYPES, RAW, WORLD, CLAIM_START, MILESTONES, CONTRACT_SLOTS, CONTRACT_PREMIUM,
-  CONTRACT_GRACE, CONTRACT_GAP, cellOf, cx, cy, rng, hashSeed, money,
-  makeMachine, techById, unlockedBy, OPEN,
+  TYPES, RAW, WORLD, CLAIM_START, MILESTONES, TUTORIAL, CONTRACT_SLOTS,
+  CONTRACT_PREMIUM, CONTRACT_GRACE, CONTRACT_GAP, cellOf, cx, cy, rng, hashSeed,
+  money, makeMachine, techById, unlockedBy, OPEN,
 } from './machines.js';
 import { generateWorld } from './world.js';
 import {
@@ -30,19 +30,43 @@ import {
 } from './sim.js';
 
 const SAVE_KEY = 'gizmo3.save.v1';
+/** Set once the first game has been walked through, or the walk was skipped. */
+const TAUGHT_KEY = 'gizmo3.taught.v1';
 const STEP = 1 / 30;              // the simulation's fixed tick
 export const SPEEDS = [0, 1, 2, 3];
 
 /** How fast the income and throughput averages forget. Seconds. */
 const EMA_WINDOW = 12;
 
-export function createGame({ seed = null, cash = 450 } = {}) {
+/**
+ * A new world.
+ *
+ * Nothing is built. The map used to open with an Extractor, a belt and a Depot
+ * already running, which is a fine way to start a game you understand and a poor
+ * way to start one you do not — the single most important thing here, that ore goes
+ * along a belt and turns into money, was something you were shown the result of
+ * rather than something you did. So the first visit is walked through building it,
+ * and every visit after that begins with an empty claim and the money to fill it.
+ *
+ * @param {boolean|null} teach force the walkthrough on or off; null asks storage
+ */
+export function createGame({ seed = null, cash = 650, teach = null } = {}) {
   const s = seed == null ? (Math.floor(Math.random() * 1e9) | 0) : seed;
   const world = generateWorld(s);
   const f = createFactory({ seed: s, world, cash });
-  starterKit(f);
   rebuild(f);
-  return baseGame(f);
+  const g = baseGame(f);
+  g.tut = (teach == null ? !hasBeenTaught() : teach) ? 0 : -1;
+  return g;
+}
+
+/** Has this browser already been walked through the opening once? */
+export function hasBeenTaught() {
+  try { return !!localStorage.getItem(TAUGHT_KEY); } catch (e) { return false; }
+}
+
+export function markTaught() {
+  try { localStorage.setItem(TAUGHT_KEY, '1'); } catch (e) { /* private window */ }
 }
 
 function baseGame(f) {
@@ -57,6 +81,7 @@ function baseGame(f) {
     contracts: [],
     nextContract: 20,
     contractId: 1,
+    tut: -1,                       // tutorial step, TUTORIAL.length = finished card, -1 = off
     done: new Set(),               // milestone ids
     toasts: [],
     log: [],                       // the last few notable events, for the sidebar
@@ -87,6 +112,7 @@ export function stepGame(g, realDt) {
   // Ticked here rather than from the draw loop, so a headless run notices the
   // same things a played one does.
   checkMilestones(g);
+  stepTutorial(g);
   // The averages are per *factory* second, not per wall second, so "$4.20/s"
   // means the same thing at 1x and at 3x. Nothing is smoothed while paused.
   if (dt > 0) smooth(g, dt);
@@ -194,6 +220,31 @@ export function creditSale(g, ty, n = 1) {
   }
 }
 
+/* ---------------------------------------------------------------- tutorial --- */
+
+/**
+ * Advance the walkthrough if the current step has been done.
+ *
+ * It watches the factory rather than the mouse, so there is no wrong order and
+ * nothing to click through: a player who builds the Depot before the Extractor
+ * simply finds two steps ticked at once, which is the correct response to somebody
+ * who is ahead of the lesson.
+ */
+export function stepTutorial(g) {
+  if (g.tut < 0 || g.tut >= TUTORIAL.length) return;
+  while (g.tut < TUTORIAL.length && TUTORIAL[g.tut].done(g.f, g)) {
+    g.tut++;
+    g.tutAt = g.f.t;
+  }
+  if (g.tut >= TUTORIAL.length) markTaught();
+}
+
+/** Put the walkthrough away, whether it was finished or skipped. */
+export function endTutorial(g) {
+  g.tut = -1;
+  markTaught();
+}
+
 /* -------------------------------------------------------------- milestones --- */
 
 /**
@@ -206,6 +257,9 @@ export function checkMilestones(g) {
   const hit = id => {
     if (g.done.has(id)) return;
     g.done.add(id);
+    // While the walkthrough is running it is already saying all of this, one step
+    // at a time and in more detail. Tick them off quietly and let it talk.
+    if (g.tut >= 0) return;
     const ms = MILESTONES.find(m => m.id === id);
     if (ms) toast(g, `${ms.name}`, '#a8dcff');
   };
@@ -280,6 +334,7 @@ export function serialise(g) {
     done: f.done.slice(),
     shipped: Array.from(f.shipped).map(n => Math.round(n)),
     milestones: Array.from(g.done),
+    tut: g.tut,
     cleared,
     machines,
     crate,
@@ -327,6 +382,7 @@ export function deserialise(data) {
   g._sci = f.studied;
   for (let ty = 0; ty < f.shipped.length; ty++) g._units[ty] = f.shipped[ty];
   for (const id of data.milestones || []) g.done.add(id);
+  g.tut = Number.isInteger(data.tut) ? data.tut : -1;
   return g;
 }
 

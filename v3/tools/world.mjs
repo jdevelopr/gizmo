@@ -101,18 +101,24 @@ console.log(`  average richness outside the claim      ${(farRichSum / N).toFixe
   else console.log('\n  a seed replays identically, so a save file is only a seed and a diff');
 }
 
-/* --- and the starter line has to actually run on any of them ----------------- */
+/* --- the line the walkthrough asks for has to be buildable on any of them ----- */
+/*
+ * The map opens empty now and the first visit is walked through laying an
+ * Extractor, a belt and a Depot by hand. That makes this the most important check
+ * in the file: on every seed, the thing the walkthrough tells a brand new player
+ * to build has to fit inside the opening claim and has to work.
+ */
 {
   const tried = Math.min(60, N);
   let dead = 0;
   for (let seed = 1; seed <= tried; seed++) {
-    const f = createFactory({ seed, cash: 450 });
+    const f = createFactory({ seed, cash: 650 });
     starterKit(f);
     rebuild(f);
     for (let i = 0; i < 90 * 30; i++) stepFactory(f, 1 / 30);
-    if (f.earned <= 0) { dead++; note(seed, 'the starter factory earned nothing in 90 seconds'); }
+    if (f.earned <= 0) { dead++; note(seed, 'the walkthrough line earned nothing in 90 seconds'); }
   }
-  console.log(`  the starter line runs on ${tried - dead} of the first ${tried} seeds`);
+  console.log(`  the line the walkthrough asks for works on ${tried - dead} of the first ${tried} seeds`);
 }
 
 if (bad.length) console.log('\n' + bad.map(b => '  ' + b).join('\n'));

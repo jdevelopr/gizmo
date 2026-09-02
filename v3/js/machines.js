@@ -950,6 +950,87 @@ export const CONTRACT_PREMIUM = 1.35;   // paid over the plain market value of t
 export const CONTRACT_GRACE = 2.2;      // clock, as a multiple of the time it should take
 export const CONTRACT_GAP = 45;         // seconds between a slot emptying and refilling
 
+/* ---------------------------------------------------------------- tutorial --- */
+
+/**
+ * The first five minutes, once.
+ *
+ * GIZMO 3 used to hand you a working line and let you work out the rest. That is a
+ * fine way to open a game you already understand and a poor way to open one you do
+ * not: the single most important thing about this map — that ore comes out of the
+ * ground, goes along a belt, and turns into money at the other end — was something
+ * you were shown the *result* of rather than something you did.
+ *
+ * So the map starts empty and the first visit is walked through building that line
+ * by hand, one step at a time. Six steps, and between them they cover every verb
+ * this game has that no other game has: ore under the machine, a depot that is a
+ * building rather than a wall, belts laid by dragging, power that comes from
+ * burning what you dug up, and a fence you have to pay to push outward.
+ *
+ * Each step watches the factory rather than the mouse. There is nothing to click
+ * through and no wrong order — do the thing, and it ticks. `done` is handed the
+ * factory and the game; it must be cheap, because it is asked every frame.
+ */
+export const TUTORIAL = [
+  {
+    id: 'ext',
+    title: 'Put an Extractor on ore',
+    body: 'Press <b>5</b>, then click any slot inside your fence — all nine are Slag. '
+      + 'An Extractor pulls ore out of the ground underneath it and pushes it out of its front.',
+    done: f => f.cells.some(i => f.grid[i]?.kind === 'ext'),
+  },
+  {
+    id: 'depot',
+    title: 'Build a Market Depot',
+    body: 'Press <b>7</b> and put it down a couple of slots away, in the direction the '
+      + 'Extractor is facing. A Depot buys anything pushed into it, instantly, at full price. '
+      + 'It is the only place money comes from.',
+    done: f => f.cells.some(i => f.grid[i]?.kind === 'depot'),
+  },
+  {
+    id: 'belt',
+    title: 'Join them with a Conveyor',
+    body: 'Press <b>1</b> and <b>drag</b> from the Extractor to the Depot — a drag lays the '
+      + 'whole run and aims every belt along it. Money starts arriving the moment the first '
+      + 'ore reaches the other end.',
+    done: f => f.sold > 0,
+  },
+  {
+    id: 'gen',
+    title: 'Build a Generator touching the line',
+    body: 'Notice how slow that is. Nothing is powering it, so everything runs at a fifth '
+      + 'speed. Press <b>6</b> and put a Generator against the side of your belt — power '
+      + 'spreads outward through machines that touch each other.',
+    done: f => f.cells.some(i => f.grid[i]?.kind === 'gen'),
+  },
+  {
+    id: 'fuel',
+    title: 'Get ore into the firebox',
+    body: 'A Generator burns what you feed it. Press <b>2</b> and drop a <b>Balancer</b> into '
+      + 'the middle of your belt so its side exit points at the Generator — a Balancer sends '
+      + 'every other gizmo down its branch. The belt that carries the fuel is also the wire '
+      + 'that carries the power back.',
+    done: f => f.cells.some(i => f.grid[i]?.kind === 'gen' && f.grid[i].fuel > 0),
+  },
+  {
+    id: 'land',
+    title: 'Buy a ring of land',
+    body: 'Nine slots is not a factory. Press <b>C</b>, or the EXPAND button up top. Land is '
+      + 'cheap to begin with and gets steeply dearer, and the ore out there is richer than '
+      + 'the ore under your feet.',
+    done: f => f.claim > CLAIM_START,
+  },
+];
+
+/** What the card says once every step is ticked. */
+export const TUTORIAL_END = {
+  title: 'That is the whole game',
+  body: 'Everything else is more of it. <b>Mutators</b> and <b>Fusers</b> turn cheap gizmos '
+    + 'into dear ones, the <b>Lab</b> turns them into research instead, and a dozen rings out '
+    + 'there is Sap — the second ore, and the one the Assembler recipes need. Press '
+    + '<b>?</b> at any time for the manual.',
+};
+
 /* -------------------------------------------------------------- milestones --- */
 
 /**

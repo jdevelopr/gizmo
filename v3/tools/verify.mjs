@@ -19,7 +19,10 @@ import {
   sweepGround, looseAt,
 } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
-import { createGame, stepGame, serialise, deserialise } from '../js/game.js';
+import {
+  createGame, stepGame, serialise, deserialise, stepTutorial, endTutorial,
+} from '../js/game.js';
+import { TUTORIAL } from '../js/machines.js';
 
 let fails = 0;
 const ok = (cond, what, detail = '') => {
@@ -296,7 +299,9 @@ console.log('\nSWITCHING THINGS OFF');
 }
 {
   // and it survives a reload
-  const g = createGame({ seed: 31, cash: 900 });
+  const g = createGame({ seed: 31, cash: 900, teach: false });
+  starterKit(g.f);
+  rebuild(g.f);
   applyAction(g.f, { a: 'off', i: g.f.cells[1] });
   const back = deserialise(JSON.parse(JSON.stringify(serialise(g))));
   ok(back.f.grid[g.f.cells[1]].off === 1, 'and the switch survives a reload');
@@ -387,7 +392,9 @@ console.log('\nBUILDING OVER THINGS');
 
 console.log('\nTHE SAVE FILE');
 {
-  const g = createGame({ seed: 4242, cash: 900 });
+  const g = createGame({ seed: 4242, cash: 900, teach: false });
+  starterKit(g.f);
+  rebuild(g.f);
   run(g.f, 30);
   build(g.f, { kind: 'gen' }, cellOf(cx(g.f.world.start.belts[1]), cy(g.f.world.start.ext) + 1), {});
   applyAction(g.f, { a: 'expand' });
@@ -416,11 +423,54 @@ console.log('\nTHE SAVE FILE');
     'with what was in it, at the level it was');
 }
 
+console.log('\nTHE OPENING');
+{
+  const g = createGame({ seed: 77, teach: true });
+  ok(g.f.cells.length === 0, 'a new world starts with nothing built on it');
+  ok(g.f.claim === CLAIM_START, `and a ${CLAIM_START}x${CLAIM_START} claim`);
+  ok(g.f.cash > 500, 'and enough money to build the opening line', `$${g.f.cash}`);
+  ok(g.tut === 0, 'with the walkthrough on its first step');
+
+  for (let i = 0; i < 30 * 30; i++) stepGame(g, 1 / 30);
+  ok(g.f.earned === 0, 'an empty map earns nothing, however long it is left');
+  ok(g.tut === 0, 'and the walkthrough waits rather than advancing on its own');
+
+  // Now do what it asks, in order.
+  starterKit(g.f);
+  rebuild(g.f);
+  stepTutorial(g);
+  ok(g.tut === 2, 'building an Extractor and a Depot ticks the first two steps',
+    `on step ${g.tut}`);
+  for (let i = 0; i < 40 * 30; i++) stepGame(g, 1 / 30);
+  ok(g.f.earned > 0, 'the line the walkthrough describes earns on this seed',
+    `earned ${Math.round(g.f.earned)}`);
+  ok(g.tut === 3, 'and the third step ticks on the first sale', `on step ${g.tut}`);
+
+  const gen = cellOf(cx(g.f.world.start.belts[0]), cy(g.f.world.start.belts[0]) + 1);
+  build(g.f, { kind: 'gen' }, gen, {});
+  stepTutorial(g);
+  ok(g.tut === 4, 'and the fourth on a Generator');
+  g.f.grid[gen].buf.push({ id: 1, ty: 0, cp: 0 });
+  for (let i = 0; i < 30; i++) stepGame(g, 1 / 30);
+  ok(g.tut === 5, 'and the fifth once it is burning something', `on step ${g.tut}`);
+  applyAction(g.f, { a: 'expand' });
+  stepTutorial(g);
+  ok(g.tut === TUTORIAL.length, 'and the last on a ring of land', `on step ${g.tut}`);
+
+  const back = deserialise(JSON.parse(JSON.stringify(serialise(g))));
+  ok(back.tut === g.tut, 'the walkthrough survives a reload');
+  endTutorial(g);
+  ok(g.tut === -1, 'and can be put away');
+}
+
 console.log('\nA WHOLE GAME, LEFT RUNNING');
 {
-  const g = createGame({ seed: 77, cash: 450 });
+  const g = createGame({ seed: 77, teach: false });
+  ok(g.tut === -1, 'a returning player gets no walkthrough');
+  starterKit(g.f);
+  rebuild(g.f);
   for (let i = 0; i < 60 * 30; i++) stepGame(g, 1 / 30);   // one minute
-  ok(g.f.earned > 0, 'the starter factory earns without being touched',
+  ok(g.f.earned > 0, 'a hand-built starter line earns',
     `earned ${Math.round(g.f.earned)}`);
   ok(g.f.gizmos.length < 4300, 'and never exceeds the gizmo ceiling');
   ok(g.done.has('sell'), 'and ticks off its first milestone');

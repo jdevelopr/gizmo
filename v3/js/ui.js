@@ -16,7 +16,7 @@ import {
   cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
-  MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME,
+  MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME, TUTORIAL, TUTORIAL_END,
   upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE, PLUMBING,
 } from './machines.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
@@ -411,6 +411,51 @@ export function insideOf(m) {
   return d;
 }
 
+/* ---------------------------------------------------------------- tutorial --- */
+
+/**
+ * The first-visit walkthrough, as a card in the corner.
+ *
+ * One step at a time, because six at a time is a wall of text and nobody reads a
+ * wall of text over a game they have not started. It watches the factory rather
+ * than the mouse, so it never blocks anything and never insists on an order — a
+ * player who builds the Depot first simply sees two steps tick together.
+ */
+export class Tutorial {
+  constructor(onSkip) {
+    this.box = $('tutorial');
+    this.count = $('tut-count');
+    this.title = $('tut-title');
+    this.body = $('tut-body');
+    this.dots = $('tut-dots');
+    this.key = '';
+    $('tut-skip').onclick = onSkip;
+    for (let i = 0; i < TUTORIAL.length; i++) this.dots.appendChild(el('i'));
+  }
+
+  /** @returns {boolean} whether the card is on screen, so the alert can stand down */
+  update(g) {
+    const step = g.tut;
+    if (step < 0) { this.box.hidden = true; return false; }
+    this.box.hidden = false;
+    const key = String(step);
+    if (key === this.key) return true;
+    this.key = key;
+
+    const done = step >= TUTORIAL.length;
+    const card = done ? TUTORIAL_END : TUTORIAL[step];
+    this.box.classList.toggle('done', done);
+    this.count.textContent = done ? 'ALL DONE' : `STEP ${step + 1} OF ${TUTORIAL.length}`;
+    $('tut-skip').textContent = done ? 'CLOSE' : 'SKIP';
+    this.title.textContent = card.title;
+    this.body.innerHTML = card.body;
+    [...this.dots.children].forEach((d, i) => {
+      d.className = i < step ? 'on' : (i === step ? 'now' : '');
+    });
+    return true;
+  }
+}
+
 /* -------------------------------------------------------------------- hud --- */
 
 export class Hud {
@@ -433,8 +478,11 @@ export class Hud {
     node.querySelector(sel).textContent = text;
   }
 
-  update(g) {
+  update(g, teaching = false) {
     const f = g.f;
+    // While the walkthrough is running it owns the alert's corner, and `alertFor`
+    // reads this to know to stand down.
+    this.teaching = teaching;
     // Every string here is written to fit its box in Silkscreen, which is wider
     // than it looks in a fallback font. The long-form versions of all of them
     // live one click away on the STATS tab, where there is room.
@@ -487,6 +535,12 @@ export class Hud {
    * ever shown.
    */
   alertFor(g, p) {
+    // The walkthrough occupies this corner and is already saying a fuller version
+    // of whatever the alert would have said, so the alert waits its turn.
+    if (this.teaching) {
+      if (this.last.alert !== '__tut') { this.last.alert = '__tut'; this.alert.hidden = true; }
+      return;
+    }
     const f = g.f;
     const d = health(f);
     let head = null, body = null;
@@ -1205,11 +1259,16 @@ export function howtoHtml(f) {
 
   return `
 <h3>The idea</h3>
-<p>You own a <b>three-slot square</b> in the middle of a fifty-six-slot world. All
-nine of those slots are Slag, and three of them already hold a factory: an
-<b>Extractor</b>, one <b>Conveyor</b>, and a <b>Market Depot</b> that buys whatever
-reaches it. That is the whole game in miniature. Everything after it is making the
-line longer, wider and worth more — and the first thing it needs is room.</p>
+<p>You own a <b>three-slot square</b> in the middle of a fifty-six-slot world, and
+nothing else. All nine of those slots are Slag. Put an <b>Extractor</b> on one, a
+<b>Market Depot</b> a couple of slots away, and a <b>Conveyor</b> between them, and
+that is a factory: ore out of the ground, along a belt, into money. Everything after
+it is making that line longer, wider and worth more — and the first thing it needs
+is room.</p>
+<p>The first time you play, a card in the corner walks you through building exactly
+that, one step at a time. It watches the factory rather than the mouse, so there is
+nothing to click through and no wrong order. After that, every new world opens empty
+— you can bring the walkthrough back from the menu if you want it.</p>
 <p>Ore is scattered across the whole world, richer the further out you go, so a
 patch out at the rim yields three times what the one under your feet does. Land is
 cheap to begin with and gets steeply dearer, so the opening is a scramble outward

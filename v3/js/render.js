@@ -58,7 +58,14 @@ const ORE_COLOR = {
 };
 
 export const ZOOMS = [8, 12, 16, 24, 32, 48, 64];
-export const DEFAULT_ZOOM = 32;
+
+/**
+ * Where the camera starts: 64 pixels a slot, which the readout calls 200% because
+ * the art is authored at 32. A game that opens on a three-slot claim wants to open
+ * close enough to read it — at 100% those nine slots are a postage stamp in the
+ * middle of an empty screen, and the first thing anyone did was zoom in.
+ */
+export const DEFAULT_ZOOM = 64;
 
 const R = Math.round;
 

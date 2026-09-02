@@ -13,7 +13,7 @@ import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
   expandCost, buyCost, label, PASSIVE,
 } from './machines.js';
-import { View, ZOOMS } from './render.js';
+import { View, ZOOMS, DEFAULT_ZOOM } from './render.js';
 import {
   build, buildCheck, moveMachine, scrapMachine, applyAction, research,
   countKind, rebuild, replaceMode, placeFromCrate, scrapFromCrate, stashMachine,
@@ -72,6 +72,10 @@ function boot(game) {
   }
   panel.g = g;
   view.resize();
+  // Every game opens at the same zoom, not at whatever the last one was left on:
+  // the View outlives a single world, so without this a second game would inherit
+  // the camera from the first.
+  view.cam.zoom = DEFAULT_ZOOM;
   view.centreOn(g.f.world.start.belts[0] ?? g.f.world.start.ext);
   view.groundKey = '';
   palette.key = '';

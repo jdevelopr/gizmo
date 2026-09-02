@@ -326,6 +326,7 @@ export class Input {
         if (S.tool) this.act('flipTool');
         else if (this.target() >= 0) this.act('mir', this.target());
         break;
+      case 'o': this.act('off', this.target()); break;
       case 'q': this.act('pipette', this.target()); break;
       case 'm': this.act('pickup', this.target()); break;
       case 'x': case 'delete': case 'backspace':

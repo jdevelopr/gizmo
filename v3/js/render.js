@@ -28,9 +28,9 @@
  */
 
 import {
-  WORLD, CELL, DIRS, TYPES, KINDS, RAW,
+  WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
   cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK,
-  capacity, intake, PASSIVE, genOutput, drawOf,
+  capacity, intake, PASSIVE, genOutput, drawOf, missingFor, STALL_BADGE,
 } from './machines.js';
 import { heldTypes, machineLoad, contents } from './sim.js';
 
@@ -90,6 +90,16 @@ function chevron(ctx, cxp, cyp, dir, color, reach = 8) {
     const half = 6 - i;
     rp(ctx, cxp, cyp, dir, reach + i, -half, 2, half * 2, color);
   }
+}
+
+/**
+ * The colour a machine should read as from a distance, when its kind alone is not
+ * enough to tell it from the one next to it.
+ */
+export function tintOf(m) {
+  if (m.kind === 'asm') return shade(TYPES[(RECIPES[m.mut ?? 0] || RECIPES[0]).out].color, 0.62);
+  if (m.kind === 'mut') return shade(TYPES[m.mut ?? 1].color, 0.55);
+  return null;
 }
 
 function makeCanvas(w, h) {
@@ -326,20 +336,41 @@ function drawBody(ctx, m, frame) {
     }
 
     case 'asm': {
-      px(ctx, 7, 7, 18, 18, '#0e1526');
-      // a gear that turns
-      const spokes = [[15, 8], [21, 14], [15, 21], [8, 14]];
-      px(ctx, 12, 12, 8, 8, shade(trim, 1.1));
+      /*
+       * Three Assemblers, one casing, and until now one picture — so a floor with
+       * an Engine line and a Turbine line on it was a floor where you had to click
+       * a machine to find out which was which. Everything that varies between the
+       * three now shows: the plate is tinted by what it makes, the window in the
+       * middle *is* what it makes, the two intake ports are the colours of the two
+       * things it eats, and the studs count the tier.
+       */
+      const r = RECIPES[m.mut ?? 0] || RECIPES[0];
+      const out = TYPES[r.out];
+      const inA = TYPES[r.ins[0]], inB = TYPES[r.ins[1]];
+
+      px(ctx, 6, 6, 20, 20, '#0e1526');
+      px(ctx, 7, 7, 18, 18, shade(out.color, 0.3));
+      px(ctx, 7, 7, 18, 1, shade(out.color, 0.5));
+
+      // a gear in the product's own colour, turning
+      const spokes = [[14, 7], [21, 14], [14, 21], [7, 14]];
       const off = frame % 4;
-      for (let s = 0; s < 4; s++) {
-        const p = spokes[(s + off) % 4];
-        px(ctx, p[0], p[1], 3, 3, s % 2 ? trim : lit);
+      for (let k2 = 0; k2 < 4; k2++) {
+        const q = spokes[(k2 + off) % 4];
+        px(ctx, q[0], q[1], 4, 4, k2 % 2 ? shade(out.color, 0.85) : out.glow);
       }
-      // the two intakes, coloured by what this recipe wants
-      const r = (m.recipeIns || null);
-      px(ctx, 8, 26, 6, 3, shade(body, 1.4));
-      px(ctx, 18, 26, 6, 3, shade(body, 1.4));
-      chevron(ctx, cxp, cyp, d, lit, 10);
+      px(ctx, 12, 12, 8, 8, '#05070d');
+      px(ctx, 13, 13, 6, 6, out.color);
+      px(ctx, 13, 13, 6, 2, out.glow);
+
+      // the two intake ports, in the colours of the two things it wants
+      px(ctx, 5, 25, 9, 4, '#05070d');
+      px(ctx, 6, 26, 7, 2, inA.color);
+      px(ctx, 18, 25, 9, 4, '#05070d');
+      px(ctx, 19, 26, 7, 2, inB.color);
+
+      for (let k2 = 0; k2 <= (m.mut ?? 0); k2++) px(ctx, 3, 5 + k2 * 4, 2, 2, out.glow);
+      chevron(ctx, cxp, cyp, d, out.glow, 10);
       break;
     }
 
@@ -583,6 +614,15 @@ export class View {
     // 4. everything that is about what you are doing rather than what is there
     if (this.showPower) this.drawPowerOverlay(ctx, f, b, z);
     if (ui.reach) this.drawReach(ctx, ui.reach, b, z);
+    // A line that has stopped for good gets a red ring, because it is the one
+    // thing on this map that will never fix itself.
+    if (ui.jams?.size) {
+      for (const c of ui.jams) {
+        const x = cx(c), y = cy(c);
+        if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
+        this.outline(ctx, c, z, '#ff3b30', 2);
+      }
+    }
     if (ui.dragPath?.length) this.drawDragPath(ctx, f, ui, z);
     else if (ui.ghost) this.drawGhost(ctx, f, ui, z);
     if (ui.selected != null && ui.selected >= 0) this.outline(ctx, ui.selected, z, GOLD, 2);
@@ -606,16 +646,21 @@ export class View {
     const k = KINDS[m.kind];
 
     if (!detail) {
+      // Zoomed out, an Assembler is drawn in the colour of what it makes rather
+      // than the colour of an Assembler — three of them side by side have to stay
+      // three different things at every zoom, not just close up.
+      const body = tintOf(m) || k.body;
       // Zoomed out: a block of the machine's own colour, and — because a factory
       // read from above is mostly about where things flow — a single tick showing
       // which way it points. That is enough to read a whole base at a glance.
-      px(ctx, sx, sy, z, z, k.body);
+      px(ctx, sx, sy, z, z, body);
       if (z >= 12) {
         const d = m.dir | 0, h = Math.max(2, z / 5);
         const cxp = sx + z / 2, cyp = sy + z / 2;
         px(ctx, cxp + DIRS[d][0] * z * 0.28 - h / 2, cyp + DIRS[d][1] * z * 0.28 - h / 2, h, h, k.trim);
       }
-      if (m.net < 0 && k.draw > 0) { ctx.globalAlpha = 0.3; px(ctx, sx, sy, z, z, '#0a1230'); ctx.globalAlpha = 1; }
+      if (m.off) { ctx.globalAlpha = 0.62; px(ctx, sx, sy, z, z, '#0b0d16'); ctx.globalAlpha = 1; }
+      else if (m.net < 0 && k.draw > 0) { ctx.globalAlpha = 0.3; px(ctx, sx, sy, z, z, '#0a1230'); ctx.globalAlpha = 1; }
       return;
     }
 
@@ -623,19 +668,39 @@ export class View {
     const s = z / CELL;   // art pixels to screen pixels
 
     // --- what it is holding, in its window
+    // Switched off by hand. Everything below — cargo, progress, stall badges, the
+    // power tint — is about a machine that is trying to work, so an off one skips
+    // the lot and says the one thing that is true about it instead.
+    if (m.off) {
+      ctx.globalAlpha = 0.62;
+      px(ctx, sx, sy, z, z, '#0b0d16');
+      ctx.globalAlpha = 1;
+      const g = '#8b96b8', cxp = sx + z / 2;
+      px(ctx, cxp - 1 * s, sy + 9 * s, 2 * s, 7 * s, g);          // the stalk
+      px(ctx, cxp - 6 * s, sy + 14 * s, 4 * s, 2 * s, g);         // the broken ring
+      px(ctx, cxp + 2 * s, sy + 14 * s, 4 * s, 2 * s, g);
+      px(ctx, cxp - 7 * s, sy + 15 * s, 2 * s, 5 * s, g);
+      px(ctx, cxp + 5 * s, sy + 15 * s, 2 * s, 5 * s, g);
+      px(ctx, cxp - 5 * s, sy + 20 * s, 10 * s, 2 * s, g);
+      return;
+    }
+
     const held = heldTypes(m);
     const queued = m.buf;
     if (held.length || queued.length) {
       const dot = Math.max(2, Math.round(3 * s));
       let n = 0;
+      // A gizmo with no type should be impossible; drawing one is not worth
+      // taking the whole frame loop down for, so it is skipped rather than trusted.
       for (const ty of held) {
         const t = TYPES[ty];
-        px(ctx, sx + (10 + n * 5) * s, sy + 10 * s, dot, dot, t.glow);
+        if (t) px(ctx, sx + (10 + n * 5) * s, sy + 10 * s, dot, dot, t.glow);
         n++;
       }
       n = 0;
       for (const g of queued.slice(0, 6)) {
-        px(ctx, sx + (6 + n * 4) * s, sy + 26 * s, dot, Math.max(2, 2 * s), TYPES[g.ty].color);
+        const t = TYPES[g.ty];
+        if (t) px(ctx, sx + (6 + n * 4) * s, sy + 26 * s, dot, Math.max(2, 2 * s), t.color);
         n++;
       }
     }
@@ -654,15 +719,37 @@ export class View {
       if (m.fuel <= 0) this.badge(ctx, sx, sy, z, '#ff5d4a');
     }
 
-    // --- the two failure modes, drawn differently because they want opposite fixes
-    if (m.blocked) {
+    /*
+     * Three ways to be stuck, drawn differently because they want three different
+     * fixes — and none of them drawn until the machine has been stuck for longer
+     * than a hiccup. A line running at capacity blocks for a fraction of a second
+     * on nearly every cycle, and badging that turned a healthy factory into a
+     * screen full of alarm that nobody could read.
+     */
+    if (m.blockT > STALL_BADGE) {
       // BACKED UP: holding finished goods, nowhere to put them. Fix the line ahead.
-      ctx.globalAlpha = 0.85;
-      const t = 2 * s;
-      px(ctx, sx, sy, z, t, GOLD); px(ctx, sx, sy + z - t, z, t, GOLD);
-      px(ctx, sx, sy, t, z, GOLD); px(ctx, sx + z - t, sy, t, z, GOLD);
+      // Corner brackets rather than a full ring: it has to be visible without
+      // painting over the machine you are trying to identify.
+      const t = Math.max(2, 2 * s), L = Math.max(5, z * 0.32);
+      ctx.globalAlpha = 0.9;
+      for (const [ox, oy, w, h] of [
+        [0, 0, L, t], [0, 0, t, L], [z - L, 0, L, t], [z - t, 0, t, L],
+        [0, z - t, L, t], [0, z - L, t, L], [z - L, z - t, L, t], [z - t, z - L, t, L],
+      ]) px(ctx, sx + ox, sy + oy, w, h, GOLD);
       ctx.globalAlpha = 1;
-    } else if (!m.t && !m.buf.length && !PASSIVE.has(m.kind) && intake(m) > 0) {
+    } else if (m.waitT > STALL_BADGE && m.buf.length) {
+      // WAITING: it has some of what it needs and not all of it. Rather than a
+      // badge that means "something is wrong somewhere", show the colour of the
+      // thing it is short of — which is the answer, not the question.
+      const miss = missingFor(m);
+      const t = Math.max(3, 5 * s);
+      miss.slice(0, 2).forEach((ty, k) => {
+        const bx = sx + z - t - 2 * s, by = sy + 2 * s + k * (t + 2 * s);
+        px(ctx, bx - 1, by - 1, t + 2, t + 2, '#05070d');
+        px(ctx, bx, by, t, t, TYPES[ty].color);
+        px(ctx, bx, by, t, Math.max(1, t / 3), TYPES[ty].glow);
+      });
+    } else if (m.waitT > STALL_BADGE && !PASSIVE.has(m.kind) && intake(m) > 0) {
       // STARVED: standing idle with an empty mouth. Fix the feed behind.
       const t = Math.max(2, 3 * s);
       for (const [ox, oy] of [[0, 0], [z - t, 0], [0, z - t], [z - t, z - t]]) {

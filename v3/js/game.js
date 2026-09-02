@@ -258,9 +258,9 @@ export function serialise(g) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
-    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir]);
+    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0]);
   }
-  const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir]);
+  const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0]);
   const cleared = [];
   const base = generateWorld(f.seed);
   for (let i = 0; i < f.terrain.length; i++) {
@@ -302,15 +302,23 @@ export function deserialise(data) {
   f.done = (data.done || []).filter(id => techById(id));
   (data.shipped || []).forEach((n, ty) => { if (ty < f.shipped.length) f.shipped[ty] = n; });
 
-  for (const [i, kind, dir, level, mut, mir] of data.machines || []) {
+  for (const [i, kind, dir, level, mut, mir, off] of data.machines || []) {
     if (!Number.isInteger(i) || i < 0 || i >= f.grid.length) continue;
-    const m = makeMachine({ kind, dir, mut, mir, level }, f.nid++);
-    if (kind === 'ext') { m.mut = f.patch[i]; m.rich = f.rich[i] || 1; }
+    const m = makeMachine({ kind, dir, mut, mir, level, off }, f.nid++);
+    if (kind === 'ext') {
+      // The world is rebuilt from its seed, so an Extractor whose ore is not
+      // there any more — an older save, a changed generator — cannot stand. It
+      // goes in the crate rather than onto a slot where it would have nothing to
+      // pull up and no type to be.
+      if (f.patch[i] < 0) { f.crate.push(m); continue; }
+      m.mut = f.patch[i];
+      m.rich = f.rich[i] || 1;
+    }
     f.grid[i] = m;
   }
-  for (const [kind, dir, level, mut, mir] of data.crate || []) {
+  for (const [kind, dir, level, mut, mir, off] of data.crate || []) {
     if (!kind) continue;
-    f.crate.push(makeMachine({ kind, dir, mut, mir, level }, f.nid++));
+    f.crate.push(makeMachine({ kind, dir, mut, mir, level, off }, f.nid++));
   }
   rebuild(f);
 

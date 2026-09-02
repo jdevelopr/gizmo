@@ -152,6 +152,7 @@ export function solveTopology(f) {
  * forever instead of sitting still and being obviously broken.
  */
 function busy(m) {
+  if (m.off) return false;                      // switched off draws nothing
   if (KINDS[m.kind].passive) return false;
   if (m.work.length) return true;
   return m.buf.length >= intake(m);
@@ -179,6 +180,7 @@ export function balancePower(f, dt) {
     for (const gi of net.gens) {
       const m = g[gi];
       if (!m) continue;
+      if (m.off) { m.load = 0; continue; }       // a generator you switched off
       if (m.fuel <= 0 && m.buf.length) {
         const fuel = m.buf.shift();
         m.fuel = energyOf(fuel.ty, f.done);
@@ -208,7 +210,7 @@ export function balancePower(f, dt) {
     if (delivered > 0 && net.supply > 0) {
       for (const gi of net.gens) {
         const m = g[gi];
-        if (!m || m.fuel <= 0) continue;
+        if (!m || m.off || m.fuel <= 0) continue;
         const share = genOutput(m, f.done) / net.supply * delivered;
         m.load = share;
         m.fuel = Math.max(0, m.fuel - share * dt);

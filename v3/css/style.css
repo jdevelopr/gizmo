@@ -361,6 +361,36 @@ h3 {
 .row.warn b { color: var(--gold); }
 .row.bad b { color: var(--red); }
 
+/* ------------------------------------------------------------- diagrams --- */
+
+/*
+ * The recipe picture. A row of pixel swatches with a plus and an arrow between
+ * them, where the ones the machine has not got are drawn hollow — so the same
+ * three inches of panel say both what it makes and what it is waiting for.
+ */
+.diagram {
+  display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px;
+  background: var(--plate2); border: 2px solid var(--line);
+  padding: 9px 10px; margin-bottom: 10px;
+}
+.diagram .part { display: flex; flex-direction: column; align-items: center; gap: 3px; max-width: 78px; }
+.diagram .part canvas { image-rendering: pixelated; display: block; }
+.diagram .part span {
+  font-size: 9px; color: var(--dim); text-align: center; line-height: 1.25;
+}
+.diagram .part.want span { color: var(--gold); }
+.diagram .part.want canvas { opacity: 0.85; }
+.diagram .op {
+  color: var(--dimmer); font-size: 13px; line-height: 18px; padding: 0 1px;
+}
+
+.inside { margin-bottom: 12px; display: grid; gap: 4px; }
+.inside-row { display: flex; align-items: center; gap: 8px; }
+.inside-k { font-size: 9px; letter-spacing: 0.1em; color: var(--dimmer); min-width: 86px; }
+.inside .strip { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; min-height: 12px; }
+.inside .strip canvas { image-rendering: pixelated; display: block; }
+.inside .none { font-size: 10px; color: var(--dimmer); }
+
 .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
 .acts button { font-size: 11px; padding: 8px 4px; }
 .acts button.full { grid-column: 1 / -1; }

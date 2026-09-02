@@ -16,6 +16,7 @@ import {
   createFactory, starterKit, stepFactory, build, buildCheck, moveMachine,
   scrapMachine, applyAction, research, rebuild, reachesPayout, diagnose,
   replaceMode, placeFromCrate, scrapFromCrate, stashMachine, crateStacks, crateKey,
+  sweepGround, looseAt,
 } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
 import { createGame, stepGame, serialise, deserialise } from '../js/game.js';
@@ -36,6 +37,7 @@ function bench(claim = WORLD) {
 const ore = (f, x, y, ty = 0, rich = 1) => { f.patch[cellOf(x, y)] = ty; f.rich[cellOf(x, y)] = rich; };
 const put = (f, kind, x, y, opt = {}) =>
   build(f, { kind, ...opt }, cellOf(x, y), { free: true, dir: opt.dir ?? 0 });
+const belt = (f, x0, x1, y, d = 0) => { for (let x = x0; x <= x1; x++) put(f, 'pipe', x, y, { dir: d }); };
 const run = (f, secs) => { for (let i = 0; i < secs * 30; i++) stepFactory(f, 1 / 30); };
 /** Feed a machine directly, the way a belt would. */
 const feed = (f, x, y, ty, n = 1) => {
@@ -126,17 +128,22 @@ console.log('\nWHAT MACHINES WILL AND WILL NOT ACCEPT');
   ok(!KINDS.fuse.passive, 'a Fuser is an ordinary machine');
   feed(f, 20, 20, 8);           // Resin, a Part — different family
   ok(fuse.buf.length === 2, 'a direct feed bypasses acceptance, as a harness should');
+  // A Fuser keeps a queue per type now, so it will happily hold Scrap and Resin at
+  // once — what it will never do is *fuse* one with the other. See tools/feeds.mjs.
   const f2 = bench();
   put(f2, 'fuse', 20, 20, { dir: 0 });
   put(f2, 'pipe', 19, 20, { dir: 0 });
   put(f2, 'pipe', 21, 20, { dir: 2 });
-  feed(f2, 19, 20, 0);
-  feed(f2, 21, 20, 8);
-  run(f2, 6);
+  feed(f2, 19, 20, 0, 2);
+  feed(f2, 21, 20, 8, 2);
+  run(f2, 8);
   const held = f2.grid[cellOf(20, 20)];
-  const fams = new Set([...held.buf, ...held.work].map(x => famOf(x.ty)));
-  ok(fams.size <= 1, 'but a Fuser fed from two belts never mixes families',
-    `held ${[...fams].join(',')}`);
+  const pair = [...held.work];
+  ok(pair.length < 2 || pair[0].ty === pair[1].ty,
+    'a Fuser only ever melts two of the same type together',
+    `working on ${pair.map(x => TYPES[x.ty].name).join(' + ')}`);
+  ok(new Set(held.buf.map(x => x.ty)).size <= 2,
+    'and never queues more than two different types at once');
 }
 {
   const f = bench();
@@ -148,10 +155,12 @@ console.log('\nWHAT MACHINES WILL AND WILL NOT ACCEPT');
     feed(f, 19, 20, r.ins[0]);
     run(f, 1);
   }
-  const ins = [...asm.buf, ...asm.work].map(x => x.ty);
-  ok(ins.filter(t => t === r.ins[0]).length <= 1,
-    'an Assembler never takes a second of an ingredient it already holds — it cannot deadlock',
-    `held ${ins.join(',')}`);
+  const ins = asm.buf.map(x => x.ty);
+  ok(ins.filter(t => t === r.ins[0]).length <= 3,
+    'an Assembler queues a bounded number of one ingredient rather than swallowing a whole belt',
+    `queued ${ins.join(',')}`);
+  ok(!asm.work.length || new Set(asm.work.map(x => x.ty)).size === 2,
+    'and never starts a job on two of the same thing — it cannot deadlock on its own inputs');
 }
 {
   const f = bench();
@@ -227,6 +236,92 @@ console.log('\nSCRAPPING AND MOVING');
   ok(moveMachine(f2, cellOf(20, 20), cellOf(22, 22)).ok, 'but onto other ore, yes');
   ok(f2.grid[cellOf(22, 22)].rich === 2,
     'and it picks up the richness of the patch it lands on');
+}
+
+console.log('\nSWITCHING THINGS OFF');
+{
+  const f = bench();
+  ore(f, 20, 20);
+  put(f, 'ext', 20, 20, { dir: 0 });
+  belt(f, 21, 24, 20);
+  put(f, 'depot', 25, 20);
+  run(f, 20);
+  const earned = f.earned;
+  ok(earned > 0, 'a line runs');
+
+  applyAction(f, { a: 'off', i: cellOf(22, 20) });
+  ok(f.grid[cellOf(22, 20)].off === 1, 'a belt in the middle of it can be switched off');
+  const held = f.grid[cellOf(22, 20)].buf.length + f.grid[cellOf(22, 20)].work.length;
+  // Whatever was already downstream of it still completes — switching a belt off
+  // stops what is behind it, not what is in front. Let that tail drain first.
+  run(f, 15);
+  const drained = f.earned;
+  run(f, 30);
+  ok(f.earned === drained, 'and once the tail has drained, nothing else gets past it',
+    `earned ${f.earned - drained} more`);
+  ok(drained - earned < 4, 'with only what was already past it getting through',
+    `${drained - earned} slipped by`);
+  ok(f.grid[cellOf(22, 20)].buf.length + f.grid[cellOf(22, 20)].work.length === held,
+    'it keeps what was already in its hands rather than dropping it');
+  ok(!diagnose(f).jams.length, 'and it is not reported as a line stopped for good — you stopped it');
+  ok(diagnose(f).switchedOff === 1, 'the books count it as switched off');
+
+  applyAction(f, { a: 'off', i: cellOf(22, 20) });
+  ok(f.grid[cellOf(22, 20)].off === 0, 'and it switches back on');
+  run(f, 30);
+  ok(f.earned > earned, 'after which the line runs again', `earned ${Math.round(f.earned - earned)} more`);
+}
+{
+  // An extractor that is off makes nothing; a generator that is off supplies nothing.
+  const f = bench();
+  ore(f, 30, 30);
+  put(f, 'ext', 30, 30, { dir: 0 });
+  put(f, 'gen', 30, 31);
+  const gen = f.grid[cellOf(30, 31)];
+  gen.buf.push(...Array.from({ length: 6 }, () => ({ id: 1, ty: 0, cp: 0 })));
+  run(f, 10);
+  ok(f.nets[0]?.supply > 0, 'a fuelled generator supplies its grid');
+  applyAction(f, { a: 'off', i: cellOf(30, 31) });
+  run(f, 5);
+  ok(f.nets[0].supply === 0, 'and supplies nothing once it is switched off');
+  const fuel = gen.fuel;
+  run(f, 10);
+  ok(Math.abs(gen.fuel - fuel) < 0.01, 'and stops burning fuel while it is off',
+    `burned ${(fuel - gen.fuel).toFixed(2)}`);
+
+  applyAction(f, { a: 'off', i: cellOf(30, 30) });
+  const made = f.gizmos.length;
+  run(f, 20);
+  ok(f.gizmos.length <= made, 'a switched-off Extractor pulls nothing out of the ground');
+}
+{
+  // and it survives a reload
+  const g = createGame({ seed: 31, cash: 900 });
+  applyAction(g.f, { a: 'off', i: g.f.cells[1] });
+  const back = deserialise(JSON.parse(JSON.stringify(serialise(g))));
+  ok(back.f.grid[g.f.cells[1]].off === 1, 'and the switch survives a reload');
+}
+
+console.log('\nLITTER');
+{
+  const f = bench(CLAIM_START);
+  const lo = claimMin(CLAIM_START);
+  ore(f, lo + 1, lo + 1);
+  put(f, 'ext', lo + 1, lo + 1, { dir: 0 });
+  put(f, 'pipe', lo + 2, lo + 1, { dir: 0 });
+  run(f, 20);
+  // Take the belt away mid-flight: whatever it was carrying lands on the floor.
+  scrapMachine(f, cellOf(lo + 2, lo + 1));
+  run(f, 20);
+  const at = cellOf(lo + 2, lo + 1);
+  ok(looseAt(f, at) > 0, 'scrapping a machine leaves what it was carrying on the ground',
+    `${looseAt(f, at)} lying there`);
+  const cash = f.cash;
+  const n = sweepGround(f, at);
+  ok(n > 0 && looseAt(f, at) === 0, 'and it can be swept up');
+  ok(f.cash === cash, 'which pays nothing — litter is not production');
+  ok(f.swept === n, 'and is counted separately from what was sold or lost');
+  ok(sweepGround(f, at) === 0, 'sweeping an empty slot does nothing at all');
 }
 
 console.log('\nBUILDING OVER THINGS');

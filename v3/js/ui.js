@@ -16,12 +16,13 @@ import {
   cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
-  MUT_PRICE, EXPAND_BASE,
+  MUT_PRICE, EXPAND_BASE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME,
+  upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE,
 } from './machines.js';
-import { bodyTile, frameCount, shade } from './render.js';
+import { bodyTile, frameCount, shade, px } from './render.js';
 import {
   kindCounts, countKind, diagnose, machineLoad, speedOf, reachesPayout,
-  crateStacks, crateKey,
+  crateStacks, crateKey, jams, heldTypes, looseTypes,
 } from './sim.js';
 import { powerSummary } from './power.js';
 
@@ -112,7 +113,10 @@ export class Palette {
     const btn = el('button', 'pal');
     btn.appendChild(icon(spec));
     const mid = el('div');
-    mid.appendChild(el('div', 'nm', label(spec).toUpperCase()));
+    // A Mutator's tier is what you are buying, so it belongs in the name. A
+    // Sorter's filter is free to change once it is down, so it does not.
+    const nm = spec.kind === 'sort' ? KINDS.sort.name : label(spec);
+    mid.appendChild(el('div', 'nm', nm.toUpperCase()));
     const k = KEY_OF[spec.kind];
     if (k) mid.appendChild(el('span', 'key', `KEY ${k}`));
     btn.appendChild(mid);
@@ -223,6 +227,190 @@ export class Crate {
   }
 }
 
+/* ---------------------------------------------------------------- diagrams --- */
+
+/**
+ * A gizmo as a chip: a pixel swatch with its name under it.
+ *
+ * These exist because "what does this machine need" was a question the inspector
+ * could only answer in prose, and prose is the wrong shape for it. A row of
+ * coloured squares with a plus and an arrow between them is read in about a
+ * quarter of a second, and — this is the part that matters — the ones the machine
+ * has not got are drawn hollow, so the same picture that says what it makes also
+ * says what it is waiting for.
+ */
+const CHIP = 18;
+
+function swatch(ty, have = true, size = CHIP) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  c.style.width = size + 'px';
+  c.style.height = size + 'px';
+  const ctx = c.getContext('2d');
+  const t = TYPES[ty];
+  if (!t) {                                     // "anything"
+    px(ctx, 0, 0, size, size, '#0c0e18');
+    for (let y = 2; y < size - 2; y += 4) {
+      for (let x = 2; x < size - 2; x += 4) {
+        px(ctx, x, y, 3, 3, ((x + y) / 2) % 8 ? '#39415e' : '#4b567a');
+      }
+    }
+    return c;
+  }
+  px(ctx, 0, 0, size, size, '#0c0e18');
+  if (have) {
+    px(ctx, 2, 2, size - 4, size - 4, t.color);
+    px(ctx, 2, 2, size - 4, 2, t.glow);
+    px(ctx, 2, size - 4, size - 4, 2, shade(t.color, 0.65));
+  } else {
+    // Hollow: the outline of the thing it is short of.
+    px(ctx, 2, 2, size - 4, 2, shade(t.color, 0.5));
+    px(ctx, 2, size - 4, size - 4, 2, shade(t.color, 0.5));
+    px(ctx, 2, 2, 2, size - 4, shade(t.color, 0.5));
+    px(ctx, size - 4, 2, 2, size - 4, shade(t.color, 0.5));
+  }
+  return c;
+}
+
+/** One labelled chip in a diagram. `n` prefixes a count, e.g. "2x". */
+function part(ty, have, label_, n) {
+  const box = el('div', 'part' + (have ? ' have' : ' want'));
+  box.appendChild(swatch(ty, have));
+  box.appendChild(el('span', null, (n && n > 1 ? `${n}x ` : '') + (label_ ?? TYPES[ty]?.name ?? 'anything')));
+  return box;
+}
+
+const op = sym => el('div', 'op', sym);
+
+/**
+ * What this machine turns into what, as a picture — and which halves of it are
+ * standing in the machine right now.
+ */
+export function diagramFor(m) {
+  const d = el('div', 'diagram');
+  const anyHeld = m.buf[0]?.ty ?? heldTypes(m)[0];
+
+  switch (m.kind) {
+    case 'asm': {
+      const r = recipeOf(m);
+      // While a job is running the ingredients are in its hands, not its mouth, so
+      // the picture reads from `work` first — a machine that is busy must not be
+      // drawn as one that is short of exactly what it is busy with.
+      const inHand = m.work.map(w => w.ty);
+      r.ins.forEach((ty, i) => {
+        if (i) d.appendChild(op('+'));
+        d.appendChild(part(ty, inHand.includes(ty) || queued(m, ty) > 0, null, 1));
+      });
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(r.out, true));
+      return d;
+    }
+    case 'fuse': {
+      // A Fuser climbs whatever it is given, so the picture is drawn from what it
+      // actually has in it — and from a generic pair when it has nothing.
+      if (m.work.length) {
+        const w = m.work[0].ty;
+        d.appendChild(part(w, true, null, 1));
+        d.appendChild(op('+'));
+        d.appendChild(part(w, true, null, 1));
+        d.appendChild(op('\u2192'));
+        d.appendChild(part(upFam(w), true));
+        return d;
+      }
+      const lanes = [...new Set(m.buf.map(g => g.ty))];
+      const ty = lanes[0] ?? anyHeld;
+      if (ty == null) {
+        d.appendChild(part(null, true, 'two of a kind', 2));
+        d.appendChild(op('\u2192'));
+        d.appendChild(part(null, true, 'one rung up'));
+        return d;
+      }
+      const n = queued(m, ty);
+      d.appendChild(part(ty, n >= 1, null, 1));
+      d.appendChild(op('+'));
+      d.appendChild(part(ty, n >= 2, null, 1));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(upFam(ty), true));
+      return d;
+    }
+    case 'mut':
+      d.appendChild(part(null, true, 'anything'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(m.mut ?? 1, true));
+      return d;
+    case 'ext':
+      d.appendChild(part(null, true, 'the ground'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(m.mut ?? 0, true));
+      return d;
+    case 'dup': {
+      const ty = anyHeld;
+      d.appendChild(part(ty ?? null, ty != null, ty == null ? 'anything' : null));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(ty ?? null, ty != null, `${m.level + 1} out, ${m.level} of them copies`));
+      return d;
+    }
+    case 'gen':
+      d.appendChild(part(null, true, 'anything burnable'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, 'power'));
+      return d;
+    case 'depot':
+      d.appendChild(part(null, true, 'anything'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, 'money'));
+      return d;
+    case 'lab':
+      d.appendChild(part(null, true, 'anything'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, 'science'));
+      return d;
+    case 'sort': {
+      const ty = m.mut ?? 1;
+      d.appendChild(part(ty, true));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, sideName(m)));
+      d.appendChild(op('·'));
+      d.appendChild(part(null, true, 'the rest go straight on'));
+      return d;
+    }
+    default: {
+      const outs = exitDirs(m).map(x => DIR_NAME[x]).join(', ');
+      d.appendChild(part(anyHeld ?? null, anyHeld != null, anyHeld == null ? 'anything' : null));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, outs.toLowerCase()));
+      return d;
+    }
+  }
+}
+
+/**
+ * Everything physically inside the machine at this instant: what is queued at its
+ * mouth, and what is in its hands for the length of the cycle. Two different
+ * things, and the difference is why a machine can look full and still be starving.
+ */
+export function insideOf(m) {
+  const d = el('div', 'inside');
+  const held = heldTypes(m);
+  const add = (list, cls, none) => {
+    const row = el('div', 'inside-row');
+    row.appendChild(el('span', 'inside-k', cls === 'held' ? 'IN HAND' : 'AT THE MOUTH'));
+    const strip = el('div', 'strip');
+    if (!list.length) strip.appendChild(el('span', 'none', none));
+    for (const ty of list.slice(0, 12)) {
+      const s = swatch(ty, true, 12);
+      s.title = TYPES[ty].name;
+      strip.appendChild(s);
+    }
+    if (list.length > 12) strip.appendChild(el('span', 'none', `+${list.length - 12}`));
+    row.appendChild(strip);
+    d.appendChild(row);
+  };
+  add(m.buf.map(g => g.ty), 'buf', 'empty');
+  if (!PASSIVE.has(m.kind)) add(held, 'held', 'nothing');
+  return d;
+}
+
 /* -------------------------------------------------------------------- hud --- */
 
 export class Hud {
@@ -300,7 +488,7 @@ export class Hud {
    */
   alertFor(g, p) {
     const f = g.f;
-    const d = diagnose(f);
+    const d = health(f);
     let head = null, body = null;
 
     if (!d.depots) {
@@ -310,6 +498,11 @@ export class Hud {
     } else if (!reachOk(f)) {
       head = 'NOTHING REACHES A DEPOT';
       body = 'Follow the belts from an Extractor — somewhere they point at your fence, at rock, or at each other.';
+    } else if (d.jams.length) {
+      const j = d.jams[0];
+      head = d.jams.length > 1 ? `${d.jams.length} LINES STOPPED FOR GOOD` : 'LINE STOPPED FOR GOOD';
+      body = `A belt is trying to push ${j.why}. That will never clear on its own — `
+        + 'move the machine, or put a Sorter in front of it to send that type elsewhere.';
     } else if (!d.gens) {
       head = 'UNPOWERED';
       body = `Every machine is running at ${Math.round(UNPOWERED * 100)}%. Build a Generator touching your line and feed it ore.`;
@@ -322,9 +515,18 @@ export class Hud {
     } else if (d.unpowered > 2) {
       head = `${d.unpowered} MACHINES OFF GRID`;
       body = 'Power only travels through touching machines. One conveyor across the gap will do it.';
+    } else if (d.waiting) {
+      // Named before the jams *behind* it are counted: a machine short of an
+      // ingredient is the cause, and the six backed up behind it are the symptom.
+      const what = d.waitingFor != null ? TYPES[d.waitingFor].name.toUpperCase() : 'AN INGREDIENT';
+      head = d.waiting > 1 ? `${d.waiting} MACHINES WAITING — ONE WANTS ${what}` : `WAITING FOR ${what}`;
+      body = `Something has half of what it needs and none of the other half. It is `
+        + `showing the colour on the map; click it to see which queue is empty. A two-input `
+        + `machine takes both halves off one belt happily — what it cannot do is invent the half you are not sending.`;
     } else if (d.blocked > 3) {
       head = `${d.blocked} MACHINES BACKED UP`;
-      body = 'They are holding finished goods with nowhere to put them. The fix is ahead of them, not behind.';
+      body = 'They are holding finished goods with nowhere to put them. The fix is ahead of them, '
+        + 'not behind: more depots, a second arm, or a Storage to absorb the wobble.';
     }
 
     const key = head + '|' + body;
@@ -360,6 +562,23 @@ function reachOk(f) {
   if (reachCache.rev === rev) return reachCache.ok;
   reachCache = { rev, ok: reachesPayout(f) };
   return reachCache.ok;
+}
+
+/**
+ * The state of the factory's health, asked four times a second rather than sixty.
+ *
+ * `diagnose` visits every machine on the map twice — once for the stall counts and
+ * once inside `jams` — and the HUD, the panel and the renderer all want the answer
+ * every frame. On three thousand slots that is the difference between a diagnosis
+ * and a frame budget, and none of it changes meaningfully in a sixtieth of a
+ * second.
+ */
+let diagCache = { rev: -1, f: null, d: null };
+export function health(f) {
+  const rev = Math.floor(f.t * 4);
+  if (diagCache.rev === rev && diagCache.f === f) return diagCache.d;
+  diagCache = { rev, f, d: diagnose(f) };
+  return diagCache.d;
 }
 
 /* ------------------------------------------------------------------ panel --- */
@@ -412,7 +631,8 @@ export class Panel {
     if (this.tab === 'info') {
       const m = S.selected >= 0 ? f.grid[S.selected] : null;
       key = `info|${S.selected}|${m ? m.kind + m.dir + m.level + m.mut + m.mir : 'x'}` +
-        `|${S.tool ? S.tool.kind + S.tool.mut : ''}|${Math.round(f.cash / 10)}`;
+        `|${S.tool ? S.tool.kind + S.tool.mut : ''}|${Math.round(f.cash / 10)}` +
+        `|${m || S.selected < 0 ? '' : looseTypes(f, S.selected).length}`;
     } else if (this.tab === 'tech') {
       key = 'tech|' + f.done.join(',') + '|' + Math.floor(f.science / 5);
     } else if (this.tab === 'orders') {
@@ -421,12 +641,20 @@ export class Panel {
     } else {
       key = 'stats|' + Math.floor(f.t / 2);
     }
-    if (key === this.key) return;
+    if (key === this.key) {
+      // The buttons must not be rebuilt sixty times a second — a button that is
+      // replaced under the cursor cannot be clicked, and one that is replaced while
+      // hovered flickers. So what a machine is *doing* is refreshed in place, and
+      // what it *is* is only rebuilt when it changes.
+      if (this.tab === 'info') this.refresh(g);
+      return;
+    }
     this.key = key;
+    this.live = null;
 
     const host = this.bodies[this.tab];
     host.textContent = '';
-    if (this.tab === 'info') this.info(host, g, S);
+    if (this.tab === 'info') { this.info(host, g, S); this.refresh(g); }
     else if (this.tab === 'tech') this.tech(host, g);
     else if (this.tab === 'orders') this.orders(host, g);
     else this.stats(host, g);
@@ -496,9 +724,32 @@ export class Panel {
     if (!owned) addRow(rows, 'To build here', 'buy the rings out to it');
     if (rows.children.length) host.appendChild(rows);
 
+    // Gizmos left lying on the floor by a scrapped machine or a re-aimed belt.
+    // They take up room on the slot, so being able to see and bin them matters.
+    const loose = looseTypes(f, i);
+    if (loose.length) {
+      host.appendChild(el('div', 'sub', 'LYING ON THE GROUND'));
+      const strip = el('div', 'strip');
+      strip.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px;margin-bottom:10px';
+      for (const ty of loose.slice(0, 24)) {
+        const sw = swatch(ty, true, 12);
+        sw.title = TYPES[ty].name;
+        strip.appendChild(sw);
+      }
+      host.appendChild(strip);
+      host.appendChild(el('p', 'body',
+        'Left behind by a machine that was scrapped or a belt that was turned. It takes '
+        + 'up room on this slot. Sweeping it up pays nothing — it is litter, not production.'));
+      const b = el('button', null, `SWEEP UP  ${loose.length}`);
+      b.style.width = '100%';
+      b.onclick = () => this.act('sweep', i);
+      host.appendChild(b);
+    }
+
     if (t === RUBBLE && owned) {
       const b = el('button', null, `CLEAR RUBBLE  ${money(RUBBLE_COST)}`);
       b.style.width = '100%';
+      b.style.marginTop = '6px';
       b.disabled = f.cash < RUBBLE_COST;
       b.onclick = () => this.act('clear', i);
       host.appendChild(b);
@@ -517,12 +768,22 @@ export class Panel {
     const t = el('div');
     t.appendChild(el('h3', null, label(m).toUpperCase()));
     t.appendChild(el('div', 'sub',
-      `Level ${m.level} of ${levelCap(f.done)}  ·  facing ${DIR_NAME[m.dir]}  ·  ${cx(cell)}, ${cy(cell)}`));
+      (m.off ? 'SWITCHED OFF  ·  ' : '')
+      + `Level ${m.level} of ${levelCap(f.done)}  ·  facing ${DIR_NAME[m.dir]}  ·  ${cx(cell)}, ${cy(cell)}`));
     head.appendChild(t);
     host.appendChild(head);
     host.appendChild(el('p', 'body', describe(m)));
 
-    host.appendChild(this.liveRows(g, m, cell));
+    // The three live blocks. Their contents are rewritten by `refresh`; the nodes
+    // themselves, and everything below them, are not.
+    const diagramHost = el('div');
+    const insideHost = el('div');
+    const rowsHost = el('div');
+    host.appendChild(el('div', 'sub', 'WHAT IT DOES'));
+    host.appendChild(diagramHost);
+    host.appendChild(insideHost);
+    host.appendChild(rowsHost);
+    this.live = { cell, m, diagramHost, insideHost, rowsHost, sig: null };
 
     // --- what you can do to it
     const acts = el('div', 'acts');
@@ -538,6 +799,8 @@ export class Panel {
     if (m.kind === 'bal' || m.kind === 'sort') add('FLIP <span class="k">F</span>', () => this.act('mir', cell));
     add('MOVE <span class="k">M</span>', () => this.act('pickup', cell));
     add('TO CRATE', () => this.act('stash', cell));
+    add(m.off ? 'SWITCH ON <span class="k">O</span>' : 'SWITCH OFF <span class="k">O</span>',
+      () => this.act('off', cell), true);
     const cap = levelCap(f.done);
     if (m.level < cap) {
       const c = upgradeCost(m);
@@ -563,6 +826,30 @@ export class Panel {
       });
       host.appendChild(chips);
     }
+  }
+
+  /**
+   * Rewrite the three blocks that change while you are looking at them — the
+   * recipe picture, what is inside, and the numbers — and only when they differ
+   * from what is already on screen.
+   */
+  refresh(g) {
+    const L = this.live;
+    if (!L) return;
+    const m = g.f.grid[L.cell];
+    if (!m || m !== L.m) { this.key = ''; return; }
+    const sig = m.buf.map(x => x.ty).join('.') + '|' + heldTypes(m).join('.')
+      + '|' + (m.blockT > STALL_BADGE ? 'b' : m.waitT > STALL_BADGE ? 'w' : '-')
+      + '|' + Math.round(m.sat * 20) + '|' + Math.round(machineLoad(m) * 2)
+      + '|' + (m.kind === 'gen' ? Math.round(m.fuel / 5) : 0) + '|' + (m.off | 0);
+    if (sig === L.sig) return;
+    L.sig = sig;
+    L.diagramHost.textContent = '';
+    L.diagramHost.appendChild(diagramFor(m));
+    L.insideHost.textContent = '';
+    L.insideHost.appendChild(insideOf(m));
+    L.rowsHost.textContent = '';
+    L.rowsHost.appendChild(this.liveRows(g, m, L.cell));
   }
 
   /** The numbers a machine knows about itself, refreshed as they change. */
@@ -609,12 +896,49 @@ export class Panel {
       m.net < 0 ? 'bad' : m.sat >= 0.95 ? 'good' : 'warn');
     addRow(rows, 'Draws', `${drawOf(m).toFixed(1)} kW while working`);
     addRow(rows, 'Holding', `${machineLoad(m).toFixed(1)} of ${capacity(m)}`,
-      m.blocked ? 'warn' : '');
-    if (m.blocked) addRow(rows, 'Status', 'BACKED UP — fix the line ahead', 'warn');
-    else if (!m.t && !m.buf.length && KINDS[m.kind].cap > 0) {
-      addRow(rows, 'Status', 'STARVED — fix the feed behind', 'bad');
+      m.blockT > STALL_BADGE ? 'warn' : '');
+
+    // A two-input machine keeps a queue per ingredient, and which of them is empty
+    // is the whole story of why it is or is not running. So show them.
+    if (m.kind === 'asm') {
+      addRow(rows, 'Recipe', recipeText(recipeOf(m)));
+      for (const ty of recipeOf(m).ins) {
+        const n = queued(m, ty);
+        addRow(rows, `${TYPES[ty].name} queued`, `${n} of ${LANE}`,
+          n ? (n >= LANE ? 'warn' : 'good') : 'bad');
+      }
+    } else if (m.kind === 'fuse') {
+      const lanes = [...new Set(m.buf.map(g => g.ty))];
+      if (m.work.length) {
+        addRow(rows, 'Melting', `two ${TYPES[m.work[0].ty].name}`, 'good');
+      } else if (!lanes.length) {
+        addRow(rows, 'Queued', 'nothing yet');
+      }
+      for (const ty of lanes) {
+        const n = queued(m, ty);
+        addRow(rows, `${TYPES[ty].name} queued`,
+          `${n} of ${LANE}${n === 1 ? '  ·  needs one more' : ''}`, n >= 2 ? 'good' : 'bad');
+      }
     }
-    if (m.kind === 'asm') addRow(rows, 'Recipe', recipeText(recipeOf(m)));
+
+    // Status last, because it is the summary of everything above it.
+    const stuck = health(f).jams.find(j => j.cell === cell || j.into === cell);
+    if (m.off) {
+      addRow(rows, 'Status', 'SWITCHED OFF', 'warn');
+      addRow(rows, 'While it is off', 'it takes nothing in, does nothing and draws nothing');
+    } else if (stuck) {
+      addRow(rows, 'Status', 'STOPPED FOR GOOD', 'bad');
+      addRow(rows, 'Because', `a belt is pushing ${stuck.why}`, 'bad');
+    } else if (m.blockT > STALL_BADGE) {
+      addRow(rows, 'Status', 'BACKED UP — fix the line ahead', 'warn');
+    } else if (m.waitT > STALL_BADGE && m.buf.length) {
+      const miss = missingFor(m).map(ty => TYPES[ty].name).join(' and ');
+      addRow(rows, 'Status', `WAITING FOR ${miss.toUpperCase() || 'A PAIR'}`, 'warn');
+    } else if (m.waitT > STALL_BADGE) {
+      addRow(rows, 'Status', 'STARVED — fix the feed behind', 'bad');
+    } else {
+      addRow(rows, 'Status', 'running', 'good');
+    }
     if (m.kind === 'bal' || m.kind === 'sort') addRow(rows, 'Branch', sideName(m));
     return rows;
   }
@@ -741,7 +1065,7 @@ export class Panel {
 
   stats(host, g) {
     const f = g.f;
-    const d = diagnose(f);
+    const d = health(f);
     const p = powerSummary(f);
 
     const rows = el('div', 'rows');
@@ -752,6 +1076,7 @@ export class Panel {
     addRow(rows, 'Science studied', num(f.studied));
     addRow(rows, 'Gizmos sold', num(f.sold));
     addRow(rows, 'Gizmos lost off the fence', num(f.lost), f.lost > 40 ? 'warn' : '');
+    addRow(rows, 'Swept off the ground', num(f.swept));
     addRow(rows, 'World seed', String(f.seed));
     host.appendChild(rows);
 
@@ -766,6 +1091,8 @@ export class Panel {
     addRow(build, 'Off grid', num(d.unpowered), d.unpowered ? 'warn' : 'good');
     addRow(build, 'Backed up', num(d.blocked), d.blocked ? 'warn' : 'good');
     addRow(build, 'Starved', num(d.starved), d.starved > 6 ? 'warn' : '');
+    addRow(build, 'Waiting on an ingredient', num(d.waiting), d.waiting ? 'warn' : 'good');
+    addRow(build, 'Switched off', num(d.switchedOff));
     addRow(build, 'Gizmos in flight', num(f.gizmos.length));
     host.appendChild(build);
 
@@ -898,6 +1225,30 @@ ${Math.round(energyOf(0, f?.done || []))} kilowatt-seconds and sells for $1, whi
 Prism gives ${Math.round(energyOf(7, f?.done || []))} and sells for $320. Run a
 dedicated ore line to your generators and never think about it again.</p>
 
+<h3>Feeding a machine that needs two things</h3>
+<p>A Fuser and an Assembler each keep a <b>separate queue for every ingredient</b>,
+${LANE} deep. That means one belt carrying both halves is a perfectly good way to
+feed one — the machine takes what it needs out of the stream and the queues absorb
+the ordering. A Fuser will hold queues for two different types at once, so a single
+belt of Scrap and Resin feeds one Fuser and gets Copper and Cord back out.</p>
+<p>A Fuser melts <b>two of the same type</b> into one of the next rung up. An
+Assembler builds from one of each of its two ingredients. Click either one and the
+panel draws the recipe as a row of coloured chips, with anything it has not got
+drawn hollow — so the picture that says what it makes also says what it is short
+of.</p>
+<p>Three ways a machine can be stuck, and they want three different fixes.
+<b>Backed up</b> (amber corners) means it is holding finished goods with nowhere to
+put them: the problem is ahead of it. <b>Starved</b> (blue corners) means its mouth
+is empty: the problem is behind it. <b>Waiting</b> shows the colour of the
+ingredient it is short of, which is the answer rather than the question. None of
+them appear until a machine has been stuck for over a second, because everything on
+a busy line stalls for a moment on nearly every cycle and badging that told you
+nothing.</p>
+<p>A red ring means a line has <b>stopped for good</b> — something is being pushed
+into a machine that can never accept it, like Scrap into an Engine Assembler or a
+finished Product into a Fuser. That never clears on its own, so the game names it
+in the corner rather than leaving you to find it.</p>
+
 <h3>The two rules that hold the economy together</h3>
 <p><b>A copy is never copied again.</b> Duplicating machines multiply originals
 and merely route copies onward, so a chain of doublers adds copies in a straight
@@ -926,6 +1277,24 @@ to face the way you meant — which is what makes dragging a conveyor back along
 run you have already laid fix its direction rather than cost you the whole run
 again. The build ghost is green on empty ground and amber when it is about to
 replace something.</p>
+
+<h3>Switching things off</h3>
+<p>Any machine can be switched off, with <b>O</b> or the button in its panel. An off
+machine does nothing, draws no power, and turns everything away — so the line behind
+it backs up and stops, which is the point. It keeps whatever is already in its
+hands.</p>
+<p>It is the tool for looking at half a factory while the other half holds still:
+cut a branch you are rebuilding, stop an Extractor flooding a line you are
+re-routing, or take a generator off a grid to find out what it was really
+carrying.</p>
+
+<h3>Litter</h3>
+<p>Nothing here is ever destroyed, so when you scrap a machine or turn a belt round,
+whatever was in the air lands on the floor and stays there — taking up room on that
+slot and making it harder to feed. Click the slot and press <b>SWEEP UP</b>, or just
+right-click it; a right-drag along a belt run takes out the belts and the litter in
+one pass. Sweeping pays nothing. It is a change of mind, not production, and paying
+for it would make demolishing a line a way of turning gizmos into money.</p>
 
 <h3>Land</h3>
 <p>Your claim is a centred square. Buying a ring costs
@@ -958,9 +1327,10 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <tr><td>F</td><td class="k">Flip a Balancer or Sorter's branch to the other side</td></tr>
 <tr><td>Q</td><td class="k">Pipette — copy whatever is under the cursor into your hand</td></tr>
 <tr><td>M</td><td class="k">Pick a machine up and move it, for free</td></tr>
+<tr><td>O</td><td class="k">Switch a machine off, or back on</td></tr>
 <tr><td>Build on top</td><td class="k">Replaces it; the old one goes to the crate, free to put back</td></tr>
-<tr><td>X / Delete</td><td class="k">Scrap, for half of everything it cost</td></tr>
-<tr><td>Right click</td><td class="k">Put down what you are holding, or scrap what is there</td></tr>
+<tr><td>X / Delete</td><td class="k">Scrap a machine for half of what it cost — or, on a bare slot, sweep up whatever is lying there</td></tr>
+<tr><td>Right click</td><td class="k">Put down what you are holding, or scrap what is there. Right-drag takes out a whole run, litter and all</td></tr>
 <tr><td>V</td><td class="k">Show the power grid</td></tr>
 <tr><td>C</td><td class="k">Buy the next ring of land</td></tr>
 <tr><td>WASD / arrows</td><td class="k">Pan · middle-drag pans whatever is in your hand</td></tr>

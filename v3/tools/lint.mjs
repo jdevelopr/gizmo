@@ -9,7 +9,7 @@
  *
  *   node tools/lint.mjs
  */
-import { readdirSync, copyFileSync, rmSync, mkdtempSync } from 'node:fs';
+import { readdirSync, copyFileSync, rmSync, mkdtempSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -33,5 +33,52 @@ for (const f of files) {
 }
 rmSync(tmp, { recursive: true, force: true });
 
-console.log(bad ? `\n${bad} file(s) will not parse.` : `\n${files.length} modules parse as modules.`);
-process.exit(bad ? 1 : 0);
+/*
+ * Does every named import actually exist?
+ *
+ * A missing export is not a syntax error — every file parses perfectly — and the
+ * browser only finds out at load time, when it refuses the whole module graph and
+ * leaves a blank page. It is exactly the failure a search-and-replace edit causes,
+ * and it is exactly the one `node --check` cannot see, so it is checked here by
+ * reading what each file exports and what its neighbours ask it for.
+ */
+const exportsOf = src => {
+  const out = new Set();
+  const add = n => { if (n) out.add(n.trim()); };
+  for (const m of src.matchAll(/^export\s+(?:async\s+)?function\s+\*?([A-Za-z0-9_$]+)/gm)) add(m[1]);
+  for (const m of src.matchAll(/^export\s+class\s+([A-Za-z0-9_$]+)/gm)) add(m[1]);
+  // `export const a = 1, b = 2;` — every declarator on the line, not just the first.
+  for (const m of src.matchAll(/^export\s+(?:const|let|var)\s+(.+)$/gm)) {
+    for (const d of m[1].matchAll(/(?:^|,)\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:=|,|$)/g)) add(d[1]);
+  }
+  for (const m of src.matchAll(/^export\s*\{([^}]*)\}/gm)) {
+    for (const part of m[1].split(',')) add((part.split(/\s+as\s+/).pop() || '').trim());
+  }
+  return out;
+};
+
+const sources = new Map();
+for (const f of files) sources.set(f, readFileSync(join(jsDir, f), 'utf8'));
+
+let missing = 0;
+for (const [file, src] of sources) {
+  for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]\.\/([^'"]+)['"]/g)) {
+    const from = m[2];
+    if (!sources.has(from)) { missing++; console.log(`  MISS  ${file} imports from ${from}, which is not there`); continue; }
+    const have = exportsOf(sources.get(from));
+    for (const raw of m[1].split(',')) {
+      const name = raw.split(/\s+as\s+/)[0].trim();
+      if (!name) continue;
+      if (!have.has(name)) {
+        missing++;
+        console.log(`  MISS  ${file} imports { ${name} } from ${from}, which does not export it`);
+      }
+    }
+  }
+}
+if (!missing) console.log(`  ok    every named import resolves`);
+
+console.log(bad || missing
+  ? `\n${bad} file(s) will not parse, ${missing} import(s) do not resolve.`
+  : `\n${files.length} modules parse, and every import between them resolves.`);
+process.exit(bad || missing ? 1 : 0);

@@ -17,13 +17,14 @@ import { View, ZOOMS } from './render.js';
 import {
   build, buildCheck, moveMachine, scrapMachine, applyAction, research,
   countKind, rebuild, replaceMode, placeFromCrate, scrapFromCrate, stashMachine,
+  sweepGround, looseAt,
 } from './sim.js';
 import { reachFrom } from './power.js';
 import {
   createGame, stepGame, saveGame, loadGame, hasSave, clearSave,
   ageToasts, toast, SPEEDS,
 } from './game.js';
-import { Palette, Crate, Hud, Panel, drawMinimap, howtoHtml } from './ui.js';
+import { Palette, Crate, Hud, Panel, drawMinimap, howtoHtml, health } from './ui.js';
 import { Input, makeState } from './input.js';
 
 const $ = id => document.getElementById(id);
@@ -142,6 +143,7 @@ function frame(now) {
   updateGhost();
   view.draw(g.f, {
     dt,
+    jams: jamCells(g),
     hover: S.hover,
     selected: S.selected,
     ghost: S.ghost,
@@ -163,12 +165,28 @@ function frame(now) {
   }
 }
 
+/**
+ * The slots involved in a line that has stopped for good, recomputed a couple of
+ * times a second rather than sixty — walking every machine is not free, and a
+ * permanent jam does not appear and vanish between frames.
+ */
+let jamCache = { at: -1, set: new Set() };
+function jamCells(g) {
+  const at = Math.floor(g.f.t * 2);
+  if (jamCache.at === at) return jamCache.set;
+  const set = new Set();
+  for (const j of health(g.f).jams) { set.add(j.cell); set.add(j.into); }
+  jamCache = { at, set };
+  return set;
+}
+
 /** Turn the simulation's effect queue into things you can see. */
 function playFx(fx) {
   for (const e of fx) {
     if (e.k === 'sell' && e.v >= 3) view.float(`+$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#a7f070');
     else if (e.k === 'sci' && e.v >= 3) view.float(`+${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#b8bcff');
     else if (e.k === 'scrap') view.float(`+$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#ffcd75');
+    else if (e.k === 'sweep') view.float(`-${e.n}`, cx(e.cell) + 0.5, cy(e.cell), '#8b96b8');
     else if (e.k === 'tech') toast(g, `${e.name} researched`, '#b8bcff');
     else if (e.k === 'grow') toast(g, `Claim is now ${e.claim} x ${e.claim}`, '#a7f070');
   }
@@ -364,6 +382,13 @@ function act(name, payload, extra) {
       if (payload >= 0) panel.show('info');
       return;
     case 'rot': return applyAction(f, { a: 'rot', i: payload, back: extra });
+    case 'off': {
+      if (payload == null || payload < 0 || !f.grid[payload]) return;
+      const r = applyAction(f, { a: 'off', i: payload });
+      if (r.ok) toast(g, `${label(f.grid[payload]).toUpperCase()} ${r.msg.toLowerCase()}`, '#8b96b8');
+      panel.key = '';
+      return r;
+    }
     case 'mir': {
       const r = applyAction(f, { a: 'mir', i: payload });
       if (!r.ok && payload >= 0 && f.grid[payload]) toast(g, r.msg, '#ff8a6a');
@@ -384,10 +409,23 @@ function act(name, payload, extra) {
     }
     case 'scrap': {
       if (payload == null || payload < 0) return;
-      if (!f.grid[payload]) return;
+      // On a bare slot the same gesture sweeps up whatever is lying there, so one
+      // right-drag takes out a wrong belt run and the gizmos it spilled in one
+      // pass rather than leaving litter behind the cursor.
+      if (!f.grid[payload]) return act('sweep', payload);
       const r = scrapMachine(f, payload);
+      // Take the litter with it, so a right-drag along a run leaves clean ground
+      // rather than a trail of orphaned gizmos. Anything still in the air lands
+      // afterwards and needs a second pass, which is fair enough.
+      sweepGround(f, payload);
       if (S.selected === payload) S.selected = -1;
       return r;
+    }
+    case 'sweep': {
+      if (payload == null || payload < 0) return;
+      const n = sweepGround(f, payload);
+      if (n) toast(g, `${n} swept up`, '#8b96b8');
+      return { ok: !!n, swept: n };
     }
     case 'clear': {
       if (payload == null || payload < 0) return;

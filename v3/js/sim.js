@@ -33,10 +33,12 @@ import {
   WORLD, DIRS, TYPES, KINDS, PASSIVE, MAX_LEVEL,
   makeMachine, price, buyCost, upgradeCost, scrapValue, cycleTime, travelTime,
   intake, outputs, exitDirs, sizeOf, capacity, EMPTY_HOLD, drawOf,
+  pickInputs, missingFor, canEverAccept,
   cellOf, cx, cy, inClaim, claimed, claimCells, inWorld,
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
+  STALL_BADGE, label,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { generateWorld } from './world.js';
@@ -79,6 +81,7 @@ export function createFactory({ cash = 400, seed = 1, world = null } = {}) {
     done: [],
     sold: 0,
     lost: 0,
+    swept: 0,
     burned: 0,
     shipped: new Float64Array(TYPES.length),   // units delivered to depots, by type
     fx: [],
@@ -212,6 +215,9 @@ export function stepFactory(f, dt) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
+    // Switched off. It keeps whatever is in its hands — you have paused it, not
+    // emptied it — and it is not stuck, so nothing badges it as stuck.
+    if (m.off) { m.blockT = 0; m.waitT = 0; continue; }
     if (PASSIVE.has(m.kind)) { runPassive(f, m, i); continue; }
     const sp = speedOf(m);
     if (jobActive(m)) {
@@ -219,6 +225,11 @@ export function stepFactory(f, dt) {
       if (m.t <= 0) release(f, m, i, sp);
     }
     if (!jobActive(m)) startJob(f, m, i);
+    // A saturated line blocks for a fraction of a second on almost every cycle;
+    // that is what a saturated line *is*. Only a stall that outlives a hiccup is
+    // worth a badge, or the map turns into a wall of amber that says nothing.
+    m.blockT = m.blocked ? (m.blockT || 0) + dt : 0;
+    m.waitT = m.waiting ? (m.waitT || 0) + dt : 0;
   }
 
   for (let k = f.gizmos.length - 1; k >= 0; k--) {
@@ -276,9 +287,12 @@ function runPassive(f, m, i) {
 }
 
 function startJob(f, m, i) {
-  const need = intake(m);
-  if (m.buf.length < need) { m.t = 0; m.out = null; return; }
-  m.work = need ? m.buf.splice(0, need) : [];
+  const take = pickInputs(m);
+  if (!take) { m.t = 0; m.out = null; m.waiting = 1; return; }
+  m.waiting = 0;
+  // Highest index first, so removing one does not move the next.
+  m.work = take.map(k => m.buf[k]);
+  for (const k of take.slice().sort((a, b) => b - a)) m.buf.splice(k, 1);
   m.out = outputs(m, m.work);
   m.cyc = cycleTime(m, f.done);
   m.t = m.cyc;
@@ -647,6 +661,48 @@ export function placeFromCrate(f, key, i, opt = {}) {
   return yes(null, { cost: 0, machine: m, fromCrate: true, left: f.crate.filter(x => crateKey(x) === key).length });
 }
 
+/* ----------------------------------------------------------------- ground --- */
+
+/**
+ * Gizmos lying loose on a slot.
+ *
+ * Nothing in this simulation is ever destroyed, which is the rule the whole
+ * backpressure model rests on — so when a machine is scrapped or a belt is
+ * re-aimed, whatever was in the air lands on the floor and stays there. It counts
+ * against that slot's room, which means a handful of orphaned gizmos can quietly
+ * make a slot permanently harder to feed, and there was no way to pick them up.
+ *
+ * Now there is. Sweeping is not selling: this is litter left over from a change of
+ * mind, not production, and paying for it would make demolishing and rebuilding a
+ * line a way of laundering gizmos into money.
+ */
+export function looseAt(f, i) {
+  let n = 0;
+  for (const g of f.gizmos) if (g.cell === i && g.st === 'idle') n++;
+  return n;
+}
+
+/** Everything lying loose on a slot, by type, for the inspector. */
+export function looseTypes(f, i) {
+  const out = [];
+  for (const g of f.gizmos) if (g.cell === i && g.st === 'idle') out.push(g.ty);
+  return out;
+}
+
+/** Bin whatever is lying on this slot. Pays nothing. @returns {number} how many */
+export function sweepGround(f, i) {
+  let n = 0;
+  for (let k = f.gizmos.length - 1; k >= 0; k--) {
+    const g = f.gizmos[k];
+    if (g.cell === i && g.st === 'idle') { f.gizmos.splice(k, 1); n++; }
+  }
+  if (n) {
+    f.swept += n;
+    f.fx.push({ k: 'sweep', cell: i, n });
+  }
+  return n;
+}
+
 /** Take a machine off the map and put it in the crate, keeping every setting. */
 export function stashMachine(f, i) {
   const m = f.grid[i];
@@ -730,6 +786,25 @@ export function applyAction(f, a) {
       m.dir = (m.dir + (a.back ? 3 : 1)) % 4;
       f.fx.push({ k: 'rot', cell: a.i });
       return yes();
+    }
+
+    /**
+     * Switch a machine off, or back on again.
+     *
+     * The one thing a factory could not do until now was *stop*. Every problem in
+     * the game is diagnosed by watching a line run, and there was no way to hold
+     * half of it still while you looked at the other half — no way to cut a branch
+     * you were rebuilding, no way to stop an Extractor flooding a line you were
+     * re-routing, no way to take a generator off a grid to see what it was
+     * actually carrying. An off machine does nothing, draws nothing, accepts
+     * nothing, and keeps everything it is holding.
+     */
+    case 'off': {
+      if (!m) return no('Nothing there');
+      m.off = m.off ? 0 : 1;
+      m.blocked = 0; m.blockT = 0; m.waitT = 0;
+      f.fx.push({ k: m.off ? 'switchoff' : 'switchon', cell: a.i });
+      return yes(m.off ? 'Switched off' : 'Switched on');
     }
 
     case 'mir': {
@@ -835,21 +910,80 @@ export function research(f, id) {
  * many are running on no power at all, and whether any grid is browning out.
  */
 export function diagnose(f) {
-  let blocked = 0, starved = 0, unpowered = 0, dryGens = 0, gens = 0, depots = 0, exts = 0;
+  let blocked = 0, starved = 0, waiting = 0, unpowered = 0;
+  let dryGens = 0, gens = 0, depots = 0, exts = 0;
+  let waitingFor = null, waitingAt = -1, switchedOff = 0;
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
+    if (m.off) { switchedOff++; continue; }
     if (m.kind === 'gen') { gens++; if (m.fuel <= 0 && !m.buf.length) dryGens++; continue; }
     if (m.kind === 'depot') { depots++; continue; }
     if (m.kind === 'ext') exts++;
     if (PASSIVE.has(m.kind)) continue;
-    if (m.blocked) blocked++;
-    else if (!jobActive(m) && m.buf.length < intake(m)) starved++;
+    // Only stalls that have outlasted a hiccup count. Everything on a busy line
+    // blocks momentarily; almost none of it is a problem.
+    if (m.blockT > STALL_BADGE) blocked++;
+    else if (m.waitT > STALL_BADGE && m.buf.length) {
+      waiting++;
+      // Keep the first one, so the alert can name the thing to go and fetch
+      // rather than counting the machines that stopped behind it.
+      if (waitingFor == null) {
+        waitingFor = missingFor(m)[0] ?? null;
+        waitingAt = i;
+      }
+    } else if (m.waitT > STALL_BADGE) starved++;
     if (m.net < 0 && drawOf(m) > 0) unpowered++;
   }
   let worst = 1;
   for (const net of f.nets || []) if (net.demand > 0) worst = Math.min(worst, net.sat);
-  return { blocked, starved, unpowered, dryGens, gens, depots, exts, worst };
+  const jammed = jams(f);
+  return {
+    blocked, starved, waiting, unpowered, dryGens, gens, depots, exts, worst,
+    waitingFor, waitingAt, switchedOff, jams: jammed,
+  };
+}
+
+/**
+ * Lines that have stopped for good.
+ *
+ * There is a world of difference between a machine that is full and a machine
+ * that is being handed something it can never use, and until now the game drew
+ * them identically. The first drains. The second is a factory that will still be
+ * dead in twenty minutes: an Assembler fed a gizmo that is not one of its two
+ * ingredients, a Fuser fed a finished Product, a belt aimed into the back of an
+ * Extractor. Every one of those is a permanent stop, and every one has a one-line
+ * explanation, so the game gives it rather than leaving you to find the guilty
+ * badge among two hundred identical ones.
+ *
+ * @returns {Array<{cell:number, ty:number, into:number, kind:string, why:string}>}
+ */
+const an = w => ('AEIOU'.includes(w[0].toUpperCase()) ? 'an ' : 'a ') + w;
+
+export function jams(f) {
+  const out = [];
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (!m || m.off || !m.blocked || m.blockT <= STALL_BADGE) continue;
+    for (const o of m.out || []) {
+      const nx = cx(i) + DIRS[o.dir][0], ny = cy(i) + DIRS[o.dir][1];
+      if (!openAt(f, nx, ny)) continue;
+      const target = f.grid[cellOf(nx, ny)];
+      if (!target || canEverAccept(target, o.ty)) continue;
+      out.push({
+        cell: i, ty: o.ty, into: cellOf(nx, ny), kind: target.kind,
+        why: `${TYPES[o.ty].name} into ${an(label(target))}, which can never take one`,
+      });
+      break;
+    }
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/** Is this machine's stall permanent rather than a queue? */
+export function isJammed(f, i) {
+  return jams(f).some(j => j.cell === i || j.into === i);
 }
 
 /**

@@ -261,16 +261,18 @@ export const KINDS = {
   },
   asm: {
     name: 'Assembler', short: 'ASSEMBLER',
-    desc: 'Holds one of each ingredient and builds a product. It will not accept a '
-      + 'second of an ingredient it already has, so a line feeding it the wrong thing '
-      + 'backs up instead of jamming it shut.',
-    price: 0, cycle: 2.4, cap: 2, hold: 3, travel: 0.52, draw: 14,
+    desc: 'Keeps a separate queue for each ingredient and builds a product from one '
+      + 'of each. One belt carrying both is enough — it takes what it needs out of the '
+      + 'stream and lets the queues even out the ratio.',
+    price: 0, cycle: 2.4, cap: 2, hold: 8, travel: 0.52, draw: 14,
     body: '#4a3a10', trim: '#d8a83f', lit: '#ffe08a',
   },
   fuse: {
     name: 'Fuser', short: 'FUSER',
-    desc: 'Holds two gizmos and melts them into one of the next tier. Two originals make an original.',
-    price: 110, cycle: 1.9, cap: 2, hold: 3, travel: 0.52, draw: 8,
+    desc: 'Melts two gizmos of the same type into one of the next rung up. It queues two '
+      + 'different types at once, so a belt carrying Scrap and Resin feeds one Fuser and '
+      + 'gets Copper and Cord back. Two originals make an original.',
+    price: 110, cycle: 1.9, cap: 2, hold: 8, travel: 0.52, draw: 8,
     body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
   },
 };
@@ -320,7 +322,11 @@ export function makeMachine(spec, id) {
     work: [],   // in the machine's hands right now, for the whole cycle
     out: null,  // what this job will release, decided the moment it starts
     t: 0,       // seconds left in the current job (0 = idle and empty-handed)
+    off: spec.off ? 1 : 0,  // switched off by hand: does nothing, draws nothing
     blocked: 0, // holding finished goods with nowhere to put them
+    waiting: 0, // has some of what it needs, but not all of it
+    blockT: 0,  // seconds it has been blocked, so a hiccup does not raise a badge
+    waitT: 0,   // seconds it has been waiting, likewise
     flip: 0,    // round-robin cursor, used when routing
     flash: 0,   // render-only pulse, set when it lets go
     sat: 0,     // how satisfied its power grid is, 0..1 (power.js writes this)
@@ -493,6 +499,38 @@ export const EMPTY_HOLD = 2;
  */
 export const CRATE_CAP = 40;
 
+/**
+ * How many of one ingredient a two-input machine will queue up.
+ *
+ * This is the number that decides whether one belt carrying two things can feed
+ * one Assembler. It used to be, in effect, one: the machine held a single shared
+ * queue of three units and refused anything it was not immediately short of, so a
+ * belt that happened to deliver two Cords in a row stopped dead — the Amber behind
+ * them could never arrive, and the whole line behind that stopped with it, forever.
+ *
+ * Separate queues, three deep each, mean the machine takes what it needs out of a
+ * mixed stream and lets the queues absorb the ordering. A run of Cords fills the
+ * Cord queue and the Ambers behind still get in. It only stalls if you are
+ * genuinely not supplying one of the two, which is a thing you want to be told.
+ */
+export const LANE = 3;
+
+/** How many different types a Fuser will keep queues for at once. */
+export const FUSE_LANES = 2;
+
+/**
+ * How long a machine has to be stuck before it is worth drawing a badge on it.
+ *
+ * A line running at capacity blocks for a fraction of a second on nearly every
+ * cycle — that is what running at capacity means — and badging those was turning
+ * a healthy factory into a screen full of alarm. Anything that outlives a second
+ * and a bit is a real stall.
+ */
+export const STALL_BADGE = 1.3;
+
+/** How many of `ty` are queued at this machine's mouth. */
+export const queued = (m, ty) => m.buf.reduce((n, g) => n + (g.ty === ty ? 1 : 0), 0);
+
 /** The hard ceiling on duplication: nothing richer than Cobalt can be copied. */
 export const COPY_MAX_VALUE = 32;
 export const copyable = ty => TYPES[ty].value <= COPY_MAX_VALUE;
@@ -520,7 +558,10 @@ export function outputs(m, inputs) {
     // An Extractor takes nothing in and makes one of whatever it is standing on.
     // `mut` is the ore type, written when it is placed.
     case 'ext':
-      return [{ ty: m.mut ?? 0, dir: d, cp: 0 }];
+      // `mut` is the ore under it. A negative one would mean standing on bare
+      // ground, which nothing should allow — but a gizmo with no type would take
+      // the renderer down with it, so it is clamped here rather than trusted.
+      return [{ ty: m.mut >= 0 ? m.mut : 0, dir: d, cp: 0 }];
 
     case 'dup': {
       if (copy) return [{ ty: a, dir: d, cp: 1 }];
@@ -549,10 +590,12 @@ export function outputs(m, inputs) {
       return [{ ty: m.mut ?? 1, dir: d, cp: copy }];
 
     case 'fuse': {
-      const b = inputs[1]?.ty ?? a;
+      // `pickInputs` only ever hands a Fuser a matching pair, so there is no
+      // longer a question of which of two different rungs it climbs from. Two of
+      // a thing make one of the thing above it, which is what the card always
+      // said and what everybody assumed it did.
       const cp = (inputs[0]?.cp || inputs[1]?.cp) ? 1 : 0;
-      const top = tierOf(a) >= tierOf(b) ? a : b;
-      return [{ ty: upFam(top), dir: d, cp }];
+      return [{ ty: upFam(a), dir: d, cp }];
     }
 
     case 'asm': {
@@ -576,22 +619,106 @@ export function outputs(m, inputs) {
  */
 export function wants(m, ty) {
   if (!m) return true;
+  // A machine that has been switched off turns everything away, which is the
+  // point of switching it off: the line behind it backs up and stops, on purpose.
+  if (m.off) return false;
   if (m.kind === 'ext') return false;
   if (m.kind === 'depot' || m.kind === 'lab' || m.kind === 'gen') return true;
   if (m.kind === 'asm') {
-    const need = recipeOf(m).ins.slice();
-    for (const g of m.buf) {
-      const k = need.indexOf(g.ty);
-      if (k >= 0) need.splice(k, 1);
-    }
-    return need.includes(ty);
+    if (!recipeOf(m).ins.includes(ty)) return false;
+    return queued(m, ty) < LANE;
   }
   if (m.kind === 'fuse') {
     if (famOf(ty) === PRODUCT) return false;      // products are terminal
-    if (!m.buf.length) return true;
-    return famOf(m.buf[0].ty) === famOf(ty);
+    const have = queued(m, ty);
+    if (have) return have < LANE;
+    // A new type only gets a queue if there is one going spare.
+    const kinds = new Set(m.buf.map(g => g.ty));
+    return kinds.size < FUSE_LANES;
   }
   return true;
+}
+
+/**
+ * Could this machine *ever* take one of these, with an empty mouth and all the
+ * time in the world?
+ *
+ * Distinct from `wants`, and the difference is the difference between a queue and
+ * a fault. A machine that is merely full will drain and take the next one; a
+ * machine being fed something it can never use is a line that has stopped forever,
+ * and the game says so out loud instead of leaving you to work out which of two
+ * hundred amber badges is the one that matters.
+ */
+export function canEverAccept(m, ty) {
+  if (!m) return true;
+  if (m.kind === 'ext') return false;
+  if (m.kind === 'asm') return recipeOf(m).ins.includes(ty);
+  if (m.kind === 'fuse') return famOf(ty) !== PRODUCT;
+  return true;
+}
+
+/**
+ * Which queued gizmos this machine would take for its next job, as indices into
+ * its mouth — or null if it cannot start one yet.
+ *
+ * Two-input machines no longer simply take the first two things in the queue,
+ * because with separate lanes the first two things are quite often two of the
+ * same ingredient. An Assembler picks one of each; a Fuser picks the first pair
+ * that match.
+ */
+export function pickInputs(m) {
+  const need = intake(m);
+  if (!need) return [];
+
+  if (m.kind === 'asm') {
+    const want = recipeOf(m).ins.slice();
+    const take = [];
+    for (let i = 0; i < m.buf.length && want.length; i++) {
+      const k = want.indexOf(m.buf[i].ty);
+      if (k < 0) continue;
+      want.splice(k, 1);
+      take.push(i);
+    }
+    return want.length ? null : take;
+  }
+
+  if (m.kind === 'fuse') {
+    const first = new Map();
+    for (let i = 0; i < m.buf.length; i++) {
+      const at = first.get(m.buf[i].ty);
+      if (at != null) return [at, i];
+      first.set(m.buf[i].ty, i);
+    }
+    return null;
+  }
+
+  if (m.buf.length < need) return null;
+  return Array.from({ length: need }, (_, i) => i);
+}
+
+/**
+ * What this machine is short of, as gizmo types — the thing to put on a belt and
+ * point at it. Empty when it is not waiting on anything in particular.
+ */
+export function missingFor(m) {
+  if (!m) return [];
+  if (m.kind === 'asm') {
+    const want = recipeOf(m).ins.slice();
+    for (const g of m.buf) {
+      const k = want.indexOf(g.ty);
+      if (k >= 0) want.splice(k, 1);
+    }
+    return want;
+  }
+  if (m.kind === 'fuse') {
+    // It has one of something and wants a second of the same.
+    const solo = [];
+    const n = new Map();
+    for (const g of m.buf) n.set(g.ty, (n.get(g.ty) || 0) + 1);
+    for (const [ty, c] of n) if (c === 1) solo.push(ty);
+    return solo;
+  }
+  return [];
 }
 
 /** Every direction a machine can fire into, in world space. */
@@ -680,12 +807,18 @@ export const SCIENCE_RATE = 1;
  * `yield` are flags the power solver and the extractors read.
  */
 export const TECH = [
-  { id: 'sorting', name: 'Sorting', cost: 120, needs: [], unlocks: ['sort'],
-    blurb: 'Unlocks the Sorter, which pulls one type out of a mixed line.' },
+  /*
+   * The Sorter used to live here, at 120 science, and it was the wrong place for
+   * it. Pulling one type out of a mixed line is plumbing, not profit — it is the
+   * answer to a problem a new factory hits in its first ten minutes, long before
+   * it has a Lab — and every other routing machine has always been on sale from
+   * the start. So it is, now, and the tree opens on Warehousing instead.
+   */
+  { id: 'storage', name: 'Warehousing', cost: 140, needs: [], unlocks: ['store'],
+    blurb: 'Unlocks Storage — a belt with a deep buffer, and the cure for a line '
+      + 'that keeps backing up over a wobble in its ratios.' },
   { id: 'gridwork', name: 'Gridwork', cost: 180, needs: [], power: 'reach',
     blurb: `Every generator's power reaches ${GRIDWORK_REACH} machines further.` },
-  { id: 'storage', name: 'Warehousing', cost: 220, needs: [], unlocks: ['store'],
-    blurb: 'Unlocks Storage — the cure for a line that keeps backing up.' },
   { id: 'combustion', name: 'Combustion', cost: 380, needs: ['gridwork'], power: 'fuel',
     blurb: 'Every fuel burns 45% longer, so a generator eats a smaller share of your ore.' },
   { id: 'assembly', name: 'Assembly', cost: 420, needs: [], unlocks: ['asm:0'],
@@ -714,7 +847,7 @@ export const techOpen = (t, done) => (t.needs || []).every(n => done.includes(n)
 
 /** Everything a set of finished research makes buildable. */
 export function unlockedBy(done = []) {
-  const out = new Set(['pipe', 'bal', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse']);
+  const out = new Set(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse']);
   for (const id of done) for (const u of techById(id)?.unlocks || []) out.add(u);
   return out;
 }

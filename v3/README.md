@@ -129,6 +129,53 @@ Pausing is a key, and there are 1x, 2x and 3x speeds, because a game with no rou
 needs somewhere to put the "I want to think about this" button and the "I want to
 watch this run for a while" one.
 
+### One belt can feed a machine that needs two things
+
+This was the single worst thing in the game and it is worth writing down plainly.
+
+A Fuser and an Assembler each used to keep *one shared queue* and refuse anything
+they were not immediately short of. So merging two feeds onto one belt — the
+obvious, slot-saving thing to build, and the thing every screenshot of a real
+factory shows — put one gizmo into an Assembler and then stopped the entire factory
+**forever** the moment the next gizmo along happened to be the same kind. Measured:
+a Fuser fed Scrap and Resin down one belt earned **$0** in ninety seconds; an
+Assembler fed both its ingredients down one belt earned $34 and then nothing ever
+again. The same build with its feeds on two separate faces earned $1,122.
+
+Worse than the deadlock was that it was invisible. It drew the same amber badge as
+a machine that was merely busy, and there are always dozens of those.
+
+Three changes:
+
+**Separate queues per ingredient**, three deep. The machine takes what it needs out
+of a mixed stream and the queues absorb the ordering — a run of Cords fills the Cord
+queue and the Ambers behind it still get in. A Fuser keeps queues for two different
+types at once, so one belt of Scrap and Resin feeds one Fuser and gets Copper and
+Cord back. Both machines got much bigger mouths (three units to eight) to go with
+it. The mixed-belt Assembler now earns the same $1,122 as the separated one.
+
+**A badge means a stall, not a hiccup.** Everything on a line running at capacity
+blocks for a fraction of a second on nearly every cycle — that is what running at
+capacity *is* — and badging those turned a healthy factory into a screen full of
+alarm nobody could read. Nothing is badged now until it has been stuck for over a
+second, and BACKED UP is corner brackets rather than a ring painted over the machine
+you are trying to identify.
+
+**Three states, not two.** *Backed up* means fix the line ahead. *Starved* means fix
+the feed behind. *Waiting* — new — means it has some of what it needs and not all of
+it, and rather than a badge meaning "something is wrong somewhere" it shows **the
+colour of the thing it is short of**. And a line that has stopped *for good*, because
+something is being pushed into a machine that can never accept it, gets a red ring
+and a sentence in the corner naming the gizmo and the machine, because that one will
+still be dead in twenty minutes.
+
+Two smaller consequences. A Fuser now melts **two of the same type** — which is what
+its card always said, and what everybody assumed — rather than climbing from the
+higher of two different rungs. And the **Sorter is on sale from the start**: pulling
+one type out of a mixed line is plumbing, it is the answer to a problem a factory
+hits in its first ten minutes, and every other routing machine was already
+unresearched. Warehousing opens the tech tree instead.
+
 ### There is a crate
 
 You can put a machine down on a slot that already has one on it. Whatever was there
@@ -147,6 +194,46 @@ Dropping the *same kind* of machine on a slot is the exception: nothing is crate
 and nothing is charged, it simply turns to face the way you meant. That is what
 makes dragging a conveyor back along a run you already laid fix its direction
 rather than bill you for the whole run again.
+
+### The three Assemblers look like three different machines
+
+One casing and one picture meant a floor with an Engine line and a Turbine line on
+it was a floor where you had to click a machine to find out which was which. Now
+everything that differs between them shows: the plate is tinted by what it makes,
+the window in the middle *is* what it makes, the two intake ports are the colours of
+the two things it eats, and the studs count the tier. Zoomed out, where there is no
+room for any of that, an Assembler is drawn in the colour of its product rather than
+the colour of an Assembler — three of them side by side stay three different things
+at every zoom.
+
+### Anything can be switched off
+
+The one thing a factory could not do was *stop*. Every problem in this game is
+diagnosed by watching a line run, and there was no way to hold half of it still
+while you looked at the other half.
+
+`O`, or the button in the panel, switches any machine off. An off machine does
+nothing, draws no power, and turns everything away — so the line behind it backs up
+and stops, which is the point — while keeping whatever is already in its hands. It
+is drawn dimmed with a power symbol on it, and it is exempt from every stall badge,
+because a machine you switched off is not stuck.
+
+Cut a branch you are rebuilding, stop an Extractor flooding a line you are
+re-routing, or take a generator off a grid to see what it was actually carrying.
+
+### Litter can be swept up
+
+Nothing on this map is ever destroyed — that is the rule the whole backpressure
+model rests on — so scrapping a machine or turning a belt round leaves whatever was
+in the air lying on the floor. It counts against that slot's room, which quietly
+makes the slot harder to feed, and there used to be no way to pick it up.
+
+Now a bare slot with something on it offers SWEEP UP in the inspector, and the
+right-click scrap gesture sweeps as well as scraps, so a right-drag along a wrong
+belt run leaves clean ground behind it — give or take whatever was still in the air
+when it passed. Sweeping pays nothing:
+it is a change of mind rather than production, and paying for it would turn
+demolishing a line into a way of laundering gizmos into cash.
 
 ### The claim is centred
 
@@ -231,9 +318,11 @@ differently because they want opposite fixes.
 | `F` | flip a Balancer or Sorter's branch to the other side |
 | `Q` | pipette — copy what is under the cursor into your hand |
 | `M` | pick a machine up and move it, for free |
+| `O` | switch a machine off, or back on |
+| click a machine | its recipe as a picture, what is inside it, and what it is short of |
 | build on top | replaces what is there; the old one goes to the crate, free to put back |
-| `X` / `Delete` | scrap, for half of everything it cost |
-| right click | put down what you are holding, or scrap what is there (drag to scrap a line) |
+| `X` / `Delete` | scrap a machine for half of what it cost — or, on a bare slot, sweep up what is lying there |
+| right click | put down what you are holding, or scrap what is there — right-drag takes out a whole run, litter and all |
 | `V` | show the power grid |
 | `C` | buy the next ring of land |
 | `E` | clear rubble |
@@ -320,13 +409,22 @@ node tools/lint.mjs       # will every module parse as a module in a browser?
 node tools/verify.mjs     # the invariants: nothing destroyed, nothing off the claim
 node tools/power.mjs      # every claim the manual makes about electricity
 node tools/world.mjs 500  # is every generated world playable?
+node tools/feeds.mjs      # can one belt feed a machine that needs two things?
 node tools/economy.mjs    # the cost tables, and what real builds earn
 ```
 
-`lint.mjs` exists because `node --check` parses a `.js` file as CommonJS, where a
-template literal closed with the wrong quote slips through and then takes the whole
-page down on load. It copies each file to `.mjs` first so the parse matches the
-browser's.
+`lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`
+first, so the parse matches the browser's — `node --check` reads a `.js` file as
+CommonJS, where a template literal closed with the wrong quote slips through and
+then takes the whole page down on load. And it reads what every module exports
+against what its neighbours import, because a missing export is not a syntax error:
+every file parses, and the browser refuses the entire module graph at load time and
+leaves a blank page. That is the exact failure a search-and-replace edit causes.
+
+`feeds.mjs` is the regression test for the worst bug this game has had: it builds
+the mixed feed, the separated feed and a deliberately hopeless one side by side, and
+requires the mixed one to earn within a tenth of the separated one and the hopeless
+one to be *reported* rather than merely slow.
 
 `power.mjs` is the one worth running after touching anything: it asserts the reach
 limit exactly, that one empty slot splits a grid and one conveyor merges it, that

@@ -11,7 +11,7 @@
  *   node tools/world.mjs [count]
  */
 import { WORLD, CLAIM_START, cellOf, claimMin, BEDROCK } from '../js/machines.js';
-import { generateWorld, surveyWorld } from '../js/world.js';
+import { generateWorld, surveyWorld, SAP_MIN_RING, ORE_GAP, OPENING_RADIUS } from '../js/world.js';
 import { createFactory, starterKit, stepFactory, rebuild } from '../js/sim.js';
 
 const N = Number(process.argv[2]) || 400;
@@ -21,6 +21,8 @@ const note = (seed, why) => { fails++; if (bad.length < 8) bad.push(`seed ${seed
 
 let minSlag = Infinity, minSap = Infinity, minOre = Infinity;
 let richSum = 0, farRichSum = 0, rockSum = 0;
+let minSapPatches = Infinity, minSlagPatches = Infinity;
+let minOreGap = Infinity, nearestSap = Infinity, furthestSap = 0;
 
 for (let seed = 1; seed <= N; seed++) {
   const w = generateWorld(seed);
@@ -28,9 +30,19 @@ for (let seed = 1; seed <= N; seed++) {
 
   if (!s.startOnOre) note(seed, 'the starting extractor is not standing on ore');
   if (!s.corridorClear) note(seed, 'the opening corridor is blocked');
-  if (s.slagIn < 5) note(seed, `only ${s.slagIn} Slag slots in the opening claim`);
-  if (s.sapIn < 3) note(seed, `only ${s.sapIn} Sap slots in the opening claim`);
-  if (s.patches < 20) note(seed, `only ${s.patches} patches in the whole world`);
+  // Every slot of the three-by-three opening is ore. On a nine-slot claim there is
+  // no room to be picky about where an Extractor goes, so the map does not ask.
+  if (s.slagIn !== CLAIM_START * CLAIM_START) {
+    note(seed, `only ${s.slagIn} of the ${CLAIM_START * CLAIM_START} opening slots are Slag`);
+  }
+  if (s.sapIn) note(seed, `${s.sapIn} Sap slots inside the opening claim — Resin is meant to be a journey`);
+  if (s.sapPatches < 4) note(seed, `only ${s.sapPatches} Sap patches in the whole world`);
+  if (s.slagPatches < 8) note(seed, `only ${s.slagPatches} Slag patches in the whole world`);
+  if (s.nearestSap < OPENING_RADIUS + 2) note(seed, `Sap only ${s.nearestSap} rings out`);
+  if (s.closestDifferentOres < ORE_GAP - 3) {
+    note(seed, `two different ores only ${s.closestDifferentOres} slots apart`);
+  }
+  if (s.patches < 15) note(seed, `only ${s.patches} patches in the whole world`);
   if (s.bestRich < 1.6) note(seed, `the richest patch anywhere is only ${s.bestRich.toFixed(2)}x`);
 
   // Bedrock never inside the opening claim: the first ten minutes is a factory,
@@ -58,15 +70,23 @@ for (let seed = 1; seed <= N; seed++) {
   minSlag = Math.min(minSlag, s.slagIn);
   minSap = Math.min(minSap, s.sapIn);
   minOre = Math.min(minOre, s.ore);
+  minSapPatches = Math.min(minSapPatches, s.sapPatches);
+  minSlagPatches = Math.min(minSlagPatches, s.slagPatches);
+  minOreGap = Math.min(minOreGap, s.closestDifferentOres);
+  nearestSap = Math.min(nearestSap, s.nearestSap);
+  furthestSap = Math.max(furthestSap, s.nearestSap);
   rockSum += s.rock;
   richSum += w.patches.reduce((a, p) => a + p.rich, 0) / w.patches.length;
   farRichSum += far.length ? far.reduce((a, p) => a + p.rich, 0) / far.length : 0;
 }
 
 console.log(`\n${N} worlds walked.\n`);
-console.log(`  fewest Slag slots in an opening claim   ${minSlag}`);
-console.log(`  fewest Sap slots in an opening claim    ${minSap}`);
+console.log(`  Slag slots in the ${CLAIM_START}x${CLAIM_START} opening         ${minSlag} of ${CLAIM_START ** 2}`);
+console.log(`  Sap slots in the opening                ${minSap}`);
 console.log(`  fewest ore slots in a whole world       ${minOre}`);
+console.log(`  fewest Slag / Sap patches               ${minSlagPatches} / ${minSapPatches}`);
+console.log(`  closest two different ores ever got     ${minOreGap} slots`);
+console.log(`  nearest Sap, over all worlds            ${nearestSap} to ${furthestSap} rings out`);
 console.log(`  average rock in an opening claim        ${(rockSum / N).toFixed(1)} of ${CLAIM_START ** 2} slots`);
 console.log(`  average patch richness                  ${(richSum / N).toFixed(2)}x`);
 console.log(`  average richness outside the claim      ${(farRichSum / N).toFixed(2)}x`);

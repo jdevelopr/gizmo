@@ -27,18 +27,44 @@
 
 import {
   WORLD, CLAIM_START, DIRS, OPEN, RUBBLE, BEDROCK,
-  cellOf, cx, cy, inWorld, claimMin, rng, hashSeed,
+  cellOf, cx, cy, inWorld, claimMin, claimCells, rng, hashSeed,
 } from './machines.js';
 
 const SLAG = 0, SAP = 8;
 
 /** How many patches of each ore the world holds. */
-const SLAG_PATCHES = 22;
-const SAP_PATCHES = 13;
+const SLAG_PATCHES = 18;
+const SAP_PATCHES = 6;
 
 /** Richness at the middle of the map and out at the rim. */
 const RICH_MIN = 0.8;
 const RICH_MAX = 2.6;
+
+/**
+ * How far apart the two ores are kept.
+ *
+ * Slag and Sap used to be scattered by the same rule with three slots between any
+ * two patches, which meant a Sap patch could sit next to a Slag one and the whole
+ * Part-and-Product half of the game — two feeds, two lines, an Assembler where
+ * they meet — collapsed into putting two Extractors side by side. That is not a
+ * logistics problem, it is a shrug.
+ *
+ * So a patch of one ore now clears a wide berth around every patch of the other,
+ * and no Sap appears anywhere near the middle at all. Running a Part line is an
+ * expedition: a long belt haul across bought land, or an outpost out at the patch
+ * with its own Generator and its own fuel, which is the most interesting thing
+ * this game asks anybody to build.
+ */
+const ORE_GAP = 10;         // between patches of different ore
+const SAME_GAP = 3;         // between patches of the same ore
+const SAP_MIN_RING = 12;    // no Sap closer than this to the centre
+
+/**
+ * No bedrock within this of the centre. It used to be derived from the size of the
+ * opening claim, which was fine when that was ten slots and useless now it is
+ * three — the first few rings you buy have to be worth buying.
+ */
+const OPENING_RADIUS = 6;
 
 /* ------------------------------------------------------------------- start --- */
 
@@ -49,15 +75,13 @@ const RICH_MAX = 2.6;
  * except power, which is the first thing you will want to fix.
  */
 export function startPlan() {
-  const c = Math.floor(WORLD / 2);
-  const row = c;
-  const extX = c - 3;
-  const depotX = c + 3;
+  const lo = claimMin(CLAIM_START);
+  const row = lo + Math.floor(CLAIM_START / 2);
   const belts = [];
-  for (let x = extX + 1; x < depotX; x++) belts.push(cellOf(x, row));
+  for (let x = lo + 1; x < lo + CLAIM_START - 1; x++) belts.push(cellOf(x, row));
   return {
-    ext: cellOf(extX, row),
-    depot: cellOf(depotX, row),
+    ext: cellOf(lo, row),
+    depot: cellOf(lo + CLAIM_START - 1, row),
     belts,
     row,
   };
@@ -92,22 +116,35 @@ export function generateWorld(seed = 1) {
   scatterTerrain(rnd, terrain, sacred);
 
   const patches = [];
-  // The opening patch, by hand: middling richness, big enough for three extractors,
-  // sitting exactly where the starting extractor already is.
-  const home = { lo: claimMin(CLAIM_START), hi: claimMin(CLAIM_START) + CLAIM_START - 1 };
-  patches.push(growPatch(rnd, patch, rich, SLAG, start.ext, 17, 1.0, terrain, home));
-  // One Sap patch inside the opening claim as well. Resin sells for a dollar and is
-  // useless until Fusers and Assemblers, so having it early costs nothing and means
-  // the recipe game is something you can plan toward rather than stumble into. It
-  // is seeded in the far corner from the Slag, and hunted for a free slot if the
-  // Slag blob happened to grow that way — the opening is the one part of the map
-  // that is not allowed to come out wrong.
-  const lo = claimMin(CLAIM_START);
-  const sapSeed = freeSlot(patch, sacred, cellOf(lo + CLAIM_START - 4, lo + 2), lo, CLAIM_START);
-  if (sapSeed >= 0) patches.push(growPatch(rnd, patch, rich, SAP, sapSeed, 13, 0.95, terrain, home));
+  // The opening patch, by hand. It is centred on the starting Extractor and boxed
+  // to a square a few rings wide, so the nine slots you begin with are mostly ore
+  // and the first rings you buy are more of it — the answer to "where does the
+  // second Extractor go" is never a question in the first five minutes.
+  const c = Math.round((WORLD - 1) / 2);
+  const home = { lo: c - 4, hi: c + 4 };
+  // Every one of the opening nine slots is Slag. On a three-slot claim there is no
+  // room to be picky about where the second Extractor goes, so the map does not
+  // ask: the whole starting square is ore, and the patch grows outward from it
+  // into the first few rings you will buy.
+  const opening = claimCells(CLAIM_START);
+  for (const i of opening) {
+    patch[i] = SLAG;
+    rich[i] = 0.92 + rnd() * 0.18;
+    terrain[i] = OPEN;
+  }
+  patches.push(growPatch(rnd, patch, rich, SLAG, start.ext, 30, 1.0, terrain, home, opening));
 
-  scatterPatches(rnd, patch, rich, patches, terrain, SLAG, SLAG_PATCHES);
+  // One guaranteed Sap patch, out past the ring where Sap is allowed to exist at
+  // all, so every world has a Part line in it somewhere findable.
+  const sapSeed = ringSlot(rnd, patch, SAP_MIN_RING + 2, SAP);
+  if (sapSeed >= 0) patches.push(growPatch(rnd, patch, rich, SAP, sapSeed, 16, 1.25, terrain));
+
+  // Sap is scattered *first*, and this matters. Slag is the commoner ore and gets
+  // the whole map to spread over; if it goes down first it takes all the room and
+  // the wide berth every Sap patch needs leaves nowhere to put them, which came
+  // out as worlds holding two Sap patches in one corner and nothing anywhere else.
   scatterPatches(rnd, patch, rich, patches, terrain, SAP, SAP_PATCHES);
+  scatterPatches(rnd, patch, rich, patches, terrain, SLAG, SLAG_PATCHES);
 
   // The corridor is walked last, so nothing placed above it survives on it.
   for (const i of sacred) if (terrain[i] !== OPEN) terrain[i] = OPEN;
@@ -128,11 +165,12 @@ export function plainWorld() {
   const start = startPlan();
   const patches = [];
   const rnd = rng(7);
-  const lo = claimMin(CLAIM_START);
-  const home = { lo, hi: lo + CLAIM_START - 1 };
-  patches.push(growPatch(rnd, patch, rich, SLAG, start.ext, 17, 1.0, terrain, home));
-  const sapSeed = freeSlot(patch, new Set(), cellOf(lo + CLAIM_START - 4, lo + 2), lo, CLAIM_START);
-  if (sapSeed >= 0) patches.push(growPatch(rnd, patch, rich, SAP, sapSeed, 13, 0.95, terrain, home));
+  const c = Math.round((WORLD - 1) / 2);
+  const opening = claimCells(CLAIM_START);
+  for (const i of opening) { patch[i] = SLAG; rich[i] = 1; terrain[i] = OPEN; }
+  patches.push(growPatch(rnd, patch, rich, SLAG, start.ext, 30, 1.0, terrain,
+    { lo: c - 4, hi: c + 4 }, opening));
+  patches.push(growPatch(rnd, patch, rich, SAP, cellOf(c + SAP_MIN_RING + 2, c), 16, 1.25, terrain));
   return { seed: 0, terrain, patch, rich, patches, start };
 }
 
@@ -175,17 +213,17 @@ function scatterTerrain(rnd, terrain, sacred) {
   for (let k = 0; k < clumps; k++) {
     const x0 = Math.floor(rnd() * WORLD), y0 = Math.floor(rnd() * WORLD);
     const ring = Math.max(Math.abs(x0 - c), Math.abs(y0 - c)) / c;   // 0 middle, 1 rim
-    // Bedrock never starts inside the opening claim — the first ten minutes should
-    // be a factory, not a maze — and a clump that wanders in arrives as rubble,
-    // which you can pay to be rid of.
-    const opening = (CLAIM_START / 2 + 1) / c;
+    // Bedrock never starts within the opening radius — the first rings you buy
+    // should be a factory, not a maze — and a clump that wanders in arrives as
+    // rubble, which you can pay to be rid of.
+    const opening = OPENING_RADIUS / c;
     const kind = (ring > opening && rnd() < 0.36 + ring * 0.24) ? BEDROCK : RUBBLE;
     const size = 2 + Math.floor(rnd() * (2 + ring * 9));
     let x = x0, y = y0;
     for (let s = 0; s < size; s++) {
       if (inWorld(x, y)) {
         const i = cellOf(x, y);
-        const home = Math.max(Math.abs(x - c), Math.abs(y - c)) <= CLAIM_START / 2;
+        const home = Math.max(Math.abs(x - c), Math.abs(y - c)) <= OPENING_RADIUS;
         if (!sacred.has(i)) terrain[i] = (home && kind === BEDROCK) ? RUBBLE : kind;
       }
       const d = DIRS[Math.floor(rnd() * 4)];
@@ -210,10 +248,10 @@ const richAt = ring => RICH_MIN + (RICH_MAX - RICH_MIN) * ring;
  * edges, which is both what ore looks like and what makes "how many extractors
  * will fit on this patch" a question with an answer.
  */
-function growPatch(rnd, patch, rich, ty, seedCell, size, centreRich, terrain, box = null) {
-  if (patch[seedCell] >= 0) return { ty, cells: [], x: cx(seedCell), y: cy(seedCell), rich: 0 };
+function growPatch(rnd, patch, rich, ty, seedCell, size, centreRich, terrain, box = null, from = null) {
+  if (!from && patch[seedCell] >= 0) return { ty, cells: [], x: cx(seedCell), y: cy(seedCell), rich: 0 };
   const cells = [];
-  const frontier = [seedCell];
+  const frontier = [];
   const sx = cx(seedCell), sy = cy(seedCell);
 
   const take = i => {
@@ -229,7 +267,11 @@ function growPatch(rnd, patch, rich, ty, seedCell, size, centreRich, terrain, bo
     cells.push(i);
   };
 
-  take(seedCell);
+  // `from` continues an existing run of the same ore rather than starting a new
+  // one — it is how the hand-placed opening nine become the middle of a proper
+  // patch instead of a square of ore with a seam round it.
+  if (from) { for (const i of from) { cells.push(i); frontier.push(i); } }
+  else { take(seedCell); frontier.push(seedCell); }
   let guard = 0;
   while (cells.length < size && frontier.length && guard++ < size * 30) {
     // Weighted toward the newest cells, so a blob grows outward rather than
@@ -267,16 +309,18 @@ function growPatch(rnd, patch, rich, ty, seedCell, size, centreRich, terrain, bo
 /** Scatter the rest of one ore's patches, richer the further out they land. */
 function scatterPatches(rnd, patch, rich, patches, terrain, ty, count) {
   const c = (WORLD - 1) / 2;
-  const inner = CLAIM_START / 2 + 2;
+  // Slag may start just outside the hand-placed opening blob; Sap is kept well
+  // away from the middle entirely, so the Part line is somewhere you go to.
+  const inner = ty === SAP ? SAP_MIN_RING : OPENING_RADIUS;
   for (let k = 0; k < count; k++) {
     let seedCell = -1;
-    for (let guard = 0; guard < 40 && seedCell < 0; guard++) {
+    for (let guard = 0; guard < 300 && seedCell < 0; guard++) {
       const x = Math.floor(rnd() * WORLD), y = Math.floor(rnd() * WORLD);
       const ring = Math.max(Math.abs(x - c), Math.abs(y - c));
-      if (ring < inner) continue;                       // the opening is placed by hand
+      if (ring < inner) continue;
       const i = cellOf(x, y);
       if (patch[i] >= 0) continue;
-      if (nearAnotherPatch(patch, x, y, 3)) continue;   // patches want daylight between them
+      if (tooClose(patch, x, y, ty)) continue;
       seedCell = i;
     }
     if (seedCell < 0) continue;
@@ -286,14 +330,37 @@ function scatterPatches(rnd, patch, rich, patches, terrain, ty, count) {
   }
 }
 
-function nearAnotherPatch(patch, x, y, r) {
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
+/**
+ * Is this too close to something? A patch of the *same* ore only needs daylight
+ * between it and its neighbour; a patch of the *other* ore needs a wide berth, so
+ * that joining the two feeds is always a belt run rather than a coincidence.
+ */
+function tooClose(patch, x, y, ty) {
+  for (let dy = -ORE_GAP; dy <= ORE_GAP; dy++) {
+    for (let dx = -ORE_GAP; dx <= ORE_GAP; dx++) {
       const nx = x + dx, ny = y + dy;
-      if (inWorld(nx, ny) && patch[cellOf(nx, ny)] >= 0) return true;
+      if (!inWorld(nx, ny)) continue;
+      const p = patch[cellOf(nx, ny)];
+      if (p < 0) continue;
+      if (p !== ty) return true;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) <= SAME_GAP) return true;
     }
   }
   return false;
+}
+
+/** A free slot roughly `ring` out from the centre, in some random direction. */
+function ringSlot(rnd, patch, ring, ty) {
+  for (let guard = 0; guard < 200; guard++) {
+    const a = rnd() * Math.PI * 2;
+    const r = ring + rnd() * 4;
+    const x = Math.round((WORLD - 1) / 2 + Math.cos(a) * r);
+    const y = Math.round((WORLD - 1) / 2 + Math.sin(a) * r);
+    if (!inWorld(x, y)) continue;
+    const i = cellOf(x, y);
+    if (patch[i] < 0 && !tooClose(patch, x, y, ty)) return i;
+  }
+  return -1;
 }
 
 /* ------------------------------------------------------------------ report --- */
@@ -306,6 +373,7 @@ function nearAnotherPatch(patch, x, y, r) {
 export function surveyWorld(w) {
   const lo = claimMin(CLAIM_START), hi = lo + CLAIM_START - 1;
   let slagIn = 0, sapIn = 0, rock = 0, ore = 0;
+  const c = (WORLD - 1) / 2;
   for (let y = lo; y <= hi; y++) {
     for (let x = lo; x <= hi; x++) {
       const i = cellOf(x, y);
@@ -317,14 +385,31 @@ export function surveyWorld(w) {
   for (let i = 0; i < w.patch.length; i++) if (w.patch[i] >= 0) ore++;
   const corridorClear = [w.start.ext, w.start.depot, ...w.start.belts]
     .every(i => w.terrain[i] === OPEN);
+  // How far you have to expand before a Part line is even possible, and how well
+  // separated the two ores actually came out.
+  const sapRings = w.patches
+    .filter(p => p.ty === SAP && p.cells.length)
+    .map(p => Math.max(Math.abs(p.x - c), Math.abs(p.y - c)));
+  let closestPair = Infinity;
+  for (const a of w.patches) {
+    if (!a.cells.length) continue;
+    for (const b of w.patches) {
+      if (b === a || a.ty === b.ty || !b.cells.length) continue;
+      closestPair = Math.min(closestPair, Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)));
+    }
+  }
   return {
     seed: w.seed,
     slagIn, sapIn, rock, ore,
     patches: w.patches.length,
+    slagPatches: w.patches.filter(p => p.ty === SLAG && p.cells.length).length,
+    sapPatches: sapRings.length,
+    nearestSap: sapRings.length ? Math.min(...sapRings) : Infinity,
+    closestDifferentOres: closestPair,
     startOnOre: w.patch[w.start.ext] === SLAG,
     corridorClear,
     bestRich: w.patches.reduce((a, p) => Math.max(a, p.rich), 0),
   };
 }
 
-export { SLAG, SAP, RICH_MIN, RICH_MAX };
+export { SLAG, SAP, RICH_MIN, RICH_MAX, ORE_GAP, SAP_MIN_RING, OPENING_RADIUS };

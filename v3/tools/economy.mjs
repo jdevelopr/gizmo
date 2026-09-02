@@ -14,7 +14,7 @@ import {
   WORLD, CLAIM_START, CLAIM_STEP, TYPES, KINDS, MUT_PRICE, MUT_CYCLE, RECIPES,
   TECH, GEN_OUTPUT, GEN_REACH, UNPOWERED, LEVEL_SPEED, LEVEL_DRAW,
   cellOf, cx, cy, money, num, expandCost, buyCost, upgradeCost, price,
-  fuelEnergy, drawOf, cycleTime, label, LADDERED, EXPAND_BASE, EXPAND_STEP,
+  fuelEnergy, drawOf, cycleTime, label, LADDERED, EXPAND_PER_SLOT, EXPAND_STEP,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild, countKind } from '../js/sim.js';
 import { powerSummary } from '../js/power.js';
@@ -104,13 +104,14 @@ rule(45);
   let total = 0;
   for (let c = CLAIM_START; c <= WORLD; c += CLAIM_STEP) {
     const cost = c < WORLD ? expandCost(c) : 0;
-    if (c === CLAIM_START || c % 8 === 2 || c === WORLD) {
+    if (c === CLAIM_START || (c - CLAIM_START) % 8 === 0 || c + CLAIM_STEP > WORLD) {
       console.log('  ' + pad(`${c} x ${c}`, 10) + rpad(c * c, 8)
         + rpad(cost ? money(cost) : '—', 13) + rpad(money(total), 14));
     }
     total += cost;
   }
-  console.log(`\n  The whole world costs ${money(total)} end to end, at +${Math.round((EXPAND_STEP - 1) * 100)}% a ring.`);
+  console.log(`\n  The whole world costs ${money(total)} end to end: ${money(EXPAND_PER_SLOT)} a slot,`);
+  console.log(`  and +${Math.round((EXPAND_STEP - 1) * 100)}% on top for every ring already bought.`);
 }
 
 console.log('\nRESEARCH\n');

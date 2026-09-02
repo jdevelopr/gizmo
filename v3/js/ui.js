@@ -16,8 +16,8 @@ import {
   cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
-  MUT_PRICE, EXPAND_BASE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME,
-  upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE,
+  MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME,
+  upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE, PLUMBING,
 } from './machines.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
 import {
@@ -523,11 +523,15 @@ export class Hud {
       body = `Something has half of what it needs and none of the other half. It is `
         + `showing the colour on the map; click it to see which queue is empty. A two-input `
         + `machine takes both halves off one belt happily — what it cannot do is invent the half you are not sending.`;
-    } else if (d.blocked > 3) {
-      head = `${d.blocked} MACHINES BACKED UP`;
-      body = 'They are holding finished goods with nowhere to put them. The fix is ahead of them, '
-        + 'not behind: more depots, a second arm, or a Storage to absorb the wobble.';
     }
+    /*
+     * There is deliberately no "N machines backed up" line here any more. A factory
+     * running at capacity always has machines holding finished goods — that is what
+     * running at capacity is — so the count was almost never zero and almost never
+     * actionable, and a corner that is always shouting is a corner nobody reads.
+     * The amber brackets on the machines themselves still say which ones, for
+     * whoever is looking at that part of the map.
+     */
 
     const key = head + '|' + body;
     if (this.last.alert === key) return;
@@ -935,7 +939,9 @@ export class Panel {
       const miss = missingFor(m).map(ty => TYPES[ty].name).join(' and ');
       addRow(rows, 'Status', `WAITING FOR ${miss.toUpperCase() || 'A PAIR'}`, 'warn');
     } else if (m.waitT > STALL_BADGE) {
-      addRow(rows, 'Status', 'STARVED — fix the feed behind', 'bad');
+      addRow(rows, 'Status', PLUMBING.has(m.kind)
+        ? 'empty — nothing is reaching it'
+        : 'STARVED — fix the feed behind', PLUMBING.has(m.kind) ? '' : 'bad');
     } else {
       addRow(rows, 'Status', 'running', 'good');
     }
@@ -1199,11 +1205,21 @@ export function howtoHtml(f) {
 
   return `
 <h3>The idea</h3>
-<p>You own a ten-slot square in the middle of a fifty-six-slot world. Ore is
-scattered across all of it, richer the further out you go. Put an
-<b>Extractor</b> on a patch, belt what it pulls up to a <b>Market Depot</b>, and
-that is a factory. Everything after that is making the line longer, wider and
-worth more.</p>
+<p>You own a <b>three-slot square</b> in the middle of a fifty-six-slot world. All
+nine of those slots are Slag, and three of them already hold a factory: an
+<b>Extractor</b>, one <b>Conveyor</b>, and a <b>Market Depot</b> that buys whatever
+reaches it. That is the whole game in miniature. Everything after it is making the
+line longer, wider and worth more — and the first thing it needs is room.</p>
+<p>Ore is scattered across the whole world, richer the further out you go, so a
+patch out at the rim yields three times what the one under your feet does. Land is
+cheap to begin with and gets steeply dearer, so the opening is a scramble outward
+and the endgame is a considered one.</p>
+<p><b>Slag and Sap are kept well apart.</b> There is no Sap anywhere near the
+middle: the nearest is a dozen rings out. Running a Part line — and through it the
+Assembler, the richest thing in the game — means a long belt haul across bought
+land or an outpost at the patch with its own Generator and its own fuel. That is
+the point. Two feeds meeting in one machine should be a journey, not a matter of
+putting two Extractors side by side.</p>
 
 <h3>Power</h3>
 <p>Every machine draws kilowatts while it is working. A <b>Generator</b> makes
@@ -1297,9 +1313,12 @@ one pass. Sweeping pays nothing. It is a change of mind, not production, and pay
 for it would make demolishing a line a way of turning gizmos into money.</p>
 
 <h3>Land</h3>
-<p>Your claim is a centred square. Buying a ring costs
-${money(EXPAND_BASE)} the first time and about 28% more each time after,
-and everything outside your fence is exactly as fatal as the edge of the world —
+<p>Your claim is a centred square, and it starts three slots on a side. A ring
+hands you four more slots for every slot of side you already have, so land gets
+better value as you grow — and it carries a 16% markup per ring on top, so it gets
+more expensive faster than that. The first ring is ${money(expandCost(CLAIM_START))};
+by the rim they run to tens of thousands. Everything outside your fence is exactly
+as fatal as the edge of the world —
 a belt aimed at it throws what it carries away. Rubble clears for
 ${money(RUBBLE_COST)}; bedrock never moves.</p>
 

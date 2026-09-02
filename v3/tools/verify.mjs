@@ -55,17 +55,17 @@ console.log('\nWHERE YOU MAY BUILD');
   ok(!buildCheck(f, { kind: 'pipe' }, cellOf(lo + 1, lo)).ok, 'not on bedrock');
   f.terrain[cellOf(lo + 1, lo)] = 1;
   ok(!buildCheck(f, { kind: 'pipe' }, cellOf(lo + 1, lo)).ok, 'not on rubble until it is cleared');
-  // plainWorld puts ore across most of the opening claim, so find bare ground.
+  // Every slot of the opening claim is ore now, so bare ground has to be found
+  // further out — on a bench that owns the whole world.
+  const wide = bench();
   let bare = -1;
-  for (let y = lo; y <= hi && bare < 0; y++) {
-    for (let x = lo; x <= hi; x++) {
-      const i = cellOf(x, y);
-      if (f.patch[i] < 0 && f.terrain[i] === OPEN && !f.grid[i]) { bare = i; break; }
-    }
+  for (let i = 0; i < wide.grid.length && bare < 0; i++) {
+    if (wide.patch[i] < 0 && wide.terrain[i] === OPEN && !wide.grid[i]) bare = i;
   }
-  ok(!buildCheck(f, { kind: 'ext' }, bare).ok, 'no Extractor off a patch');
-  ore(f, cx(bare), cy(bare));
-  ok(buildCheck(f, { kind: 'ext' }, bare).ok, 'and yes on one');
+  ok(bare >= 0, 'there is bare ground somewhere in the world');
+  ok(!buildCheck(wide, { kind: 'ext' }, bare).ok, 'no Extractor off a patch');
+  ore(wide, cx(bare), cy(bare));
+  ok(buildCheck(wide, { kind: 'ext' }, bare).ok, 'and yes on one');
   put(f, 'pipe', lo, lo);
   // An occupied slot is no longer a refusal — it is a replacement, and what was
   // there goes to the crate. See BUILDING OVER THINGS below.

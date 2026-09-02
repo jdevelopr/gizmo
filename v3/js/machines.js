@@ -30,8 +30,16 @@
 /** World size, in slots per side. Fixed for a whole game; the claim is what grows. */
 export const WORLD = 56;
 
-/** The square you own to begin with, centred. Even, so every ring stays centred. */
-export const CLAIM_START = 10;
+/**
+ * The square you own to begin with, centred.
+ *
+ * Nine slots. It holds the starting line — Extractor, one conveyor, Depot — and
+ * leaves six, which is exactly enough to fit a Generator and the Balancer that
+ * feeds it if you think about where they go. That is the opening: not a factory
+ * with room to spare, but a packing puzzle with one obvious first move and a
+ * fence you want to push outward within a minute of arriving.
+ */
+export const CLAIM_START = 3;
 
 /** How much a claim grows per purchase: one ring, so one cell on every side. */
 export const CLAIM_STEP = 2;
@@ -282,6 +290,18 @@ export const KIND_LIST = Object.keys(KINDS);
 /** Machines with a mouth and no job: something else happens to what lands in them. */
 export const PASSIVE = new Set(KIND_LIST.filter(k => KINDS[k].passive));
 
+/**
+ * Plumbing: the machines whose whole job is to move things somewhere else.
+ *
+ * They are exempt from the STARVED badge, and from the count of starved machines,
+ * because an empty conveyor is not a fault — it is what most of a factory's belts
+ * look like most of the time. Badging them put four blue corner ticks on every
+ * tile of every quiet run, which broke up exactly the continuous line the belt art
+ * works to draw, and said nothing: if a belt is empty, the thing worth looking at
+ * is the machine behind it, and that machine has a badge of its own.
+ */
+export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort']);
+
 /** Machines you may only own so many of cheaply — each costs more than the last. */
 export const LADDERED = { ext: 1.22, depot: 1.55, lab: 1.7 };
 
@@ -323,6 +343,7 @@ export function makeMachine(spec, id) {
     out: null,  // what this job will release, decided the moment it starts
     t: 0,       // seconds left in the current job (0 = idle and empty-handed)
     off: spec.off ? 1 : 0,  // switched off by hand: does nothing, draws nothing
+    link: 0,    // belts only: which of the four edges join a neighbour (sim.relink)
     blocked: 0, // holding finished goods with nowhere to put them
     waiting: 0, // has some of what it needs, but not all of it
     blockT: 0,  // seconds it has been blocked, so a hiccup does not raise a badge
@@ -398,17 +419,26 @@ export const SCRAP_RATE = 0.5;
 /**
  * Buying land.
  *
- * The claim is a centred square and every purchase adds a ring, so what you get
- * for your money grows with the claim while the price grows faster. The first ring
- * costs about two minutes of an opening factory's income; the last one costs about
- * what a mature factory makes in ten. Between them is a game.
+ * Two things multiply here, and separating them is what makes the curve behave.
+ * A ring bought on a claim of side `c` hands you `4c + 4` new slots, so what you
+ * get for your money grows on its own as the plot does — sixteen slots at the
+ * start, two hundred and twenty-four at the rim. On top of that sits a per-ring
+ * markup, which is what turns "more land" from a formality into a decision.
+ *
+ * The result is cheap early and steep late, deliberately. The first ring costs
+ * about half a minute of a powered opening line, and the first three together
+ * cost less than a Generator — because a nine-slot claim is a puzzle to escape,
+ * not a wall to be held behind. By the outer third a ring is tens of thousands,
+ * which against a mature factory's income is a real commitment and against an
+ * immature one is out of reach.
  */
-export const EXPAND_BASE = 130;
-export const EXPAND_STEP = 1.28;
+export const EXPAND_PER_SLOT = 1.5;
+export const EXPAND_STEP = 1.16;
 
 export function expandCost(claim) {
   const rings = Math.max(0, (claim - CLAIM_START) / CLAIM_STEP);
-  return Math.round(EXPAND_BASE * Math.pow(EXPAND_STEP, rings));
+  const gained = 4 * claim + 4;               // slots this ring actually adds
+  return Math.round(EXPAND_PER_SLOT * gained * Math.pow(EXPAND_STEP, rings));
 }
 
 /** Clearing one rubble slot. Flat: it is a chore, not an investment. */

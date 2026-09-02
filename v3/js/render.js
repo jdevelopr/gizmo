@@ -30,7 +30,7 @@
 import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
   cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK,
-  capacity, intake, PASSIVE, genOutput, drawOf, missingFor, STALL_BADGE,
+  capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
 } from './machines.js';
 import { heldTypes, machineLoad, contents } from './sim.js';
 
@@ -125,7 +125,10 @@ const FRAMES = { pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab
 export function frameCount(kind) { return FRAMES[kind] || 1; }
 
 function tileKey(m, frame) {
-  return `${m.kind}|${m.dir}|${m.level || 1}|${m.mut ?? 0}|${m.mir | 0}|${frame}`;
+  // Belts carry their join mask in the key: a belt in the middle of a run and a
+  // belt on the end of one are different pictures of the same machine.
+  const link = (m.kind === 'pipe' || m.kind === 'store') ? (m.link | 0) : 0;
+  return `${m.kind}|${m.dir}|${m.level || 1}|${m.mut ?? 0}|${m.mir | 0}|${frame}|${link}`;
 }
 
 /**
@@ -142,6 +145,10 @@ export function bodyTile(m, rawFrame = 0) {
   const key = tileKey(m, frame);
   let t = tiles.get(key);
   if (t) return t;
+  // Belts multiply the cache by their join mask, so it is bounded rather than
+  // trusted: a very long session that has drawn every shape of every belt at
+  // every level starts again rather than growing without end.
+  if (tiles.size > 2400) tiles.clear();
   const c = makeCanvas(CELL, CELL);
   const ctx = c.getContext('2d');
   drawBody(ctx, m, frame);
@@ -151,6 +158,66 @@ export function bodyTile(m, rawFrame = 0) {
 
 /** Reset the cache. Only needed if the palette itself changes. */
 export function clearTiles() { tiles.clear(); }
+
+/**
+ * A conveyor, drawn as part of whatever it is joined to.
+ *
+ * The old belt was a box: a casing all the way round, a channel across the middle,
+ * done. Twenty of them in a row read as twenty boxes rather than as one belt, and
+ * a corner read as two boxes at right angles rather than as a belt that turns.
+ *
+ * This one is built out of *arms*. Each arm runs from the centre of the tile to
+ * one edge, and an arm is drawn for the direction the belt fires and for every
+ * direction something feeds it from — so a straight run is two arms meeting in the
+ * middle, a corner is two arms at right angles, and a merge is three. Because
+ * every arm goes right to the edge at the same width, the arm on this side of a
+ * boundary lines up exactly with the arm on the other side, and a run of belts
+ * becomes one continuous trough with rails down both sides.
+ *
+ * The rails are drawn before the troughs on purpose: at a junction the trough
+ * simply erases the rail that would otherwise run across the opening, which is
+ * what turns four arms into a crossroads instead of a plus sign.
+ *
+ * A belt with nothing feeding it still draws its back arm, so a lone belt is a
+ * belt rather than half of one; an arm with nothing on the far side gets an end
+ * cap, so where a run stops is visible.
+ */
+function drawBelt(ctx, m, frame, trim, lit) {
+  const cxp = CELL / 2, cyp = CELL / 2;
+  const d = m.dir | 0;
+  const link = m.link | 0;
+  const body = KINDS[m.kind].body;
+
+  const ins = [];
+  for (let k = 0; k < 4; k++) if (k !== d && (link & (1 << k))) ins.push(k);
+  const arms = [d, ...ins];
+  if (!ins.length) arms.push((d + 2) % 4);          // a lone belt is still a belt
+
+  const rail = shade(body, 1.5);
+  // plates first, then rails, then troughs over the top of both
+  for (const t of arms) rp(ctx, cxp, cyp, t, 0, -10, 16, 20, body);
+  for (const t of arms) {
+    rp(ctx, cxp, cyp, t, 0, -10, 16, 2, rail);
+    rp(ctx, cxp, cyp, t, 0, 8, 16, 2, rail);
+  }
+  for (const t of arms) rp(ctx, cxp, cyp, t, 0, -8, 16, 16, '#0e1526');
+
+  // end caps, wherever an arm runs out into nothing
+  for (const t of arms) {
+    if (link & (1 << t)) continue;
+    rp(ctx, cxp, cyp, t, 14, -10, 2, 20, rail);
+  }
+
+  // and the belt itself moving: outward along the way it fires, inward along
+  // everything that feeds it, so a corner visibly flows round the corner.
+  const run = (t, inward) => {
+    for (let i = -1; i < 3; i++) {
+      const fwd = i * 8 + (inward ? 8 - frame : frame);
+      if (fwd > 0 && fwd < 13) rp(ctx, cxp, cyp, t, fwd, -5, 3, 10, trim);
+    }
+  };
+  for (const t of arms) run(t, t !== d);
+}
 
 /**
  * One machine's casing, drawn at the origin of a 32x32 tile. Nothing in here may
@@ -164,44 +231,46 @@ function drawBody(ctx, m, frame) {
   const d = m.dir | 0;
   const lvl = m.level || 1;
 
-  // casing: outline, body, a light source from the top left, corner bolts
-  px(ctx, 1, 1, CELL - 2, CELL - 2, '#0c0e18');
-  px(ctx, 3, 3, CELL - 6, CELL - 6, body);
-  px(ctx, 3, 3, CELL - 6, 2, shade(body, 1.6));
-  px(ctx, 3, 3, 2, CELL - 6, shade(body, 1.28));
-  px(ctx, 3, CELL - 7, CELL - 6, 4, shade(body, 0.6));
-  px(ctx, CELL - 5, 3, 2, CELL - 6, shade(body, 0.74));
-  const bolt = shade(body, 1.75);
-  px(ctx, 5, 5, 2, 2, bolt);
-  px(ctx, CELL - 7, 5, 2, 2, bolt);
-  px(ctx, 5, CELL - 7, 2, 2, bolt);
-  px(ctx, CELL - 7, CELL - 7, 2, 2, bolt);
+  /*
+   * Belts draw their own shape, edge to edge, and skip the casing entirely — a box
+   * round each one is exactly what stopped a run of them reading as a single belt.
+   * Everything else keeps its casing: a Mutator is an object sitting on the floor,
+   * and it should look like one.
+   */
+  if (m.kind !== 'pipe' && m.kind !== 'store') {
+    // casing: outline, body, a light source from the top left, corner bolts
+    px(ctx, 1, 1, CELL - 2, CELL - 2, '#0c0e18');
+    px(ctx, 3, 3, CELL - 6, CELL - 6, body);
+    px(ctx, 3, 3, CELL - 6, 2, shade(body, 1.6));
+    px(ctx, 3, 3, 2, CELL - 6, shade(body, 1.28));
+    px(ctx, 3, CELL - 7, CELL - 6, 4, shade(body, 0.6));
+    px(ctx, CELL - 5, 3, 2, CELL - 6, shade(body, 0.74));
+    const bolt = shade(body, 1.75);
+    px(ctx, 5, 5, 2, 2, bolt);
+    px(ctx, CELL - 7, 5, 2, 2, bolt);
+    px(ctx, 5, CELL - 7, 2, 2, bolt);
+    px(ctx, CELL - 7, CELL - 7, 2, 2, bolt);
+  }
 
   switch (m.kind) {
     case 'pipe': {
-      rp(ctx, cxp, cyp, d, -13, -7, 26, 14, '#0e1526');
-      rp(ctx, cxp, cyp, d, -13, -8, 26, 1, shade(trim, 0.55));
-      rp(ctx, cxp, cyp, d, -13, 7, 26, 1, shade(trim, 0.55));
-      for (let i = -1; i < 4; i++) {
-        const fwd = -13 + i * 8 + frame;
-        if (fwd > -13 && fwd < 11) rp(ctx, cxp, cyp, d, fwd, -5, 3, 10, trim);
+      drawBelt(ctx, m, frame, trim, lit);
+      for (let i = 0; i < (m.level || 1) - 1; i++) {
+        rp(ctx, cxp, cyp, d, -3 + i * 5, -9, 3, 2, lit);
       }
-      if (lvl > 1) rp(ctx, cxp, cyp, d, 10, -7, 2, 14, lit);
       break;
     }
 
     case 'store': {
-      rp(ctx, cxp, cyp, d, -13, -5, 26, 10, '#0e1526');
-      for (let i = -1; i < 4; i++) {
-        const fwd = -13 + i * 8 + frame;
-        if (fwd > -13 && fwd < 11) rp(ctx, cxp, cyp, d, fwd, -3, 3, 6, shade(trim, 0.9));
-      }
+      drawBelt(ctx, m, frame, trim, lit);
       // A tank bolted over the belt. It does not rotate, so how full it is reads
       // the same whichever way the machine is turned.
-      px(ctx, 8, 6, 16, 9, '#0e1a18');
-      px(ctx, 8, 6, 16, 1, shade(trim, 1.1));
-      px(ctx, 9, 22, 5, 5, shade(body, 1.5));
-      px(ctx, 18, 22, 5, 5, shade(body, 1.5));
+      px(ctx, 8, 7, 16, 11, '#0b1a18');
+      px(ctx, 8, 7, 16, 2, shade(trim, 1.15));
+      px(ctx, 8, 7, 2, 11, shade(trim, 0.8));
+      px(ctx, 22, 7, 2, 11, shade(trim, 0.55));
+      px(ctx, 10, 20, 5, 5, shade(body, 1.5));
+      px(ctx, 17, 20, 5, 5, shade(body, 1.5));
       break;
     }
 
@@ -749,7 +818,8 @@ export class View {
         px(ctx, bx, by, t, t, TYPES[ty].color);
         px(ctx, bx, by, t, Math.max(1, t / 3), TYPES[ty].glow);
       });
-    } else if (m.waitT > STALL_BADGE && !PASSIVE.has(m.kind) && intake(m) > 0) {
+    } else if (m.waitT > STALL_BADGE && !PASSIVE.has(m.kind)
+      && !PLUMBING.has(m.kind) && intake(m) > 0) {
       // STARVED: standing idle with an empty mouth. Fix the feed behind.
       const t = Math.max(2, 3 * s);
       for (const [ox, oy] of [[0, 0], [z - t, 0], [0, z - t], [z - t, z - t]]) {
@@ -763,8 +833,14 @@ export class View {
         ctx.globalAlpha = 0.3;
         px(ctx, sx, sy, z, z, '#0a1230');
         ctx.globalAlpha = 1;
-        px(ctx, sx + z - 7 * s, sy + 2 * s, 2 * s, 3 * s, '#5b6ea8');
-        px(ctx, sx + z - 8 * s, sy + 5 * s, 2 * s, 3 * s, '#5b6ea8');
+        // The little bolt goes on machines that do work, not on plumbing. Ticking
+        // every cell of a long belt run says the same thing forty times and breaks
+        // up the one continuous line the belt art exists to draw; the wash over
+        // the whole run already says it once.
+        if (!PLUMBING.has(m.kind)) {
+          px(ctx, sx + z - 7 * s, sy + 2 * s, 2 * s, 3 * s, '#5b6ea8');
+          px(ctx, sx + z - 8 * s, sy + 5 * s, 2 * s, 3 * s, '#5b6ea8');
+        }
       } else if (m.sat < 0.92) {
         // A wash, not a repaint. This is an annotation on a machine you still have
         // to be able to read — the first version of it went up to 46% alpha and
@@ -772,9 +848,12 @@ export class View {
         ctx.globalAlpha = 0.07 + (1 - m.sat) * 0.13;
         px(ctx, sx, sy, z, z, m.sat < 0.5 ? '#ff3b30' : '#ffa53c');
         ctx.globalAlpha = 1;
-        // and a corner tick, which reads at any zoom without hiding anything
-        px(ctx, sx + z - 5 * s, sy + z - 5 * s, 3 * s, 3 * s,
-          m.sat < 0.5 ? '#ff5d4a' : '#ffcd75');
+        // and a corner tick, which reads at any zoom without hiding anything —
+        // again only where it means something, not once per belt.
+        if (!PLUMBING.has(m.kind)) {
+          px(ctx, sx + z - 5 * s, sy + z - 5 * s, 3 * s, 3 * s,
+            m.sat < 0.5 ? '#ff5d4a' : '#ffcd75');
+        }
       }
     }
   }

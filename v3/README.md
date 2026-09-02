@@ -12,10 +12,15 @@ so all three ship from the same Amplify site — the original at `/`, GIZMO 2 at
 
 ## What it is
 
-You own a ten-slot square in the middle of a fifty-six-slot world. Ore is scattered
-across all of it, richer the further out you go. Put an **Extractor** on a patch,
-belt what it pulls up to a **Market Depot**, and that is a factory. Everything after
-that is making the line longer, wider, and worth more — and keeping it powered.
+You own a **three-slot square** in the middle of a fifty-six-slot world. All nine of
+those slots are ore, and three of them already hold a factory: an Extractor, one
+Conveyor, and a Market Depot. It earns from the first second, it is running at a
+fifth speed because nothing is powering it, and there are six slots left to do
+something about that.
+
+Everything after that is making the line longer, wider, and worth more — and finding
+room for it. Ore gets richer the further out you go, land gets steeply dearer, and
+the second ore you need is a dozen rings away.
 
 There are no rounds, no phases, no other players and no clock. The factory runs
 from the moment you open it until you close the tab, and it is still there when you
@@ -161,6 +166,12 @@ alarm nobody could read. Nothing is badged now until it has been stuck for over 
 second, and BACKED UP is corner brackets rather than a ring painted over the machine
 you are trying to identify.
 
+There is deliberately no "N machines backed up" line in the corner. A factory
+running at capacity always has machines holding finished goods — that is what
+running at capacity *is* — so the count was almost never zero and almost never
+actionable, and a corner that is always shouting is a corner nobody reads. The
+amber brackets on the machines themselves still say which ones.
+
 **Three states, not two.** *Backed up* means fix the line ahead. *Starved* means fix
 the feed behind. *Waiting* — new — means it has some of what it needs and not all of
 it, and rather than a badge meaning "something is wrong somewhere" it shows **the
@@ -235,18 +246,85 @@ when it passed. Sweeping pays nothing:
 it is a change of mind rather than production, and paying for it would turn
 demolishing a line into a way of laundering gizmos into cash.
 
-### The claim is centred
+### The claim is centred, and it starts at three
 
 Both earlier games anchored the floor at the top left and grew it down and right,
 which is fine when the floor is the world. Here the claim is a square in the middle
 of the map and every purchase adds a ring, so expansion is a **direction you
-choose** rather than a diagonal you get pushed along. A ring costs 28% more than
-the last one; the whole world costs about $135,000 end to end, which is a couple of
-hours of a factory that is going well.
+choose** rather than a diagonal you get pushed along.
+
+It starts at **3x3**. Nine slots holds the starting line and leaves six, which is
+exactly enough to fit a Generator and the Balancer that feeds it if you think about
+where they go. The opening is a packing puzzle with one obvious first move and a
+fence you want to push outward inside a minute, which is a better first ten minutes
+than a ten-slot square with room to spare.
+
+Two things multiply in the price of a ring, and separating them is what makes the
+curve behave. A ring bought on a claim of side `c` hands you `4c + 4` new slots, so
+what you get for your money grows on its own — sixteen slots at the start, two
+hundred and twenty-four at the rim. On top of that sits a 16% markup per ring
+already bought. The result is cheap early and steep late, deliberately: the first
+ring is **$24**, the first three together cost less than a Generator, and by the
+outer third a ring is tens of thousands. The whole world is about $90,000.
 
 Everything outside your fence is exactly as fatal as the edge of the world: you
 cannot build on it and a belt aimed at it throws away what it carries. That rule is
 inherited unchanged, and on a map this size it is the mistake you will make most.
+
+### Slag and Sap are kept a long way apart
+
+The two ores used to scatter under the same rule with three slots between any two
+patches, and one of each was placed inside the opening claim. Which meant the
+Part-and-Product half of the game — two feeds, two lines, an Assembler where they
+meet, the most interesting thing this game asks anybody to build — collapsed into
+putting two Extractors next to each other. That is not a logistics problem, it is a
+shrug.
+
+Now a patch of one ore clears a wide berth around every patch of the other, and
+there is no Sap anywhere near the middle: the nearest is nine to nineteen rings out,
+depending on the world. Running a Part line is an expedition — a long belt haul
+across bought land, or an outpost at the patch with its own Generator and its own
+fuel line. `tools/world.mjs` walks four hundred worlds checking that every one has
+Sap in it somewhere findable, that none of it is near the start, and that the two
+ores never come within eight slots of each other.
+
+The opening patch went the other way. All nine slots of the starting claim are Slag
+and the patch grows outward from them into the first rings you will buy, because on
+a nine-slot claim there is no room to be picky about where the second Extractor
+goes, so the map does not ask.
+
+### Conveyors are drawn as one belt, not as a row of boxes
+
+A conveyor used to be a box: a casing all the way round, a channel across the
+middle, done. Twenty in a row read as twenty boxes, and a corner read as two boxes
+at right angles rather than as a belt that turns.
+
+They are built out of **arms** now. Each arm runs from the centre of the tile to one
+edge, and an arm is drawn for the direction the belt fires and for every direction
+something feeds it from — so a straight run is two arms meeting in the middle, a
+corner is two arms at right angles, and a merge is three or four. Because every arm
+goes right to the edge at the same width, the arm on this side of a boundary lines
+up exactly with the arm on the other side, and a run becomes one continuous trough
+with rails down both sides. A belt with nothing feeding it still draws its back arm,
+so a lone belt is a belt rather than half of one, and an arm with nothing on the far
+side gets an end cap, so where a run stops is visible.
+
+The rails are drawn *before* the troughs on purpose: at a junction the trough simply
+erases the rail that would otherwise run across the opening, which is what turns
+four arms into a crossroads instead of a plus sign. Belts skip the generic casing
+entirely — a box round each one is exactly what stopped a run reading as a single
+belt — while everything else keeps one, because a Mutator is an object sitting on
+the floor and should look like it.
+
+Which edges join is worked out in `sim.relink`, when the map changes rather than per
+frame: asking four neighbours for their exits sixty times a second for a thousand
+belts is a lot of work to arrive at the same answer.
+
+Two badges came off plumbing at the same time. An empty conveyor is not starved, it
+is what most of a factory's belts look like most of the time, and four blue corner
+ticks on every tile of every quiet run broke up exactly the line the new art works
+to draw. The off-grid bolt went the same way: the dim wash over a whole run says it
+once, where the icon said it forty times.
 
 ### The renderer is new
 

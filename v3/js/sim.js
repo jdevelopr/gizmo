@@ -38,7 +38,7 @@ import {
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
-  STALL_BADGE, label,
+  STALL_BADGE, label, PLUMBING,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { generateWorld } from './world.js';
@@ -126,6 +126,43 @@ export function rebuild(f) {
   for (let i = 0; i < f.grid.length; i++) if (f.grid[i]) cells.push(i);
   f.cells = cells;
   solveTopology(f);
+  relink(f);
+}
+
+/**
+ * Work out which edges of each belt join a neighbour.
+ *
+ * A conveyor used to be drawn as a self-contained tile with a casing all the way
+ * round it, so a run of twenty read as twenty boxes in a row rather than as one
+ * belt — and a corner read as two boxes at right angles rather than as a belt that
+ * turns. The renderer needs to know, per belt, which of its four edges continue
+ * into something: the edge it fires out of, and every edge a neighbour fires in
+ * through. Then it can draw the casing only where the belt actually ends.
+ *
+ * It is computed here rather than per frame because it changes exactly when the
+ * map does — something placed, moved, scrapped, or turned — and asking four
+ * neighbours for their exits sixty times a second for a thousand belts is a great
+ * deal of work to arrive at the same answer.
+ */
+export function relink(f) {
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (!m) continue;
+    if (m.kind !== 'pipe' && m.kind !== 'store') { m.link = 0; continue; }
+    let mask = 0;
+    const x = cx(i), y = cy(i);
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+      if (!openAt(f, nx, ny)) continue;
+      const n = f.grid[cellOf(nx, ny)];
+      if (!n) continue;
+      // The edge I fire out of, if there is anything there with a mouth...
+      if (d === (m.dir | 0) && n.kind !== 'ext') mask |= 1 << d;
+      // ...and every edge something fires in through.
+      if (exitDirs(n).includes((d + 2) % 4)) mask |= 1 << d;
+    }
+    m.link = mask;
+  }
 }
 
 /** How many of one kind are standing on the map, for the price ladders. */
@@ -784,6 +821,7 @@ export function applyAction(f, a) {
     case 'rot': {
       if (!m) return no('Nothing there');
       m.dir = (m.dir + (a.back ? 3 : 1)) % 4;
+      relink(f);            // turning one belt changes how its neighbours join it
       f.fx.push({ k: 'rot', cell: a.i });
       return yes();
     }
@@ -811,6 +849,7 @@ export function applyAction(f, a) {
       if (!m) return no('Nothing there');
       if (m.kind !== 'bal' && m.kind !== 'sort') return no('Nothing to flip');
       m.mir = m.mir ? 0 : 1;
+      relink(f);
       f.fx.push({ k: 'rot', cell: a.i });
       return yes(m.mir ? 'Branching left' : 'Branching right');
     }
@@ -834,7 +873,8 @@ export function applyAction(f, a) {
       f.spent += c;
       m.level++;
       m.flash = 1;
-      f.dirty = true;           // a generator's reach just changed
+      relink(f);                // a level 3 router gains an exit
+      f.dirty = true;           // and a generator's reach just changed
       f.fx.push({ k: 'up', cell: a.i });
       return yes(null, { cost: c });
     }
@@ -871,7 +911,9 @@ export function applyAction(f, a) {
       if (f.cash < c) return no(`Need $${c}`);
       f.cash -= c;
       f.spent += c;
-      f.claim += CLAIM_STEP;
+      // The world is even and the claim starts odd, so the last step is a short
+      // one rather than a ring that would hang off the edge.
+      f.claim = Math.min(WORLD, f.claim + CLAIM_STEP);
       f.mapRev++;
       f.fx.push({ k: 'grow', claim: f.claim });
       return yes(`Claim is now ${f.claim} x ${f.claim}`, { cost: c });
@@ -932,7 +974,7 @@ export function diagnose(f) {
         waitingFor = missingFor(m)[0] ?? null;
         waitingAt = i;
       }
-    } else if (m.waitT > STALL_BADGE) starved++;
+    } else if (m.waitT > STALL_BADGE && !PLUMBING.has(m.kind)) starved++;
     if (m.net < 0 && drawOf(m) > 0) unpowered++;
   }
   let worst = 1;

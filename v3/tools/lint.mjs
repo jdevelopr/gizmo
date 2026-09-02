@@ -60,9 +60,17 @@ const exportsOf = src => {
 const sources = new Map();
 for (const f of files) sources.set(f, readFileSync(join(jsDir, f), 'utf8'));
 
+// The harnesses import the same modules and break in the same way, so they are
+// checked too — a tool that will not start is a test that silently stops running.
+const toolDir = fileURLToPath(new URL('.', import.meta.url));
+const checked = new Map(sources);
+for (const f of readdirSync(toolDir).filter(n => n.endsWith('.mjs')).sort()) {
+  checked.set('tools/' + f, readFileSync(join(toolDir, f), 'utf8'));
+}
+
 let missing = 0;
-for (const [file, src] of sources) {
-  for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]\.\/([^'"]+)['"]/g)) {
+for (const [file, src] of checked) {
+  for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"](?:\.\.\/js|\.)\/([^'"]+)['"]/g)) {
     const from = m[2];
     if (!sources.has(from)) { missing++; console.log(`  MISS  ${file} imports from ${from}, which is not there`); continue; }
     const have = exportsOf(sources.get(from));

@@ -241,6 +241,68 @@ console.log('\nSCRAPPING AND MOVING');
     'and it picks up the richness of the patch it lands on');
 }
 
+console.log('\nONE MOUTH, ON ONE SIDE');
+{
+  const f = bench();
+  ore(f, 20, 20);
+  put(f, 'ext', 20, 20, { dir: 0 });
+  belt(f, 21, 23, 20);
+  put(f, 'depot', 24, 20, { dir: 0 });          // mouth east: the wrong way round
+  const dep = f.grid[cellOf(24, 20)];
+  applyAction(f, { a: 'rot', i: cellOf(24, 20) });   // by hand, so it stops self-aiming
+  dep.dir = 0;
+  dep.aimed = 1;
+  run(f, 40);
+  ok(f.earned === 0, 'a belt at the solid side of a Depot sells nothing',
+    `earned ${f.earned}`);
+  const stuck = diagnose(f).jams;
+  ok(stuck.length > 0, 'and it is reported rather than left to be discovered');
+  ok(/mouth faces/.test(stuck[0]?.why || ''), 'with the side it does face named',
+    stuck[0]?.why);
+  ok(f.grid[cellOf(23, 20)].link !== undefined
+    && !(f.grid[cellOf(23, 20)].link & 1), 'and the belt visibly does not join it');
+
+  applyAction(f, { a: 'rot', i: cellOf(24, 20) });
+  applyAction(f, { a: 'rot', i: cellOf(24, 20) });   // now facing west, at the belt
+  ok(dep.dir === 2, 'turning it puts the mouth on the west side');
+  run(f, 40);
+  ok(f.earned > 0, 'after which it sells', `earned ${Math.round(f.earned)}`);
+  ok(!!(f.grid[cellOf(23, 20)].link & 1), 'and the belt joins up');
+}
+{
+  // Two lines cannot both be shovelled into one Depot.
+  const f = bench();
+  ore(f, 20, 24); ore(f, 20, 26);
+  put(f, 'ext', 20, 24, { dir: 0 }); put(f, 'ext', 20, 26, { dir: 0 });
+  belt(f, 21, 22, 24); belt(f, 21, 22, 26);
+  put(f, 'pipe', 23, 24, { dir: 1 });
+  put(f, 'pipe', 23, 26, { dir: 3 });
+  put(f, 'depot', 23, 25, { dir: 3 });
+  const dep = f.grid[cellOf(23, 25)];
+  dep.aimed = 1;
+  run(f, 60);
+  ok(f.earned > 0, 'a Depot fed from one side sells');
+  ok(f.grid[cellOf(23, 26)].blocked === 1,
+    'while the arm at its solid side backs up rather than sneaking in');
+}
+{
+  // But a mouth with nothing feeding it turns to meet a belt on its own.
+  const f = bench();
+  ore(f, 30, 30);
+  put(f, 'ext', 30, 30, { dir: 0 });
+  put(f, 'depot', 33, 30, { dir: 1 });     // pointing the wrong way, never touched
+  belt(f, 31, 32, 30);
+  rebuild(f);
+  ok(f.grid[cellOf(33, 30)].dir === 2, 'an untouched mouth aims itself at the belt');
+  run(f, 40);
+  ok(f.earned > 0, 'so laying a belt at a Depot simply works', `earned ${Math.round(f.earned)}`);
+  // and having aimed itself, it stays put once it is being fed
+  const before = f.grid[cellOf(33, 30)].dir;
+  put(f, 'pipe', 33, 29, { dir: 1 });
+  rebuild(f);
+  ok(f.grid[cellOf(33, 30)].dir === before, 'and stops moving once something is coming in');
+}
+
 console.log('\nSWITCHING THINGS OFF');
 {
   const f = bench();

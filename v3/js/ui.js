@@ -13,11 +13,12 @@ import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
   levelCap, techById, techOpen, unlockedBy, expandCost, money, num, clock,
-  cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK,
+  cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
   MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME, TUTORIAL, TUTORIAL_END,
   upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE, PLUMBING,
+  ONE_MOUTH, acceptsFrom, faceHit,
 } from './machines.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
 import {
@@ -356,12 +357,12 @@ export function diagramFor(m) {
       d.appendChild(part(null, true, 'power'));
       return d;
     case 'depot':
-      d.appendChild(part(null, true, 'anything'));
+      d.appendChild(part(null, true, `anything, from the ${DIR_NAME[m.dir].toLowerCase()}`));
       d.appendChild(op('\u2192'));
       d.appendChild(part(null, true, 'money'));
       return d;
     case 'lab':
-      d.appendChild(part(null, true, 'anything'));
+      d.appendChild(part(null, true, `anything, from the ${DIR_NAME[m.dir].toLowerCase()}`));
       d.appendChild(op('\u2192'));
       d.appendChild(part(null, true, 'science'));
       return d;
@@ -827,7 +828,9 @@ export class Panel {
     t.appendChild(el('h3', null, label(m).toUpperCase()));
     t.appendChild(el('div', 'sub',
       (m.off ? 'SWITCHED OFF  ·  ' : '')
-      + `Level ${m.level} of ${levelCap(f.done)}  ·  facing ${DIR_NAME[m.dir]}  ·  ${cx(cell)}, ${cy(cell)}`));
+      + `Level ${m.level} of ${levelCap(f.done)}  ·  `
+      + (ONE_MOUTH.has(m.kind) ? `mouth faces ${DIR_NAME[m.dir]}` : `facing ${DIR_NAME[m.dir]}`)
+      + `  ·  ${cx(cell)}, ${cy(cell)}`));
     head.appendChild(t);
     host.appendChild(head);
     host.appendChild(el('p', 'body', describe(m)));
@@ -851,7 +854,7 @@ export class Panel {
       b.onclick = fn;
       acts.appendChild(b);
     };
-    if (!['depot', 'lab', 'gen'].includes(m.kind)) {
+    if (m.kind !== 'gen') {
       add('ROTATE <span class="k">R</span>', () => this.act('rot', cell));
     }
     if (m.kind === 'bal' || m.kind === 'sort') add('FLIP <span class="k">F</span>', () => this.act('mir', cell));
@@ -934,6 +937,16 @@ export class Panel {
     }
 
     if (m.kind === 'depot' || m.kind === 'lab') {
+      // Which side is open, and whether anything is actually coming in through it.
+      const fed = [0, 1, 2, 3].some(d2 => {
+        if (d2 !== (m.dir | 0)) return false;
+        const nx = cx(cell) + DIRS[d2][0], ny = cy(cell) + DIRS[d2][1];
+        const n = f.grid[cellOf(nx, ny)];
+        return !!n && exitDirs(n).includes(faceHit(d2));
+      });
+      addRow(rows, 'Mouth', `${DIR_NAME[m.dir]} side only`, fed ? 'good' : 'warn');
+      addRow(rows, 'Fed from there', fed ? 'yes' : 'nothing is', fed ? 'good' : 'warn');
+      addRow(rows, 'Other three sides', 'solid — nothing gets in', '');
       addRow(rows, 'Takes', 'anything, instantly');
       addRow(rows, m.kind === 'depot' ? 'Pays' : 'Studies at', 'full market value');
       addRow(rows, 'Needs power', 'no', 'good');
@@ -1339,6 +1352,18 @@ Cord, Frame — comes out of Sap patches and is worth almost nothing on its own.
 <b>Product</b> — Engine, Turbine, Reactor — comes only from an Assembler marrying
 one of each, and is where the money is. Fusers climb inside a family and never
 across one.</p>
+
+<h3>Depots and Labs have one mouth</h3>
+<p>Every other machine takes from any side. A <b>Market Depot</b> and a <b>Research
+Lab</b> have a single opening, on the side the arrow points into, and are solid on
+the other three — so a Depot is where a line <i>ends</i> rather than a wall four
+lines can be shovelled into from every angle. Two things to sell means two Depots,
+or a Balancer merging the arms before they arrive.</p>
+<p>The mouth aims itself at whatever is feeding it, so laying a belt at a Depot
+usually just works. It only ever turns while nothing is coming in, so it can never
+break a line that is running, and it stops turning itself for good the moment you
+rotate one by hand with <b>R</b>. A belt pointing at a solid side visibly does not
+join up, and the corner will tell you which way the mouth faces.</p>
 
 <h3>Building over things</h3>
 <p>You can set a machine down on a slot that already has one on it. Whatever was

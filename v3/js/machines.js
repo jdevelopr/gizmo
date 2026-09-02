@@ -647,11 +647,35 @@ export function outputs(m, inputs) {
  * Labs and Generators say yes to everything — a depot that refused Scrap would be
  * a very strange shop.
  */
-export function wants(m, ty) {
+/**
+ * Will this machine take anything at all through this side of itself?
+ *
+ * Most machines have four open faces and it never comes up. A **Depot** and a
+ * **Lab** have one mouth, on the side `dir` points at, and are solid on the other
+ * three — so a depot is a place a line *ends*, not a wall that four lines can be
+ * shovelled into from every angle. Wanting to sell two products means two depots,
+ * or a Balancer merging the arms before they get there, which is a routing problem
+ * where there used to be none.
+ *
+ * `side` is the face of `m` the gizmo arrives at: something travelling east enters
+ * its target through that target's west face.
+ */
+export function acceptsFrom(m, side) {
+  if (!m) return false;
+  if (m.kind === 'ext') return false;             // an Extractor has no mouth at all
+  if (m.kind === 'depot' || m.kind === 'lab') return side === (m.dir | 0);
+  return true;
+}
+
+/** Which face of a machine a gizmo travelling in direction `d` arrives at. */
+export const faceHit = d => ((d | 0) + 2) % 4;
+
+export function wants(m, ty, side = null) {
   if (!m) return true;
   // A machine that has been switched off turns everything away, which is the
   // point of switching it off: the line behind it backs up and stops, on purpose.
   if (m.off) return false;
+  if (side != null && !acceptsFrom(m, side)) return false;
   if (m.kind === 'ext') return false;
   if (m.kind === 'depot' || m.kind === 'lab' || m.kind === 'gen') return true;
   if (m.kind === 'asm') {
@@ -679,13 +703,17 @@ export function wants(m, ty) {
  * and the game says so out loud instead of leaving you to work out which of two
  * hundred amber badges is the one that matters.
  */
-export function canEverAccept(m, ty) {
+export function canEverAccept(m, ty, side = null) {
   if (!m) return true;
+  if (side != null && !acceptsFrom(m, side)) return false;
   if (m.kind === 'ext') return false;
   if (m.kind === 'asm') return recipeOf(m).ins.includes(ty);
   if (m.kind === 'fuse') return famOf(ty) !== PRODUCT;
   return true;
 }
+
+/** Machines whose one mouth is on a side you can turn. */
+export const ONE_MOUTH = new Set(['depot', 'lab']);
 
 /**
  * Which queued gizmos this machine would take for its next job, as indices into
@@ -983,8 +1011,9 @@ export const TUTORIAL = [
     id: 'depot',
     title: 'Build a Market Depot',
     body: 'Press <b>7</b> and put it down a couple of slots away, in the direction the '
-      + 'Extractor is facing. A Depot buys anything pushed into it, instantly, at full price. '
-      + 'It is the only place money comes from.',
+      + 'Extractor is facing. A Depot buys anything pushed into it, instantly, at full '
+      + 'price — but only through the one mouth on its front. It aims itself at whatever '
+      + 'feeds it, and <b>R</b> turns it by hand.',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'depot'),
   },
   {

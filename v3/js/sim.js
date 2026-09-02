@@ -30,10 +30,10 @@
  */
 
 import {
-  WORLD, DIRS, TYPES, KINDS, PASSIVE, MAX_LEVEL,
+  WORLD, DIRS, DIR_NAME, TYPES, KINDS, PASSIVE, MAX_LEVEL,
   makeMachine, price, buyCost, upgradeCost, scrapValue, cycleTime, travelTime,
   intake, outputs, exitDirs, sizeOf, capacity, EMPTY_HOLD, drawOf,
-  pickInputs, missingFor, canEverAccept,
+  pickInputs, missingFor, canEverAccept, acceptsFrom, faceHit, ONE_MOUTH,
   cellOf, cx, cy, inClaim, claimed, claimCells, inWorld,
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
@@ -145,6 +145,7 @@ export function rebuild(f) {
  * deal of work to arrive at the same answer.
  */
 export function relink(f) {
+  aimMouths(f);
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
@@ -156,12 +157,42 @@ export function relink(f) {
       if (!openAt(f, nx, ny)) continue;
       const n = f.grid[cellOf(nx, ny)];
       if (!n) continue;
-      // The edge I fire out of, if there is anything there with a mouth...
-      if (d === (m.dir | 0) && n.kind !== 'ext') mask |= 1 << d;
+      // The edge I fire out of, if there is anything there that will take it —
+      // a belt pointing at the blank side of a Depot visibly does not join it.
+      if (d === (m.dir | 0) && acceptsFrom(n, faceHit(d))) mask |= 1 << d;
       // ...and every edge something fires in through.
       if (exitDirs(n).includes((d + 2) % 4)) mask |= 1 << d;
     }
     m.link = mask;
+  }
+}
+
+/**
+ * Turn every Depot and Lab to face whatever is feeding it.
+ *
+ * A one-sided mouth is a real constraint — it is what stops four lines being
+ * shovelled into one Depot from every angle — but it would be a miserable one if
+ * placing a Depot and then running a belt at it did nothing until you noticed and
+ * rotated it. So a mouth aims itself, on two conditions that between them make it
+ * helpful rather than magic: it only ever moves while *nothing* is feeding it, so
+ * it can never break a working line; and it stops moving for good the moment you
+ * turn one by hand, so it never argues with a decision you have made.
+ */
+function aimMouths(f) {
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (!m || !ONE_MOUTH.has(m.kind) || m.aimed) continue;
+    const x = cx(i), y = cy(i);
+    let feeder = -1;
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+      if (!openAt(f, nx, ny)) continue;
+      const n = f.grid[cellOf(nx, ny)];
+      if (!n || !exitDirs(n).includes(faceHit(d))) continue;
+      if (d === (m.dir | 0)) { feeder = -2; break; }    // already fed: leave it be
+      if (feeder < 0) feeder = d;
+    }
+    if (feeder >= 0) m.dir = feeder;
   }
 }
 
@@ -218,14 +249,14 @@ function slotLoad(f, i) {
   return (f.load[i] || 0) + (m ? machineLoad(m) : 0);
 }
 
-function canAccept(f, i, ty) {
+function canAccept(f, i, ty, side = null) {
   const m = f.grid[i];
-  if (m && !wants(m, ty)) return false;
+  if (m && !wants(m, ty, side)) return false;
   return slotLoad(f, i) + sizeOf(ty) <= slotCap(f, i) + EPS;
 }
 
-const machineTakes = (m, ty) =>
-  wants(m, ty) && machineLoad(m) + sizeOf(ty) <= capacity(m) + EPS;
+const machineTakes = (m, ty, side = null) =>
+  wants(m, ty, side) && machineLoad(m) + sizeOf(ty) <= capacity(m) + EPS;
 
 function retally(f) {
   if (f.load.length !== f.grid.length) f.load = new Float64Array(f.grid.length);
@@ -278,7 +309,7 @@ export function stepFactory(f, dt) {
       g.y = g.sy + (g.ey - g.sy) * g.p;
     } else if (g.st === 'idle') {
       const m = f.grid[g.cell];
-      if (m && machineTakes(m, g.ty)) absorb(f, m, g, k);
+      if (m && machineTakes(m, g.ty, g.side)) absorb(f, m, g, k);
     }
   }
 
@@ -358,7 +389,7 @@ function pickExit(f, i, m, o) {
   for (const d of cands) {
     const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
     if (!openAt(f, nx, ny)) return d;
-    if (canAccept(f, cellOf(nx, ny), o.ty)) return d;
+    if (canAccept(f, cellOf(nx, ny), o.ty, faceHit(d))) return d;
   }
   return null;
 }
@@ -414,6 +445,10 @@ function emit(f, from, out, dur, n, total) {
     p: 0, dur: Math.max(0.02, dur * (1 + n * 0.06)),
     cell: inside ? cellOf(nx, ny) : -1,
     from, exit: inside ? null : out.dir,
+    // Which face of the destination this is arriving at. Kept on the gizmo so a
+    // Depot that turned one away still turns it away when it is lying on the mat
+    // and asking again a tick later.
+    side: faceHit(out.dir),
   });
 }
 
@@ -425,7 +460,7 @@ function arrive(f, g, k) {
     return;
   }
   const m = f.grid[g.cell];
-  if (m && machineTakes(m, g.ty)) { absorb(f, m, g, k); return; }
+  if (m && machineTakes(m, g.ty, g.side)) { absorb(f, m, g, k); return; }
   // Nothing is ever destroyed: it rests on the slot, counts against that slot's
   // room, and so turns the machine behind it away.
   g.st = 'idle';
@@ -446,7 +481,7 @@ export { machineLoad, contents };
 /* ------------------------------------------------------------ auto-facing --- */
 
 /** Machines that aim themselves when set down: the routing family, plus Storage. */
-const AUTO_FACE = new Set(['pipe', 'store', 'bal', 'sort', 'ext']);
+const AUTO_FACE = new Set(['pipe', 'store', 'bal', 'sort', 'ext', 'depot', 'lab']);
 
 /** Every Depot on the map, which is what a loose belt wants to be pointing at. */
 export function depotsOf(f) {
@@ -470,6 +505,22 @@ export function depotsOf(f) {
 export function smartDir(f, i) {
   const m = f.grid[i];
   if (!m || !AUTO_FACE.has(m.kind)) return null;
+
+  // A Depot and a Lab have a mouth rather than an exit, so "which way should this
+  // face" is a different question: point it at whatever is already firing at this
+  // slot, and failing that at whatever is standing next to it.
+  if (ONE_MOUTH.has(m.kind)) {
+    let best = m.dir, score = -1;
+    for (let d = 0; d < 4; d++) {
+      const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
+      if (!openAt(f, nx, ny)) continue;
+      const n = f.grid[cellOf(nx, ny)];
+      if (!n) continue;
+      const s2 = exitDirs(n).includes(faceHit(d)) ? 2 : 1;
+      if (s2 > score) { score = s2; best = d; }
+    }
+    return best;
+  }
 
   const x = cx(i), y = cy(i);
   const depots = depotsOf(f);
@@ -821,6 +872,8 @@ export function applyAction(f, a) {
     case 'rot': {
       if (!m) return no('Nothing there');
       m.dir = (m.dir + (a.back ? 3 : 1)) % 4;
+      // A mouth you have turned yourself stops turning itself.
+      if (ONE_MOUTH.has(m.kind)) m.aimed = 1;
       relink(f);            // turning one belt changes how its neighbours join it
       f.fx.push({ k: 'rot', cell: a.i });
       return yes();
@@ -1011,11 +1064,15 @@ export function jams(f) {
       const nx = cx(i) + DIRS[o.dir][0], ny = cy(i) + DIRS[o.dir][1];
       if (!openAt(f, nx, ny)) continue;
       const target = f.grid[cellOf(nx, ny)];
-      if (!target || canEverAccept(target, o.ty)) continue;
-      out.push({
-        cell: i, ty: o.ty, into: cellOf(nx, ny), kind: target.kind,
-        why: `${TYPES[o.ty].name} into ${an(label(target))}, which can never take one`,
-      });
+      const side = faceHit(o.dir);
+      if (!target || canEverAccept(target, o.ty, side)) continue;
+      // A Depot fed on the flank is a different fault from a Fuser fed a Product:
+      // one is fixed by turning something, the other by moving it.
+      const why = ONE_MOUTH.has(target.kind) && !acceptsFrom(target, side)
+        ? `${TYPES[o.ty].name} into the side of ${an(label(target))} — its mouth faces `
+          + `${DIR_NAME[target.dir]}, so turn it or come at it from there`
+        : `${TYPES[o.ty].name} into ${an(label(target))}, which can never take one`;
+      out.push({ cell: i, ty: o.ty, into: cellOf(nx, ny), kind: target.kind, why });
       break;
     }
     if (out.length >= 8) break;

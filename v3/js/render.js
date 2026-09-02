@@ -167,6 +167,26 @@ export function bodyTile(m, rawFrame = 0) {
 export function clearTiles() { tiles.clear(); }
 
 /**
+ * The one mouth a Depot or a Lab has, cut into the side `dir` points at.
+ *
+ * Three of their faces are solid and one is an opening, and which one has to be
+ * legible at a glance or the constraint is just an unexplained refusal. So the
+ * mouth is a dark slot in the casing with a bright lip either side and an arrow
+ * pointing *inward* — the only inward-pointing arrow in the game, because it is
+ * the only machine that takes rather than gives.
+ */
+function mouth(ctx, d, lit) {
+  const cxp = CELL / 2, cyp = CELL / 2;
+  rp(ctx, cxp, cyp, d, 10, -8, 6, 16, '#05070d');
+  rp(ctx, cxp, cyp, d, 10, -9, 6, 1, lit);
+  rp(ctx, cxp, cyp, d, 10, 8, 6, 1, lit);
+  for (let i = 0; i < 3; i++) {
+    const half = 5 - i * 2;
+    rp(ctx, cxp, cyp, d, 9 - i * 2, -half, 2, half * 2, lit);
+  }
+}
+
+/**
  * A conveyor, drawn as part of whatever it is joined to.
  *
  * The old belt was a box: a casing all the way round, a channel across the middle,
@@ -344,29 +364,30 @@ function drawBody(ctx, m, frame) {
     }
 
     case 'depot': {
-      // A market stall: a striped awning over an open counter.
-      px(ctx, 5, 6, 22, 6, shade(body, 0.7));
-      for (let i = 0; i < 5; i++) px(ctx, 5 + i * 5, 6, 3, 6, i % 2 ? trim : lit);
-      px(ctx, 5, 12, 22, 2, '#05070d');
-      px(ctx, 7, 14, 18, 12, shade(body, 1.15));
-      px(ctx, 10, 17, 12, 7, '#08120c');
-      // a coin
-      px(ctx, 13, 18, 6, 5, GOLD);
-      px(ctx, 14, 19, 4, 3, shade(GOLD, 0.7));
-      px(ctx, 15, 19, 2, 1, '#fff4c8');
+      // A market stall: a striped awning over a counter, with a coin on it.
+      px(ctx, 6, 8, 20, 5, shade(body, 0.7));
+      for (let i = 0; i < 5; i++) px(ctx, 6 + i * 4, 8, 2, 5, i % 2 ? trim : lit);
+      px(ctx, 6, 13, 20, 1, '#05070d');
+      px(ctx, 8, 14, 16, 10, shade(body, 1.15));
+      px(ctx, 11, 16, 10, 6, '#08120c');
+      px(ctx, 13, 17, 6, 4, GOLD);
+      px(ctx, 14, 18, 4, 2, shade(GOLD, 0.7));
+      px(ctx, 15, 18, 2, 1, '#fff4c8');
+      mouth(ctx, d, lit);
       break;
     }
 
     case 'lab': {
-      px(ctx, 8, 6, 16, 20, shade(body, 1.15));
-      px(ctx, 8, 6, 16, 2, shade(body, 1.7));
+      px(ctx, 9, 7, 14, 18, shade(body, 1.15));
+      px(ctx, 9, 7, 14, 2, shade(body, 1.7));
       // a flask, with the level of what is in it rising and falling
-      px(ctx, 12, 9, 8, 3, '#05070d');
-      px(ctx, 10, 12, 12, 12, '#05070d');
-      const fill = [7, 8, 9, 8][frame % 4];
-      px(ctx, 11, 24 - fill, 10, fill, trim);
-      px(ctx, 11, 24 - fill, 10, 1, lit);
-      px(ctx, 14, 26 - fill, 2, 2, lit);
+      px(ctx, 13, 9, 6, 3, '#05070d');
+      px(ctx, 11, 12, 10, 11, '#05070d');
+      const fill = [6, 7, 8, 7][frame % 4];
+      px(ctx, 12, 22 - fill, 8, fill, trim);
+      px(ctx, 12, 22 - fill, 8, 1, lit);
+      px(ctx, 14, 24 - fill, 2, 2, lit);
+      mouth(ctx, d, lit);
       break;
     }
 

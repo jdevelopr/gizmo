@@ -62,9 +62,9 @@ cage. So all four fixtures became machines you build and move:
   is what turns the map's geography into an engineering problem — a 2.4x patch out
   past your fence is worth three ordinary ones, and reaching it is a project.
 - The **Market Depot** replaces the Seller. Put it anywhere; anything pushed into
-  it sells instantly at market value. Depots climb a price ladder — the twentieth
-  costs a great deal more than the first — so covering the map in them is not the
-  answer to "my line is far from a depot". A longer belt is.
+  its **one mouth** sells instantly at market value. Depots climb a price ladder —
+  the twentieth costs a great deal more than the first — so covering the map in
+  them is not the answer to "my line is far from a depot". A longer belt is.
 - The **Research Lab** replaces the Lab port. Same deal: build it, aim a belt at
   it, and what goes in becomes science worth exactly what a depot would have paid.
 - The **Generator** is new, and is what the rest of this is about.
@@ -218,6 +218,27 @@ the two things it eats, and the studs count the tier. Zoomed out, where there is
 room for any of that, an Assembler is drawn in the colour of its product rather than
 the colour of an Assembler — three of them side by side stay three different things
 at every zoom.
+
+### Depots and Labs have one mouth
+
+Every other machine on the map takes from any of its four sides, which is right for
+plumbing and wrong for the two machines a line *ends* at. A Depot with four open
+faces is not a building, it is a wall that any number of arms can be shovelled into
+from any angle, and it made "where does this line finish" a question with no
+content.
+
+So a Depot and a Lab have a single opening, on the side the arrow points into, and
+are solid on the other three. Selling two things means two Depots, or a Balancer
+merging the arms before they arrive — a routing problem where there used to be none.
+A belt aimed at a solid side visibly fails to join up, and because that is a stall
+that will never clear on its own, the corner names it and says which way the mouth
+actually faces.
+
+The mouth **aims itself**, on two conditions that between them keep it helpful
+rather than magic: it only ever turns while nothing is feeding it, so it can never
+break a line that is running; and it stops turning itself for good the moment you
+rotate one by hand. Laying a belt at a Depot just works, and taking charge of one
+is a single keypress that sticks.
 
 ### Anything can be switched off
 

@@ -30,6 +30,7 @@ import {
   skitterShare, nestSpec,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
+  CHARGED, CHARGED_MULT, shotsOf,
 } from './machines.js';
 
 /* ------------------------------------------------------------------ nests --- */
@@ -313,13 +314,18 @@ function stepZappers(f, dt) {
     const m = f.grid[i];
     if (!m || m.kind !== 'zap') continue;
     if (m.off || broken(m)) continue;
-    if (m.charge <= 0 && m.buf.length) {
-      m.buf.shift();
-      m.charge += AMMO_CHARGES;
+    if (shotsOf(m) <= 0 && m.buf.length) {
+      const g = m.buf.shift();
+      if (g.ty === CHARGED) m.hot = (m.hot | 0) + AMMO_CHARGES;
+      else m.charge += AMMO_CHARGES;
       m.flash = 1;
     }
     if (m.cool > 0) { m.cool = Math.max(0, m.cool - dt * speedHere(f, m)); continue; }
-    if (m.charge <= 0) continue;
+    if (shotsOf(m) <= 0) continue;
+    // Charged shots go first, at twice the damage.
+    const hot = (m.hot | 0) > 0;
+    const shot = zapDamage(m) * (hot ? CHARGED_MULT : 1);
+    const spend = () => { if (hot) m.hot--; else m.charge--; };
 
     const x = cx(i) + 0.5, y = cy(i) + 0.5;
     const r = zapRange(m, f.done);
@@ -336,11 +342,11 @@ function stepZappers(f, dt) {
         at = next;
       }
       for (const mt of hit) {
-        mt.hp -= zapDamage(m);
+        mt.hp -= shot;
         if (mt.hp <= 0) { dead = true; m.kills = (m.kills || 0) + 1; f.zapped++; f.fx.push({ k: 'kill', x: mt.x, y: mt.y, kind: mt.kind }); }
       }
-      f.fx.push({ k: 'zap', cell: i, path });
-      m.charge--;
+      f.fx.push({ k: 'zap', cell: i, path, hot });
+      spend();
       m.cool = zapCool(m);
       m.flash = 1;
       continue;
@@ -349,10 +355,10 @@ function stepZappers(f, dt) {
     const nest = (f.nests || []).find(n => n.hp > 0
       && Math.hypot(cx(n.cell) + 0.5 - x, cy(n.cell) + 0.5 - y) <= r);
     if (nest) {
-      const dmg = zapDamage(m);
+      const dmg = shot;
       nest.hp -= dmg;
-      f.fx.push({ k: 'zap', cell: i, path: [[x, y], [cx(nest.cell) + 0.5, cy(nest.cell) + 0.5]] });
-      m.charge--;
+      f.fx.push({ k: 'zap', cell: i, path: [[x, y], [cx(nest.cell) + 0.5, cy(nest.cell) + 0.5]], hot });
+      spend();
       m.cool = zapCool(m);
       if (nest.hp <= 0) { killNest(f, nest); continue; }
       // It fights back: every so much damage, a brood comes out for the Zapper.

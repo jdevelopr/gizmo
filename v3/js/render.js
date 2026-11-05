@@ -31,7 +31,7 @@ import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
   cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
-  ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec,
+  ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
 } from './machines.js';
 import { heldTypes, machineLoad, contents } from './sim.js';
 
@@ -1144,10 +1144,14 @@ export class View {
 
     // --- a Zapper's charges, as pips down its side, and a red badge when it is dry
     if (m.kind === 'zap') {
-      const n = Math.min(AMMO_CHARGES, m.charge | 0);
+      // Charged shots in pink on top, plain shots in yellow below them.
+      const hot = Math.min(AMMO_CHARGES, m.hot | 0);
+      const n = Math.min(AMMO_CHARGES - hot, m.charge | 0);
       const t = Math.max(1, 2 * s);
-      for (let k2 = 0; k2 < n; k2++) px(ctx, sx + z - 5 * s, sy + (6 + k2 * 3) * s, t, t, '#fbffb8');
-      if (m.charge <= 0 && !m.buf.length) this.badge(ctx, sx, sy, z, '#ff5d4a');
+      for (let k2 = 0; k2 < hot + n; k2++) {
+        px(ctx, sx + z - 5 * s, sy + (6 + k2 * 3) * s, t, t, k2 < hot ? '#ffc8fb' : '#fbffb8');
+      }
+      if (shotsOf(m) <= 0 && !m.buf.length) this.badge(ctx, sx, sy, z, '#ff5d4a');
     }
 
     /*
@@ -1223,9 +1227,9 @@ export class View {
   /* ----------------------------------------------------------------- bugs --- */
 
   /** Called by main.js for every zap the simulation fires. */
-  beam(path) {
+  beam(path, hot = false) {
     if (this.beams.length > 40) this.beams.shift();
-    this.beams.push({ path, life: 1 });
+    this.beams.push({ path, life: 1, hot });
   }
 
   drawBugs(ctx, f, b, z) {
@@ -1261,7 +1265,9 @@ export class View {
           pts.push(this.toScreen(x0 + (x1 - x0) * u + nx * jit, y0 + (y1 - y0) * u + ny * jit));
         }
       }
-      for (const [w, col, a] of [[Math.max(3, z / 7), '#8f6cff', 0.45], [Math.max(1, z / 20), '#f4eeff', 1]]) {
+      const glow = bm.hot ? '#ff5cf0' : '#8f6cff';
+      const wide = bm.hot ? 1.6 : 1;
+      for (const [w, col, a] of [[Math.max(3, z / 7) * wide, glow, 0.45], [Math.max(1, z / 20) * wide, '#f4eeff', 1]]) {
         ctx.globalAlpha = a * bm.life;
         ctx.strokeStyle = col;
         ctx.lineWidth = w;

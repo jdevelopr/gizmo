@@ -304,7 +304,7 @@ function playFx(fx) {
     else if (e.k === 'sweep') view.float(`-${e.n}`, cx(e.cell) + 0.5, cy(e.cell), '#8b96b8');
     else if (e.k === 'tech') toast(g, `${e.name} researched`, '#b8bcff');
     else if (e.k === 'grow') toast(g, `Claim is now ${e.claim} x ${e.claim}`, '#a7f070');
-    else if (e.k === 'zap') view.beam(e.path);
+    else if (e.k === 'zap') view.beam(e.path, e.hot);
     else if (e.k === 'kill') view.float('ZAP', e.x, e.y - 0.3, '#e0d4ff');
     else if (e.k === 'repair') view.float(`-$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#ffcd75');
     else if (e.k === 'nest') {

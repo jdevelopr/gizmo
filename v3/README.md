@@ -455,6 +455,12 @@ Scrap queue and stood in front of the Copper forever — so the Armory now sorts
 itself: it takes either ingredient for as long as it has room, and after a second short
 of one half it makes do with the other (three Scrap, or two Copper, make an Ammo).
 
+**Charged Ammo.** A Fuser takes two Ammo and makes one Charged Ammo (pink, $2): the
+same six shots, each doing twice the damage. Total damage is the same as the two Ammo
+it came from — fusing makes no firepower out of nothing — but twice the damage per shot
+means one-shot Mites from a level 1 Zapper and nests falling twice as fast, for half the
+belt traffic. Zappers fire charged shots first; Charged Ammo cannot be fused further.
+
 Every Assembler, Fuser and Armory has a **CLEAR MACHINE** button that throws out
 whatever is queued in it and in its hands. Like sweeping, it pays nothing.
 

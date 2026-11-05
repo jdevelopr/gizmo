@@ -18,7 +18,8 @@ import {
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
   MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME, TUTORIAL, TUTORIAL_END,
   upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE, PLUMBING,
-  ONE_MOUTH, acceptsFrom, faceHit, ARMORY, AMMO, AMMO_CHARGES, broken, maxHp,
+  ONE_MOUTH, acceptsFrom, faceHit, ARMORY, AMMO, AMMO_CHARGES, broken, maxHp, CHARGED,
+  CHARGED_MULT, shotsOf,
   repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
   SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, nestAnger, nestBrood, NEST_BROOD, nestSpec,
   NESTS, MITE, SKITTER, SKITTER_FROM,
@@ -353,7 +354,8 @@ export function diagramFor(m) {
       return d;
     }
     case 'zap':
-      d.appendChild(part(AMMO, m.charge > 0 || m.buf.length > 0, null, 1));
+      d.appendChild(part(m.hot > 0 || m.buf.some(g => g.ty === CHARGED) ? CHARGED : AMMO,
+        shotsOf(m) > 0 || m.buf.length > 0, null, 1));
       d.appendChild(op('\u2192'));
       d.appendChild(part(null, true, `${AMMO_CHARGES} zaps`));
       return d;
@@ -725,7 +727,7 @@ export function problems(f) {
     if (m && !m.off && m.waitT > STALL_BADGE && !m.buf.length && !PASSIVE.has(m.kind) && !PLUMBING.has(m.kind) && intake(m) > 0) add(i);
   }
   for (const i of f.cells) { const m = f.grid[i]; if (m && !m.off && m.blockT > STALL_BADGE && !PLUMBING.has(m.kind)) add(i); }
-  for (const i of f.cells) { const m = f.grid[i]; if (m && !m.off && m.kind === 'zap' && m.charge <= 0 && !m.buf.length) add(i); }
+  for (const i of f.cells) { const m = f.grid[i]; if (m && !m.off && m.kind === 'zap' && shotsOf(m) <= 0 && !m.buf.length) add(i); }
   for (const i of f.cells) { const m = f.grid[i]; if (m && !m.off && m.net < 0 && drawOf(m) > 0 && !PLUMBING.has(m.kind)) add(i); }
   return out;
 }
@@ -1081,7 +1083,7 @@ export class Panel {
       + '|' + (m.blockT > STALL_BADGE ? 'b' : m.waitT > STALL_BADGE ? 'w' : '-')
       + '|' + Math.round(m.sat * 20) + '|' + Math.round(machineLoad(m) * 2)
       + '|' + (m.kind === 'gen' ? Math.round(m.fuel / 5) : 0) + '|' + (m.off | 0)
-      + '|' + Math.round(m.hp || 0) + '|' + (m.charge | 0) + '|' + (m.kills | 0);
+      + '|' + Math.round(m.hp || 0) + '|' + (m.charge | 0) + '|' + (m.hot | 0) + '|' + (m.kills | 0);
     if (sig === L.sig) return;
     L.sig = sig;
     L.diagramHost.textContent = '';
@@ -1114,11 +1116,14 @@ export class Panel {
 
     if (m.kind === 'zap') {
       const net = m.net >= 0 ? f.nets[m.net] : null;
-      addRow(rows, 'Shots loaded', `${m.charge | 0}`, m.charge > 0 ? 'good' : 'bad');
-      addRow(rows, 'Ammo queued', `${m.buf.length} of ${capacity(m)}  ·  ${AMMO_CHARGES} shots each`,
-        m.buf.length ? 'good' : (m.charge > 0 ? 'warn' : 'bad'));
+      addRow(rows, 'Shots loaded', (m.hot ? `${m.hot} charged + ` : '') + `${m.charge | 0}`,
+        shotsOf(m) > 0 ? 'good' : 'bad');
+      const qHot = m.buf.filter(g => g.ty === CHARGED).length;
+      addRow(rows, 'Ammo queued', `${m.buf.length} of ${capacity(m)}` + (qHot ? `  ·  ${qHot} charged` : '')
+        + `  ·  ${AMMO_CHARGES} shots each`, m.buf.length ? 'good' : (shotsOf(m) > 0 ? 'warn' : 'bad'));
       addRow(rows, 'Reach', `${zapRange(m, f.done)} slots`);
-      addRow(rows, 'Damage', `${zapDamage(m)} a shot` + (zapChain(f.done) ? `  ·  arcs to ${zapChain(f.done)} more` : ''));
+      addRow(rows, 'Damage', `${zapDamage(m)} a shot, ${zapDamage(m) * CHARGED_MULT} charged`
+        + (zapChain(f.done) ? `  ·  arcs to ${zapChain(f.done)} more` : ''));
       addRow(rows, 'Recharge', `${(zapCool(m) / Math.max(0.05, sp)).toFixed(2)}s at this power`,
         sp >= 0.95 ? 'good' : 'warn');
       addRow(rows, 'Draws', `${drawOf(m).toFixed(1)} kW while recharging`);
@@ -1126,8 +1131,10 @@ export class Panel {
         : `${Math.round(m.sat * 100)}% satisfied`, m.net < 0 ? 'bad' : m.sat >= 0.95 ? 'good' : 'warn');
       if (net) addRow(rows, 'This grid', `${Math.round(net.demand)} / ${Math.round(net.supply)} kW`);
       addRow(rows, 'Mites zapped', String(m.kills | 0), m.kills ? 'good' : '');
-      addRow(rows, 'Status', m.off ? 'SWITCHED OFF' : (m.charge > 0 || m.buf.length) ? 'armed' : 'NO AMMO — belt some in from an Armory',
-        m.off ? 'warn' : (m.charge > 0 || m.buf.length) ? 'good' : 'bad');
+      addRow(rows, 'Status', m.off ? 'SWITCHED OFF'
+        : m.hot > 0 ? 'armed — firing Charged Ammo'
+          : (shotsOf(m) > 0 || m.buf.length) ? 'armed' : 'NO AMMO — belt some in from an Armory',
+        m.off ? 'warn' : (shotsOf(m) > 0 || m.buf.length) ? 'good' : 'bad');
       return rows;
     }
 
@@ -1740,6 +1747,11 @@ The easy build is a Balancer on a Slag line with its branch through a Copper Mut
 merged back onto one belt. The Armory takes either ingredient for as long as it has room,
 and if it is left short of one half for a second it makes do with the other — three Scrap
 or two Copper make an Ammo too — so a lopsided feed never stops it.</p>
+<p><b>Charged Ammo.</b> Put two Ammo through a <b>Fuser</b> and you get one Charged Ammo:
+the same ${AMMO_CHARGES} shots, each doing ${CHARGED_MULT}x the damage. The total damage is the same
+as the two Ammo it came from, but every shot hits twice as hard — a level 1 Zapper kills a
+Mite with one charged shot, and chews through a nest twice as fast. A Zapper fires its
+charged shots first. Charged Ammo cannot be fused again.</p>
 <p>Every Assembler, Fuser and Armory has a <b>CLEAR MACHINE</b> button that throws out
 everything queued in it and in its hands, for when it was fed the wrong things.
 Belt the Ammo to your Zappers like anything else; a Balancer will share one Armory

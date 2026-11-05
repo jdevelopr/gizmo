@@ -12,7 +12,7 @@
 import {
   WORLD, cellOf, AMMO, MAX_HP, AMMO_CHARGES, broken, maxHp, repairCost, SWARM_GRACE,
   SWARM_COST, catalogue, wants, NEST_HP, NEST_BOUNTY, nestBrood, nestAnger,
-  MITE, SKITTER, ZAP_DAMAGE, NESTS, SKITTER_FROM, NEST_POP_MIN, claimMin, claimMax,
+  MITE, SKITTER, ZAP_DAMAGE, NESTS, SKITTER_FROM, NEST_POP_MIN, claimMin, claimMax, CHARGED,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild, diagnose, applyAction } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
@@ -318,6 +318,42 @@ console.log('\nNew nests');
   for (let i = 0; i < 30 * 400; i++) stepFactory(f, 1 / 30);
   ok(f.nests.length === cap, 'and never goes over the limit');
   void gone;
+}
+
+console.log('\nCharged Ammo');
+{
+  const f = bench();
+  put(f, 'fuse', 20, 20);
+  const fu = f.grid[cellOf(20, 20)];
+  ok(wants(fu, AMMO) && !wants(fu, CHARGED), 'a Fuser takes Ammo, and will not take Charged Ammo');
+  put(f, 'pipe', 21, 20);
+  put(f, 'depot', 22, 20);
+  for (let k = 0; k < 4; k++) fu.buf.push({ id: 300 + k, ty: AMMO, cp: 0 });
+  run(f, 8);
+  ok(f.shipped[CHARGED] === 2, `two Ammo fuse into one Charged Ammo (${f.shipped[CHARGED]} from 4)`);
+
+  const z = bench();
+  put(z, 'zap', 25, 25);
+  const zz = z.grid[cellOf(25, 25)];
+  zz.buf.push({ id: 1, ty: AMMO, cp: 0 }, { id: 2, ty: CHARGED, cp: 0 });
+  for (let k = 0; k < 3; k++) spawnMite(z, 28.5, 25.5);
+  run(z, 0.2);
+  zz.hot = 0; zz.charge = 0; zz.buf.length = 0;
+  zz.buf.push({ id: 2, ty: CHARGED, cp: 0 });
+  run(z, 6);
+  ok(z.zapped === 3, `Charged Ammo kills a Mite with every shot (${z.zapped} of 3)`);
+  ok(zz.hot === AMMO_CHARGES - 3, 'one charged shot each');
+
+  const n = bench();
+  n.nests = [{ cell: cellOf(30, 25), hp: NESTS.mite.hp, kind: 'mite' }];
+  put(n, 'zap', 26, 25);
+  const nz = n.grid[cellOf(26, 25)];
+  nz.hot = 1; nz.charge = 1;
+  run(n, 0.1);
+  const afterHot = NESTS.mite.hp - n.nests[0].hp;
+  run(n, 1.5);
+  const afterPlain = NESTS.mite.hp - n.nests[0].hp - afterHot;
+  ok(afterHot === 2 * afterPlain, `a charged shot does twice the damage (${afterHot} vs ${afterPlain}), and goes first`);
 }
 
 console.log('\nThe Zapper draws power while it recharges');

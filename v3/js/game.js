@@ -334,7 +334,7 @@ export function serialise(g) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
-    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.charge | 0]);
+    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.charge | 0, m.hot | 0]);
   }
   const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10]);
   const cleared = [];
@@ -394,10 +394,11 @@ export function deserialise(data) {
   f.done = (data.done || []).filter(id => techById(id));
   (data.shipped || []).forEach((n, ty) => { if (ty < f.shipped.length) f.shipped[ty] = n; });
 
-  for (const [i, kind, dir, level, mut, mir, off, hp, charge] of data.machines || []) {
+  for (const [i, kind, dir, level, mut, mir, off, hp, charge, hot] of data.machines || []) {
     if (!Number.isInteger(i) || i < 0 || i >= f.grid.length) continue;
     const m = makeMachine({ kind, dir, mut, mir, level, off, hp: hp ?? undefined }, f.nid++);
     if (charge) m.charge = charge;
+    if (hot) m.hot = hot;
     if (kind === 'ext') {
       // The world is rebuilt from its seed, so an Extractor whose ore is not
       // there any more — an older save, a changed generator — cannot stand. It

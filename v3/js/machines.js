@@ -82,16 +82,29 @@ export const TYPES = [
   { name: 'Reactor', color: '#c8a2ff', glow: '#e8dcff', value: 430, fam: PRODUCT, tier: 2 },
   // --- munition: from an Armory, and only worth anything to a Zapper ---
   { name: 'Ammo',    color: '#e8f04a', glow: '#fbffb8', value: 1,   fam: MUNITION, tier: 0 },
+  { name: 'Charged Ammo', color: '#ff5cf0', glow: '#ffc8fb', value: 2, fam: MUNITION, tier: 1 },
 ];
 export const MAX_TYPE = TYPES.length - 1;
 
 /** Where each family starts in TYPES, and how many rungs it has. */
 export const FAM_START = [0, 8, 11, 14];
-export const FAM_LEN = [8, 3, 3, 1];
+export const FAM_LEN = [8, 3, 3, 2];
 export const FAM_NAME = ['Alloy', 'Part', 'Product', 'Munition'];
 
 /** The one gizmo a Zapper eats. Made by an Armory from one Scrap and one Copper. */
 export const AMMO = 14;
+
+/**
+ * Two Ammo fused make one Charged Ammo: the same six shots, each doing twice the
+ * damage. The total damage is exactly what the two Ammo had — fusing does not make
+ * firepower out of nothing — but it is twice the damage per shot, so twice the rate
+ * of fire against a nest and one-shot kills on Mites, for half the belt traffic.
+ */
+export const CHARGED = 15;
+export const CHARGED_MULT = 2;
+export const isAmmo = ty => ty === AMMO || ty === CHARGED;
+/** Shots loaded in a Zapper, of both kinds. */
+export const shotsOf = m => (m.charge | 0) + (m.hot | 0);
 export const LADDER_MAX = FAM_LEN[ALLOY] - 1;
 
 export const famOf = ty => TYPES[ty]?.fam ?? ALLOY;
@@ -558,7 +571,8 @@ export function makeMachine(spec, id) {
     load: 0,    // generators only: kilowatts it is actually delivering
     rich: spec.rich || 1,   // extractors only: the richness of the patch underneath
     hp: spec.hp ?? (MAX_HP[spec.kind] || 30),   // mites chew this down; 0 is broken
-    charge: 0,  // zappers only: shots loaded
+    charge: 0,  // zappers only: plain shots loaded
+    hot: 0,     // zappers only: Charged Ammo shots loaded, fired first
     cool: 0,    // zappers only: seconds until the next shot is ready
     kills: 0,   // zappers only: lifetime mites zapped
   };
@@ -890,7 +904,7 @@ export function wants(m, ty, side = null) {
   if (side != null && !acceptsFrom(m, side)) return false;
   if (m.kind === 'ext') return false;
   if (m.kind === 'depot' || m.kind === 'lab' || m.kind === 'gen') return true;
-  if (m.kind === 'zap') return ty === AMMO;
+  if (m.kind === 'zap') return isAmmo(ty);
   // An Armory has no per-ingredient limit: it takes Scrap and Copper for as long as
   // it has room, so a run of one can never stand in front of the other on a belt.
   if (m.kind === 'arm') return twoInput(m).ins.includes(ty);
@@ -899,7 +913,7 @@ export function wants(m, ty, side = null) {
     return queued(m, ty) < LANE;
   }
   if (m.kind === 'fuse') {
-    if (famOf(ty) >= PRODUCT) return false;       // products and ammo are terminal
+    if (!fusable(ty)) return false;               // products, and the top of a ladder, are terminal
     const have = queued(m, ty);
     if (have) return have < LANE;
     // A new type only gets a queue if there is one going spare.
@@ -923,9 +937,20 @@ export function canEverAccept(m, ty, side = null) {
   if (!m) return true;
   if (side != null && !acceptsFrom(m, side)) return false;
   if (m.kind === 'ext') return false;
-  if (m.kind === 'zap') return ty === AMMO;
+  if (m.kind === 'zap') return isAmmo(ty);
   if (m.kind === 'asm' || m.kind === 'arm') return twoInput(m).ins.includes(ty);
-  if (m.kind === 'fuse') return famOf(ty) < PRODUCT;
+  if (m.kind === 'fuse') return fusable(ty);
+  return true;
+}
+
+/**
+ * Can a Fuser do anything with two of these? Alloys and Parts climb their ladders;
+ * Ammo fuses into Charged Ammo; Products, and Charged Ammo itself, go no further.
+ */
+export function fusable(ty) {
+  const fam = famOf(ty);
+  if (fam === PRODUCT) return false;
+  if (fam === MUNITION) return tierOf(ty) < FAM_LEN[MUNITION] - 1;
   return true;
 }
 

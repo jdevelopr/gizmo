@@ -469,6 +469,26 @@ Three research nodes sit behind it: **Focusing** (+1.5 reach), **Arc Discharge**
 Mites are saved with the world, unlike gizmos in flight: reloading must not be a way
 to make a swarm halfway through your belts vanish.
 
+### The tech tree has four branches, and Defence and Terrain are research
+
+The tree grew from 14 nodes to 27, in four branches the TECH tab shows under their own
+headings, each with a count of how far through it you are and the machines a node
+unlocks drawn on its card.
+
+| Branch | Nodes |
+|---|---|
+| **Production** | Warehousing, Express Belts (belts 33% faster), Assembly, Overclocking, Market Savvy (contracts pay 60% over market), Assembly II, Replication, Assembly III, Trifurcation |
+| **Power** | Gridwork, Combustion, Prospecting, High Voltage, Efficient Motors (25% less draw) |
+| **Defence** | **Pest Control** (unlocks Armory and Zapper, 120 science), Focusing, Capacitors (43% faster recharge), Arc Discharge, Plating, Overcharge (+25% damage), Beacon Shielding (2x damage per lost gizmo) |
+| **Terrain** | **Surveying** (reveals mountain seams), **Bridging** (unlocks Bridge), **Deep Mining** (unlocks Mountain Drill), Long Spans (+3 bridge reach), Hardened Bits (drills 40% faster), Dampers (half the Beetles) |
+
+The Armory, Zapper, Mountain Drill and Bridge are no longer on sale from the start. Pest
+Control is deliberately the cheapest node in the game, because the first swarm comes a
+few minutes in. Before Surveying, a mountain's seam is unknown — no glints on the map,
+and "unknown" when you hover it. Picking up a locked machine by its key says which
+research it needs. `tools/tech.mjs` checks the tree has no cycles or orphans, that every
+branch is reachable, and that every bonus does what its card says.
+
 ### The world is 80x80, and there is a Launch Beacon in a corner
 
 The world grew from 56 to 80 slots a side — about twice the area — and everything in
@@ -726,6 +746,7 @@ node tools/blueprint.mjs  # select, copy, paste, rotate, move and bulk verbs
 node tools/aim.mjs        # belts aim themselves sensibly
 node tools/terrain.mjs    # mountains, drills, valleys, bridges, beetles
 node tools/beacon.mjs     # the Launch Beacon: placing, feeding, damage, assaults, winning
+node tools/tech.mjs       # the research tree: shape, unlocks and every bonus
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

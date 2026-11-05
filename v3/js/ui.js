@@ -21,7 +21,8 @@ import {
   ONE_MOUTH, acceptsFrom, faceHit, ARMORY, AMMO, AMMO_CHARGES, broken, maxHp, CHARGED,
   CHARGED_MULT, shotsOf,
   repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
-  SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, nestAnger, nestBrood, NEST_BROOD, nestSpec,
+  SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, BRANCHES, bridgeSpan, tremorCost, beaconLoss,
+  contractPremium, surveyed, nestAnger, nestBrood, NEST_BROOD, nestSpec,
   MOUNTAIN, VALLEY, BEETLE, TREMOR_COST, BRIDGE_SPAN, DRILL_BASE, DRILL_PER_TIER, BEACON,
   BEACON_HP, BEACON_LOSS, BEACON_ASSAULTS, BEACON_NEED,
   NESTS, MITE, SKITTER, SKITTER_FROM,
@@ -605,7 +606,7 @@ export class Hud {
         + 'move the machine, or put a Sorter in front of it to send that type elsewhere.';
     } else if (f.beacon && !f.beacon.done && (f.mites || []).some(mt => mt.beacon && mt.st === 'chew')) {
       head = 'THE BEACON IS UNDER ATTACK';
-      body = `It is losing a delivered gizmo for every ${BEACON_LOSS} points of damage. Get Zappers round it, `
+      body = `It is losing a delivered gizmo for every ${beaconLoss(f.done)} points of damage. Get Zappers round it, `
         + 'and keep the Ammo coming.';
       target = cellOf(f.beacon.x0 + 2, f.beacon.y0 + 2);
     } else if (f.beacon && !f.beacon.done && f.beacon.hp <= 0) {
@@ -618,7 +619,9 @@ export class Hud {
       head = n > 1 ? `${n} BUGS IN THE FACTORY` : 'A BUG IN THE FACTORY';
       body = (f.cells.some(i => f.grid[i]?.kind === 'zap')
         ? 'Check your Zappers have Ammo and power, and that they reach the line being eaten.'
-        : 'They are chewing your machines. Build a Zapper (Z) near them and belt Ammo into it from an Armory (B).');
+        : unlockedBy(f.done).has('zap')
+          ? 'They are chewing your machines. Build a Zapper (Z) near them and belt Ammo into it from an Armory (B).'
+          : 'They are chewing your machines. Research Pest Control in TECH to unlock the Zapper and the Armory.');
     } else if (d.broken) {
       const all = damaged(f);
       target = first(m => broken(m));
@@ -872,7 +875,7 @@ export class Panel {
     } else {
       card.appendChild(el('p', null,
         full ? 'The end of the game. Fill all four mouths and it fires. Feeding it is loud, every '
-          + 'creature on the map comes for it, and every ' + BEACON_LOSS + ' points of damage it takes '
+          + 'creature on the map comes for it, and every ' + beaconLoss(f.done) + ' points of damage it takes '
           + 'knocks a delivered gizmo back out.'
           : `In the far ${['north-west', 'north-east', 'south-west', 'south-east'][(b.x0 > WORLD / 2 ? 1 : 0) + (b.y0 > WORLD / 2 ? 2 : 0)]} corner.`
             + (beaconReachable(f) ? '' : ' Your land does not reach it yet.')));
@@ -1032,7 +1035,9 @@ export class Panel {
     if (t === BEDROCK) addRow(rows, 'Clearable', 'Never — route around it', 'bad');
     if (t === MOUNTAIN) {
       const mt = mountainAt(f, i);
-      if (mt) {
+      if (mt && !surveyed(f.done)) {
+        addRow(rows, 'Seam', 'unknown — research Surveying to see what is in it', 'warn');
+      } else if (mt) {
         const tier = TYPES[mt.ty]?.tier || 0;
         addRow(rows, 'Seam', TYPES[mt.ty].name, 'good');
         addRow(rows, 'Left in it', `${num(mt.left)} of ${num(mt.amount)}`, mt.left < mt.amount * 0.2 ? 'warn' : '');
@@ -1043,7 +1048,7 @@ export class Panel {
     }
     if (t === VALLEY) {
       addRow(rows, 'Build in it', 'never', 'bad');
-      addRow(rows, 'Cross it', `a pair of Bridges, up to ${BRIDGE_SPAN - 1} slots apart`, 'good');
+      addRow(rows, 'Cross it', `a pair of Bridges, up to ${bridgeSpan(f?.done || []) - 1} slots apart`, 'good');
     }
     if (t === RUBBLE) addRow(rows, 'Clear it for', money(RUBBLE_COST));
     if (!owned) addRow(rows, 'To build here', 'buy the rings out to it');
@@ -1220,11 +1225,11 @@ export class Panel {
       addRow(rows, 'Ammo queued', `${m.buf.length} of ${capacity(m)}` + (qHot ? `  ·  ${qHot} charged` : '')
         + `  ·  ${AMMO_CHARGES} shots each`, m.buf.length ? 'good' : (shotsOf(m) > 0 ? 'warn' : 'bad'));
       addRow(rows, 'Reach', `${zapRange(m, f.done)} slots`);
-      addRow(rows, 'Damage', `${zapDamage(m)} a shot, ${zapDamage(m) * CHARGED_MULT} charged`
+      addRow(rows, 'Damage', `${+zapDamage(m, f.done).toFixed(1)} a shot, ${+(zapDamage(m, f.done) * CHARGED_MULT).toFixed(1)} charged`
         + (zapChain(f.done) ? `  ·  arcs to ${zapChain(f.done)} more` : ''));
-      addRow(rows, 'Recharge', `${(zapCool(m) / Math.max(0.05, sp)).toFixed(2)}s at this power`,
+      addRow(rows, 'Recharge', `${(zapCool(m, f.done) / Math.max(0.05, sp)).toFixed(2)}s at this power`,
         sp >= 0.95 ? 'good' : 'warn');
-      addRow(rows, 'Draws', `${drawOf(m).toFixed(1)} kW while recharging`);
+      addRow(rows, 'Draws', `${drawOf(m, f.done).toFixed(1)} kW while recharging`);
       addRow(rows, 'Power', m.net < 0 ? `off grid — recharges at ${Math.round(UNPOWERED * 100)}%`
         : `${Math.round(m.sat * 100)}% satisfied`, m.net < 0 ? 'bad' : m.sat >= 0.95 ? 'good' : 'warn');
       if (net) addRow(rows, 'This grid', `${Math.round(net.demand)} / ${Math.round(net.supply)} kW`);
@@ -1283,7 +1288,7 @@ export class Panel {
     if (m.kind === 'bridge') {
       addRow(rows, 'Paired', m.pair >= 0
         ? `${m.bin === 1 ? 'entry — sends to' : 'exit — takes from'} ${cx(m.pair)}, ${cy(m.pair)}`
-        : `no — put another Bridge facing ${DIR_NAME[m.dir]} up to ${BRIDGE_SPAN - 1} slots ahead`,
+        : `no — put another Bridge facing ${DIR_NAME[m.dir]} up to ${bridgeSpan(f?.done || []) - 1} slots ahead`,
         m.pair >= 0 ? 'good' : 'warn');
       if (m.pair >= 0) addRow(rows, 'Carries', 'gizmos and power across the gap');
     }
@@ -1299,7 +1304,7 @@ export class Panel {
     addRow(rows, 'Power', m.net < 0 ? `off grid — ${Math.round(UNPOWERED * 100)}% speed`
       : `${Math.round(m.sat * 100)}% satisfied — ${Math.round(sp * 100)}% speed`,
       m.net < 0 ? 'bad' : m.sat >= 0.95 ? 'good' : 'warn');
-    addRow(rows, 'Draws', `${drawOf(m).toFixed(1)} kW while working`);
+    addRow(rows, 'Draws', `${drawOf(m, f.done).toFixed(1)} kW while working`);
     addRow(rows, 'Holding', `${machineLoad(m).toFixed(1)} of ${capacity(m)}`,
       m.blockT > STALL_BADGE ? 'warn' : '');
 
@@ -1380,13 +1385,13 @@ export class Panel {
       addRow(rows, 'Draws', `${KINDS.drill.draw} kW`);
       addRow(rows, 'Beware', 'drilling wakes Beetles', 'warn');
     } else if (spec.kind === 'bridge') {
-      addRow(rows, 'Pairs with', `a Bridge facing the same way, up to ${BRIDGE_SPAN - 1} slots ahead`);
+      addRow(rows, 'Pairs with', `a Bridge facing the same way, up to ${bridgeSpan(f?.done || []) - 1} slots ahead`);
       addRow(rows, 'Carries', 'gizmos and power over anything');
     } else if (spec.kind === 'zap') {
       addRow(rows, 'Eats', `Ammo — ${AMMO_CHARGES} shots each`);
       addRow(rows, 'Reach', `${zapRange({ level: 1 }, f.done)} slots`);
-      addRow(rows, 'Damage', `${zapDamage({ level: 1 })} a shot`);
-      addRow(rows, 'Recharge', `${zapCool({ level: 1 })}s at full power`);
+      addRow(rows, 'Damage', `${+zapDamage({ level: 1 }, f.done).toFixed(1)} a shot`);
+      addRow(rows, 'Recharge', `${+zapCool({ level: 1 }, f.done).toFixed(2)}s at full power`);
       addRow(rows, 'Draws', `${KINDS.zap.draw} kW while recharging`);
     } else if (spec.kind === 'arm') {
       addRow(rows, 'Recipe', recipeText(ARMORY));
@@ -1418,7 +1423,20 @@ export class Panel {
         'You have no Research Lab. Build one and point a belt into it — a gizmo studied ' +
         'is worth exactly what a depot would have paid, so research costs income, never cash.'));
     }
-    for (const t of TECH) {
+    // One heading per branch, each with how far through it you are, and the cards
+    // for that branch under it in the order they open.
+    for (const br of BRANCHES) {
+      const list = TECH.filter(t => (t.branch || 'economy') === br.id);
+      if (!list.length) continue;
+      const got = list.filter(t => f.done.includes(t.id)).length;
+      host.appendChild(el('div', 'pal-group tech-head', `${br.name}  <span>${got} / ${list.length}</span>`));
+      for (const t of list) this.techCard(host, f, t);
+    }
+  }
+
+  /** One research card. */
+  techCard(host, f, t) {
+    {
       const has = f.done.includes(t.id);
       const open = techOpen(t, f.done);
       const can = open && !has && f.science >= t.cost;
@@ -1427,6 +1445,16 @@ export class Panel {
       h.appendChild(el('span', 'price', has ? 'DONE' : num(t.cost)));
       card.appendChild(h);
       card.appendChild(el('p', null, t.blurb));
+      if (t.unlocks?.length) {
+        const row = el('div', 'tech-unlocks');
+        for (const u of t.unlocks) {
+          const spec = u.startsWith('asm:') ? { kind: 'asm', mut: +u.slice(4) } : { kind: u };
+          const ic = icon(spec, 20);
+          ic.title = label(spec);
+          row.appendChild(ic);
+        }
+        card.appendChild(row);
+      }
       if (!has && !open) {
         card.appendChild(el('p', null,
           'Needs ' + t.needs.map(n => techById(n).name).join(', ')));
@@ -1473,7 +1501,7 @@ export class Panel {
       card.appendChild(h);
       card.appendChild(el('p', null,
         `${c.done} of ${c.need} delivered  ·  ${clock(c.left)} left  ·  ` +
-        `${Math.round((CONTRACT_PREMIUM - 1) * 100)}% over market`));
+        `${Math.round((contractPremium(f.done) - 1) * 100)}% over market`));
       const meter = el('div', 'meter');
       const fill = el('span');
       fill.style.width = Math.min(100, c.done / c.need * 100) + '%';
@@ -1545,7 +1573,7 @@ export class Panel {
     const btAlive = (f.mites || []).filter(m => m.kind === 'beetle').length;
     addRow(bug, 'Beetles alive', num(btAlive), btAlive ? 'warn' : 'good');
     addRow(bug, 'Next Beetle', f.cells.some(i => f.grid[i]?.kind === 'drill')
-      ? `${Math.round((f.tremor || 0) / TREMOR_COST * 100)}% of the way` : 'not while nothing is drilling');
+      ? `${Math.round((f.tremor || 0) / tremorCost(f.done) * 100)}% of the way` : 'not while nothing is drilling');
     addRow(bug, 'Mite nests', num((f.nests || []).filter(n => n.kind !== 'skitter').length));
     addRow(bug, 'Skitter nests', num((f.nests || []).filter(n => n.kind === 'skitter').length));
     addRow(bug, 'Nest limit', `${num(f.nests?.length || 0)} of ${num(f.nestCap || 0)}`);
@@ -1864,6 +1892,10 @@ it <b>breaks</b>: it holds whatever it was carrying, takes nothing and does noth
 until you repair it. Nothing is destroyed. Repair is <b>H</b> on one machine, or
 <b>Shift H</b> for everything, and costs a share of the machine's price in proportion
 to the damage. Belts have ${MAX_HP.pipe} hit points; a Market Depot has ${MAX_HP.depot}.</p>
+<p>The Zapper and the Armory are research: <b>Pest Control</b>, the cheapest thing in the
+TECH tab, unlocks both — get a Lab running and research it before the first swarm. The
+DEFENCE branch beyond it makes Zappers reach further, recharge faster, hit harder and arc,
+and plates every machine against chewing.</p>
 <p>The answer is the <b>Zapper</b> (<b>Z</b>). It zaps the nearest mite in reach —
 ${zapRange({ level: 1 }, f?.done || [])} slots at level 1 — and every <b>Ammo</b> you feed it is
 ${AMMO_CHARGES} shots. It draws power while it recharges between shots, so a swarm is a
@@ -1898,6 +1930,9 @@ Belt the Ammo to your Zappers like anything else; a Balancer will share one Armo
 between two of them.</p>
 
 <h3>Mountains, valleys and Beetles</h3>
+<p>The TERRAIN branch of the TECH tab opens all of this up. <b>Surveying</b> reveals what
+is in each mountain; <b>Deep Mining</b> unlocks the Mountain Drill and <b>Bridging</b> the
+Bridge, and after them come faster drills, quieter drills and longer bridges.</p>
 <p><b>Mountains</b> are clumps of rock you cannot build on or run a belt through.
 Each one has a seam of one mineral in it — Scrap near the middle of the map, up to
 Cobalt out at the rim — and a <b>Mountain Drill</b> (<b>G</b>) set beside it and facing
@@ -1906,7 +1941,7 @@ they come out of the rock already climbed: a Cobalt seam is four Mutator tiers y
 not have to build. A mountain holds a set amount; worked out, it falls in to rubble you
 can clear and build on. Hover a mountain to see what is in it and how much is left.</p>
 <p><b>Valleys</b> are long, thin chasms. Nothing can stand in them; cross with a pair of
-<b>Bridges</b> (<b>N</b>). Two Bridges facing the same way, up to ${BRIDGE_SPAN - 1} slots
+<b>Bridges</b> (<b>N</b>). Two Bridges facing the same way, up to ${bridgeSpan(f?.done || []) - 1} slots
 apart, pair up and carry gizmos — and power — straight over whatever is between them. A
 Bridge set down on the edge of a valley faces across it, and one set down in line with
 an unpaired Bridge turns to match it. A dashed rope shows which pairs with which.</p>
@@ -1929,7 +1964,7 @@ buying rings all the way out to the corner.</p>
 <p>Feeding it is loud, and every creature on the map takes notice. While it is being
 fed, most of every swarm comes for <i>it</i>; at a quarter, a half and three quarters full
 a huge assault comes from the nearest nests and the nearest mountain, all at once. And
-damage costs more than health: every ${BEACON_LOSS} points of it knocks one delivered gizmo back
+damage costs more than health: every ${beaconLoss(f?.done || [])} points of it knocks one delivered gizmo back
 out. At zero health it takes nothing until you repair it. Fill all four and it fires —
 the world is won, and you can keep building in it for as long as you like.</p>
 

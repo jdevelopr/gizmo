@@ -207,7 +207,7 @@ export function balancePower(f, dt) {
   for (let i = 0; i < g.length; i++) {
     const m = g[i];
     if (!m || m.net < 0) continue;
-    if (busy(m)) nets[m.net].demand += drawOf(m);
+    if (busy(m)) nets[m.net].demand += drawOf(m, f.done);
   }
 
   // 3. Settle each grid, and burn what it actually delivered.

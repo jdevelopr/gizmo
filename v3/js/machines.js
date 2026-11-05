@@ -517,11 +517,20 @@ export const FOCUS_RANGE = 1.5;
 export const ARC_CHAIN = 2;
 export const ARC_HOP = 2;
 
-const hasTech = (done, flag) => done.some(id => techById(id)?.[flag]);
+export const hasTech = (done = [], flag) => done.some(id => techById(id)?.[flag]);
 export const zapRange = (m, done = []) =>
   ZAP_RANGE[(m.level || 1) - 1] + (hasTech(done, 'focus') ? FOCUS_RANGE : 0);
-export const zapDamage = m => ZAP_DAMAGE[(m.level || 1) - 1];
-export const zapCool = m => ZAP_COOL[(m.level || 1) - 1];
+export const zapDamage = (m, done = []) =>
+  ZAP_DAMAGE[(m.level || 1) - 1] * (hasTech(done, 'over') ? TECH_BONUS.over : 1);
+export const zapCool = (m, done = []) =>
+  ZAP_COOL[(m.level || 1) - 1] * (hasTech(done, 'cap') ? TECH_BONUS.cap : 1);
+
+/** Research-adjusted numbers used by sim.js, bugs.js and beacon.js. */
+export const bridgeSpan = (done = []) => BRIDGE_SPAN + (hasTech(done, 'span') ? TECH_BONUS.span : 0);
+export const tremorCost = (done = []) => TREMOR_COST * (hasTech(done, 'damper') ? TECH_BONUS.damper : 1);
+export const beaconLoss = (done = []) => BEACON_LOSS * (hasTech(done, 'shield') ? TECH_BONUS.shield : 1);
+export const contractPremium = (done = []) => (hasTech(done, 'market') ? TECH_BONUS.market : CONTRACT_PREMIUM);
+export const surveyed = (done = []) => hasTech(done, 'survey');
 export const zapChain = (done = []) => (hasTech(done, 'arc') ? ARC_CHAIN : 0);
 
 /** The Armory's one recipe. */
@@ -732,7 +741,9 @@ export function cycleTime(m, done = []) {
   if (m.kind === 'mut') base = MUT_CYCLE[m.mut ?? 1];
   else if (m.kind === 'asm') base = recipeOf(m).cycle;
   else if (m.kind === 'arm') base = ARMORY.cycle;
-  else if (m.kind === 'drill') base = DRILL_BASE * (1 + DRILL_PER_TIER * (TYPES[m.mut]?.tier || 0));
+  else if (m.kind === 'drill') {
+    base = DRILL_BASE * (1 + DRILL_PER_TIER * (TYPES[m.mut]?.tier || 0)) / (hasTech(done, 'drill') ? TECH_BONUS.drill : 1);
+  }
   else if (m.kind === 'ext') base = KINDS.ext.cycle / Math.max(0.2, m.rich || 1) / yieldBonus(done);
   else base = KINDS[m.kind].cycle;
   // Storage levels buy capacity and a copier's levels buy exits. Neither buys speed.
@@ -741,13 +752,15 @@ export function cycleTime(m, done = []) {
 }
 
 /** Kilowatts this machine asks for while it is working. */
-export function drawOf(m) {
+export function drawOf(m, done = []) {
   const base = KINDS[m.kind]?.draw || 0;
-  return base * (LEVEL_DRAW[(m.level || 1) - 1] ?? 1);
+  return base * (LEVEL_DRAW[(m.level || 1) - 1] ?? 1) * (hasTech(done, 'motor') ? TECH_BONUS.motor : 1);
 }
 
-export function travelTime(m) {
-  return KINDS[m.kind].travel * (m.kind === 'pipe' ? Math.pow(0.78, (m.level || 1) - 1) : 1);
+export function travelTime(m, done = []) {
+  const belt = m.kind === 'pipe' || m.kind === 'store' || m.kind === 'bridge';
+  return KINDS[m.kind].travel * (m.kind === 'pipe' ? Math.pow(0.78, (m.level || 1) - 1) : 1)
+    * (belt && hasTech(done, 'belt') ? TECH_BONUS.belt : 1);
 }
 
 /** How many gizmos this machine needs buffered before it fires. */
@@ -1207,6 +1220,32 @@ export const SCIENCE_RATE = 1;
  * raises the ceiling every machine on the map can be upgraded to. `power` and
  * `yield` are flags the power solver and the extractors read.
  */
+/**
+ * Bonuses some of the research below gives, in one place so the numbers in the
+ * blurbs and the numbers in the game are the same numbers.
+ */
+export const TECH_BONUS = {
+  belt: 0.75,         // Express Belts: conveyor and bridge travel time
+  motor: 0.75,        // Efficient Motors: every machine's draw
+  market: 1.6,        // Market Savvy: what a contract pays over market
+  cap: 0.7,           // Capacitors: Zapper recharge time
+  over: 1.25,         // Overcharge: Zapper damage
+  shield: 2,          // Beacon Shielding: damage per lost gizmo, times this
+  drill: 1.4,         // Hardened Bits: Mountain Drill speed
+  damper: 2,          // Dampers: drill-seconds per Beetle, times this
+  span: 3,            // Long Spans: extra slots a Bridge pair can cross
+};
+
+/**
+ * The research branches, in the order the TECH tab shows them.
+ */
+export const BRANCHES = [
+  { id: 'economy', name: 'PRODUCTION' },
+  { id: 'power', name: 'POWER' },
+  { id: 'defense', name: 'DEFENCE' },
+  { id: 'terrain', name: 'TERRAIN' },
+];
+
 export const TECH = [
   /*
    * The Sorter used to live here, at 120 science, and it was the wrong place for
@@ -1214,47 +1253,92 @@ export const TECH = [
    * answer to a problem a new factory hits in its first ten minutes, long before
    * it has a Lab — and every other routing machine has always been on sale from
    * the start. So it is, now, and the tree opens on Warehousing instead.
+   *
+   * Defence and Terrain used to be on sale from the start too. They are research
+   * now, each its own branch: the first swarm is minutes away when a factory gets
+   * its first Lab, so Pest Control is cheap, and the rest of each branch is what
+   * turns holding the line into winning the map.
    */
-  { id: 'storage', name: 'Warehousing', cost: 140, needs: [], unlocks: ['store'],
+
+  // ---- production
+  { id: 'storage', branch: 'economy', name: 'Warehousing', cost: 140, needs: [], unlocks: ['store'],
     blurb: 'Unlocks Storage — a belt with a deep buffer, and the cure for a line '
       + 'that keeps backing up over a wobble in its ratios.' },
-  { id: 'gridwork', name: 'Gridwork', cost: 180, needs: [], power: 'reach',
-    blurb: `Every generator's power reaches ${GRIDWORK_REACH} machines further.` },
-  { id: 'combustion', name: 'Combustion', cost: 380, needs: ['gridwork'], power: 'fuel',
-    blurb: 'Every fuel burns 45% longer, so a generator eats a smaller share of your ore.' },
-  { id: 'assembly', name: 'Assembly', cost: 420, needs: [], unlocks: ['asm:0'],
+  { id: 'express', branch: 'economy', name: 'Express Belts', cost: 480, needs: ['storage'], belt: 1,
+    blurb: `Conveyors, Storage and Bridges move gizmos ${Math.round((1 / TECH_BONUS.belt - 1) * 100)}% faster.` },
+  { id: 'assembly', branch: 'economy', name: 'Assembly', cost: 420, needs: [], unlocks: ['asm:0'],
     blurb: 'Unlocks the Engine Assembler, and with it recipes at all.' },
-  { id: 'prospecting', name: 'Prospecting', cost: 700, needs: ['gridwork'], yield: 1.35,
-    blurb: 'Every Extractor pulls 35% more out of the ground.' },
-  { id: 'overclock', name: 'Overclocking', cost: 820, needs: ['storage'], level: 3,
+  { id: 'overclock', branch: 'economy', name: 'Overclocking', cost: 820, needs: ['storage'], level: 3,
     blurb: 'Raises every machine’s upgrade ceiling from level 2 to level 3.' },
-  { id: 'assembly2', name: 'Assembly II', cost: 1150, needs: ['assembly'], unlocks: ['asm:1'],
+  { id: 'market', branch: 'economy', name: 'Market Savvy', cost: 900, needs: ['assembly'], market: 1,
+    blurb: `Contracts pay ${Math.round((TECH_BONUS.market - 1) * 100)}% over market instead of 35%.` },
+  { id: 'assembly2', branch: 'economy', name: 'Assembly II', cost: 1150, needs: ['assembly'], unlocks: ['asm:1'],
     blurb: 'Unlocks the Turbine Assembler.' },
-  { id: 'voltage', name: 'High Voltage', cost: 1500, needs: ['combustion'], power: 'output',
-    blurb: 'Every generator makes 60% more power from the same fuel line.' },
-  { id: 'replication', name: 'Replication', cost: 1900, needs: ['overclock'], unlocks: ['dup'],
+  { id: 'replication', branch: 'economy', name: 'Replication', cost: 1900, needs: ['overclock'], unlocks: ['dup'],
     blurb: 'Unlocks the Doubler. Copies are gizmos out of nothing and nothing else in '
       + 'the game is, which is why it sits this deep and refuses to copy anything rich.' },
-  { id: 'assembly3', name: 'Assembly III', cost: 2600, needs: ['assembly2'], unlocks: ['asm:2'],
+  { id: 'assembly3', branch: 'economy', name: 'Assembly III', cost: 2600, needs: ['assembly2'], unlocks: ['asm:2'],
     blurb: 'Unlocks the Reactor Assembler, the richest recipe there is.' },
-  { id: 'trifurcation', name: 'Trifurcation', cost: 3400, needs: ['replication'],
+  { id: 'trifurcation', branch: 'economy', name: 'Trifurcation', cost: 3400, needs: ['replication'],
     unlocks: ['trident'], blurb: 'Unlocks the Trident: three exits, one job.' },
-  { id: 'focus', name: 'Focusing', cost: 260, needs: [], focus: 1,
+
+  // ---- power
+  { id: 'gridwork', branch: 'power', name: 'Gridwork', cost: 180, needs: [], power: 'reach',
+    blurb: `Every generator's power reaches ${GRIDWORK_REACH} machines further.` },
+  { id: 'combustion', branch: 'power', name: 'Combustion', cost: 380, needs: ['gridwork'], power: 'fuel',
+    blurb: 'Every fuel burns 45% longer, so a generator eats a smaller share of your ore.' },
+  { id: 'prospecting', branch: 'power', name: 'Prospecting', cost: 700, needs: ['gridwork'], yield: 1.35,
+    blurb: 'Every Extractor pulls 35% more out of the ground.' },
+  { id: 'voltage', branch: 'power', name: 'High Voltage', cost: 1500, needs: ['combustion'], power: 'output',
+    blurb: 'Every generator makes 60% more power from the same fuel line.' },
+  { id: 'motors', branch: 'power', name: 'Efficient Motors', cost: 2200, needs: ['voltage'], motor: 1,
+    blurb: `Every machine draws ${Math.round((1 - TECH_BONUS.motor) * 100)}% less power for the same work.` },
+
+  // ---- defence
+  { id: 'defense', branch: 'defense', name: 'Pest Control', cost: 120, needs: [], unlocks: ['arm', 'zap'],
+    blurb: 'Unlocks the Armory and the Zapper. The first swarm comes a few minutes in; '
+      + 'research this before it arrives.' },
+  { id: 'focus', branch: 'defense', name: 'Focusing', cost: 260, needs: ['defense'], focus: 1,
     blurb: `Every Zapper reaches ${FOCUS_RANGE} slots further.` },
-  { id: 'arc', name: 'Arc Discharge', cost: 900, needs: ['focus'], arc: 1,
+  { id: 'capacitor', branch: 'defense', name: 'Capacitors', cost: 600, needs: ['defense'], cap: 1,
+    blurb: `Every Zapper recharges ${Math.round((1 / TECH_BONUS.cap - 1) * 100)}% faster between shots.` },
+  { id: 'arc', branch: 'defense', name: 'Arc Discharge', cost: 900, needs: ['focus'], arc: 1,
     blurb: `Every zap jumps on to ${ARC_CHAIN} more mites standing close to the first.` },
-  { id: 'plating', name: 'Plating', cost: 1300, needs: ['arc'], hp: 1,
+  { id: 'plating', branch: 'defense', name: 'Plating', cost: 1300, needs: ['arc'], hp: 1,
     blurb: 'Every machine on the map takes 50% more chewing before it breaks.' },
+  { id: 'overcharge', branch: 'defense', name: 'Overcharge', cost: 1600, needs: ['capacitor'], over: 1,
+    blurb: `Every zap does ${Math.round((TECH_BONUS.over - 1) * 100)}% more damage.` },
+  { id: 'shield', branch: 'defense', name: 'Beacon Shielding', cost: 3200, needs: ['plating', 'overcharge'], shield: 1,
+    blurb: `The Launch Beacon takes ${TECH_BONUS.shield}x as much damage before it loses a delivered gizmo.` },
+
+  // ---- terrain
+  { id: 'surveying', branch: 'terrain', name: 'Surveying', cost: 250, needs: [], survey: 1,
+    blurb: 'Reveals what is in every mountain — which mineral, and how much — on the map '
+      + 'and when you hover one.' },
+  { id: 'bridging', branch: 'terrain', name: 'Bridging', cost: 300, needs: ['surveying'], unlocks: ['bridge'],
+    blurb: 'Unlocks the Bridge: a pair carries gizmos and power across a valley.' },
+  { id: 'mining', branch: 'terrain', name: 'Deep Mining', cost: 650, needs: ['surveying'], unlocks: ['drill'],
+    blurb: 'Unlocks the Mountain Drill, which digs a mountain’s seam out — up to Cobalt. '
+      + 'Drilling wakes Beetles.' },
+  { id: 'longspan', branch: 'terrain', name: 'Long Spans', cost: 1200, needs: ['bridging'], span: 1,
+    blurb: `A pair of Bridges can be up to ${TECH_BONUS.span} slots further apart.` },
+  { id: 'bits', branch: 'terrain', name: 'Hardened Bits', cost: 1400, needs: ['mining'], drill: 1,
+    blurb: `Every Mountain Drill digs ${Math.round((TECH_BONUS.drill - 1) * 100)}% faster.` },
+  { id: 'dampers', branch: 'terrain', name: 'Dampers', cost: 1800, needs: ['mining'], damper: 1,
+    blurb: `Drilling makes half the tremor, so Beetles wake ${TECH_BONUS.damper}x less often.` },
 ];
 
 export const techById = id => TECH.find(t => t.id === id) || null;
+
+/** The research that unlocks a machine kind, or null if it is on sale from the start. */
+export const unlockerOf = kind => TECH.find(t => (t.unlocks || []).includes(kind)) || null;
 
 /** Can this node be started — is everything it needs already done? */
 export const techOpen = (t, done) => (t.needs || []).every(n => done.includes(n));
 
 /** Everything a set of finished research makes buildable. */
 export function unlockedBy(done = []) {
-  const out = new Set(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse', 'arm', 'zap', 'drill', 'bridge']);
+  const out = new Set(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse']);
   for (const id of done) for (const u of techById(id)?.unlocks || []) out.add(u);
   return out;
 }
@@ -1303,10 +1387,10 @@ export function catalogue(done = [], counts = {}) {
   RECIPES.forEach((r, i) => { if (on.has('asm:' + i)) add({ kind: 'asm', mut: i }); });
   if (on.has('dup')) add({ kind: 'dup' });
   if (on.has('trident')) add({ kind: 'trident' });
-  add({ kind: 'arm' });
-  add({ kind: 'zap' });
-  add({ kind: 'drill' });
-  add({ kind: 'bridge' });
+  if (on.has('arm')) add({ kind: 'arm' });
+  if (on.has('zap')) add({ kind: 'zap' });
+  if (on.has('drill')) add({ kind: 'drill' });
+  if (on.has('bridge')) add({ kind: 'bridge' });
   return out;
 }
 

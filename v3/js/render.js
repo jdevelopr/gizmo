@@ -30,7 +30,7 @@
 import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
   cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON,
-  BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP,
+  BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP, surveyed,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
   ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
 } from './machines.js';
@@ -812,7 +812,7 @@ function drawMountain(ctx, x, y, f, i, faded) {
     px(ctx, x + 17 - o / 2, y + 6, 6, 2, '#e8ecf8');
     px(ctx, x + 18 - o / 2, y + 4, 4, 2, '#ffffff');
   }
-  if (mt && mt.left > 0) {
+  if (mt && mt.left > 0 && surveyed(f.done)) {
     for (let k = 0; k < 3; k++) {
       const gx = x + 5 + ((i * 13 + k * 9) % (CELL - 10)), gy = y + 14 + ((i * 5 + k * 7) % 12);
       px(ctx, gx, gy, 3, 2, vein.color);
@@ -1169,7 +1169,7 @@ export class View {
   }
 
   paintGroundIfStale(f) {
-    const key = `${f.claim}|${f.mapRev || 0}|${f.seed}`;
+    const key = `${f.claim}|${f.mapRev || 0}|${f.seed}|${surveyed(f.done) ? 1 : 0}`;
     if (key === this.groundKey) return;
     paintGround(this.ground, f);
     this.groundKey = key;

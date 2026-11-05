@@ -38,7 +38,7 @@ import {
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
-  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON,
+  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, bridgeSpan,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { initBugs, stepBugs, nestAt } from './bugs.js';
@@ -154,9 +154,10 @@ export function pairBridges(f) {
     const m = f.grid[i];
     if (m?.kind === 'bridge') { m.pair = -1; m.bin = 0; bridges.push(i); }
   }
+  const span = bridgeSpan(f.done);
   const ahead = i => {
     const m = f.grid[i], d = m.dir | 0;
-    for (let k = 1; k <= BRIDGE_SPAN; k++) {
+    for (let k = 1; k <= span; k++) {
       const x = cx(i) + DIRS[d][0] * k, y = cy(i) + DIRS[d][1] * k;
       if (!inWorld(x, y)) return -1;
       const n = f.grid[cellOf(x, y)];
@@ -522,7 +523,7 @@ function release(f, m, i, sp) {
     // A gizmo flies at the speed of the machine that threw it, so a browned-out
     // belt visibly crawls rather than jerking a pixel across at full speed every
     // few seconds. Power is meant to be legible from across the room.
-    const dur = travelTime(m) / Math.max(0.05, sp);
+    const dur = travelTime(m, f.done) / Math.max(0.05, sp);
     sent.forEach((o, k) => emit(f, i, o, dur, k, sent.length));
   }
 
@@ -648,7 +649,7 @@ export function smartDir(f, i) {
   if (m.kind === 'bridge') {
     for (let d = 0; d < 4; d++) {
       const back = (d + 2) % 4;
-      for (let k = 1; k <= BRIDGE_SPAN; k++) {
+      for (let k = 1; k <= bridgeSpan(f.done); k++) {
         const x = cx(i) + DIRS[back][0] * k, y = cy(i) + DIRS[back][1] * k;
         if (!inWorld(x, y)) break;
         const n = f.grid[cellOf(x, y)];
@@ -1269,6 +1270,7 @@ export function research(f, id) {
   f.science -= t.cost;
   const before = f.cells.map(i => f.grid[i]).concat(f.crate).map(m => [m, maxHp(m, f.done)]);
   f.done.push(id);
+  f.mapRev++;                  // Surveying, for one, changes what the ground shows
   // Plating raises every machine's ceiling, and lifts what it has by the same
   // proportion, so a machine at full health is still at full health afterwards.
   for (const [m, was] of before) {
@@ -1316,7 +1318,7 @@ export function diagnose(f) {
         waitingAt = i;
       }
     } else if (m.waitT > STALL_BADGE && !PLUMBING.has(m.kind)) starved++;
-    if (m.net < 0 && drawOf(m) > 0) unpowered++;
+    if (m.net < 0 && drawOf(m, f.done) > 0) unpowered++;
   }
   let worst = 1;
   for (const net of f.nets || []) if (net.demand > 0) worst = Math.min(worst, net.sat);

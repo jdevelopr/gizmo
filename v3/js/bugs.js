@@ -30,7 +30,7 @@ import {
   skitterShare, nestSpec,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
-  CHARGED, CHARGED_MULT, shotsOf, TREMOR_COST, DIRS, BEACON_SIZE, BEACON_NOISE, BEACON_DRAW,
+  CHARGED, CHARGED_MULT, shotsOf, TREMOR_COST, tremorCost, DIRS, BEACON_SIZE, BEACON_NOISE, BEACON_DRAW,
   BEACON_ASSAULT_SIZE, BEACON_ASSAULT_BEETLES,
 } from './machines.js';
 import { beaconHot, beaconCentre, hitBeacon, assaultDue } from './beacon.js';
@@ -207,8 +207,8 @@ function stepTremor(f, dt) {
   }
   if (!active.length || f.t < SWARM_GRACE) return;
   f.tremor = (f.tremor || 0) + active.length * dt;
-  if (f.tremor < TREMOR_COST) return;
-  f.tremor -= TREMOR_COST;
+  if (f.tremor < tremorCost(f.done)) return;
+  f.tremor -= tremorCost(f.done);
   const at = active[Math.floor(Math.random() * active.length)];
   const d = f.grid[at].dir | 0;
   const face = cellOf(cx(at) + DIRS[d][0], cy(at) + DIRS[d][1]);
@@ -432,7 +432,7 @@ function stepZappers(f, dt) {
     if (shotsOf(m) <= 0) continue;
     // Charged shots go first, at twice the damage.
     const hot = (m.hot | 0) > 0;
-    const shot = zapDamage(m) * (hot ? CHARGED_MULT : 1);
+    const shot = zapDamage(m, f.done) * (hot ? CHARGED_MULT : 1);
     const spend = () => { if (hot) m.hot--; else m.charge--; };
 
     const x = cx(i) + 0.5, y = cy(i) + 0.5;
@@ -455,7 +455,7 @@ function stepZappers(f, dt) {
       }
       f.fx.push({ k: 'zap', cell: i, path, hot });
       spend();
-      m.cool = zapCool(m);
+      m.cool = zapCool(m, f.done);
       m.flash = 1;
       continue;
     }
@@ -467,7 +467,7 @@ function stepZappers(f, dt) {
       nest.hp -= dmg;
       f.fx.push({ k: 'zap', cell: i, path: [[x, y], [cx(nest.cell) + 0.5, cy(nest.cell) + 0.5]], hot });
       spend();
-      m.cool = zapCool(m);
+      m.cool = zapCool(m, f.done);
       if (nest.hp <= 0) { killNest(f, nest); continue; }
       // It fights back: every so much damage, a brood comes out for the Zapper.
       nest.anger = (nest.anger || 0) + dmg;

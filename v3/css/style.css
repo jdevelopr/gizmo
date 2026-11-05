@@ -546,3 +546,9 @@ body.hide-tut #tutorial { display: none !important; }
   background: linear-gradient(#ffffff, rgba(168, 220, 255, 0)); opacity: 0.25; pointer-events: none;
 }
 #win-stats { margin: 14px 0; text-align: left; }
+
+/* --- the tech tree, by branch --- */
+.tech-head { display: flex; justify-content: space-between; margin-top: 14px; }
+.tech-head span { color: var(--dimmer); }
+.tech-unlocks { display: flex; gap: 4px; margin: 2px 0 6px; }
+.tech-unlocks canvas { background: #0c0e18; border: 1px solid #242a3f; }

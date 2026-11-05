@@ -11,7 +11,7 @@
 
 import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
-  expandCost, buyCost, label, PASSIVE, zapRange,
+  expandCost, buyCost, label, PASSIVE, zapRange, unlockedBy, unlockerOf,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
 import { repairBeacon, progress as beaconProgress } from './beacon.js';
@@ -542,6 +542,13 @@ function act(name, payload, extra) {
         palette.select(null);
         panel.key = '';
         $('stage').classList.remove('build');
+        return;
+      }
+      // A machine that still needs research cannot be picked up.
+      if (!payload.crate && !unlockedBy(f.done).has(payload.kind === 'asm' ? 'asm:' + (payload.mut ?? 0) : payload.kind)) {
+        const t = unlockerOf(payload.kind);
+        toast(g, t ? `Research ${t.name} first — it is in the TECH tab` : 'Not unlocked yet', '#ff8a6a');
+        sfx('error');
         return;
       }
       $('stage').classList.add('build');

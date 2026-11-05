@@ -11,7 +11,7 @@
 
 import {
   BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP, BEACON_LOSS, BEACON_REPAIR,
-  BEACON_FED, BEACON_ASSAULTS, DIRS, cellOf, cx, cy, inWorld, claimed, TYPES,
+  BEACON_FED, BEACON_ASSAULTS, beaconLoss, DIRS, cellOf, cx, cy, inWorld, claimed, TYPES,
 } from './machines.js';
 
 /** Fresh Beacon state for a factory, from where the world put it. */
@@ -122,8 +122,9 @@ export function hitBeacon(f, dmg) {
   b.hp = Math.max(0, b.hp - dmg);
   b.loss += dmg;
   b.hurt = 1;
-  while (b.loss >= BEACON_LOSS) {
-    b.loss -= BEACON_LOSS;
+  const per = beaconLoss(f.done);
+  while (b.loss >= per) {
+    b.loss -= per;
     let worst = null, share = 0;
     for (const ty of Object.keys(BEACON_NEED)) {
       const s = b.got[ty] / BEACON_NEED[ty];

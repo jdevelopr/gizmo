@@ -64,7 +64,9 @@ console.log('\nNests');
 console.log('\nThe catalogue');
 {
   const kinds = catalogue([]).map(c => c.kind);
-  ok(kinds.includes('zap') && kinds.includes('arm'), 'Zapper and Armory are on sale from the start');
+  ok(!kinds.includes('zap') && !kinds.includes('arm'), 'Zapper and Armory are locked at the start');
+  const after = catalogue(['defense']).map(c => c.kind);
+  ok(after.includes('zap') && after.includes('arm'), 'and Pest Control unlocks both');
 }
 
 console.log('\nChewing');

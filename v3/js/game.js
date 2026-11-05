@@ -21,7 +21,7 @@
 
 import {
   TYPES, RAW, WORLD, CLAIM_START, MILESTONES, TUTORIAL, CONTRACT_SLOTS,
-  CONTRACT_PREMIUM, CONTRACT_GRACE, CONTRACT_GAP, cellOf, cx, cy, rng, hashSeed,
+  CONTRACT_PREMIUM, contractPremium, CONTRACT_GRACE, CONTRACT_GAP, cellOf, cx, cy, rng, hashSeed,
   money, makeMachine, techById, unlockedBy, OPEN, MOUNTAIN, VALLEY,
 } from './machines.js';
 import { generateWorld } from './world.js';
@@ -224,7 +224,7 @@ function makeContract(g) {
 
   const secs = 70 + Math.random() * 80;
   const need = Math.max(5, Math.round(pick.rate * secs));
-  const pay = Math.max(20, Math.round(need * TYPES[pick.ty].value * CONTRACT_PREMIUM));
+  const pay = Math.max(20, Math.round(need * TYPES[pick.ty].value * contractPremium(g.f.done)));
   return {
     id: g.contractId++,
     ty: pick.ty,

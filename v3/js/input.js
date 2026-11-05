@@ -326,6 +326,9 @@ export class Input {
   key(e, down) {
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    // The tech tree page has its own keys; the world underneath ignores them.
+    const tt = document.getElementById('techtree');
+    if (down && tt && !tt.hidden) return;
     const S = this.S;
     const k = e.key;
 
@@ -372,6 +375,7 @@ export class Input {
         break;
       case 'o': this.act('off', this.target()); break;
       case 'z': this.act('tool', { kind: 'zap' }); break;
+      case 'y': this.act('openTree'); break;
       case 'g': this.act('tool', { kind: 'drill' }); break;
       case 'n': this.act('tool', { kind: 'bridge' }); break;
       case 't': this.act('toggleHelp'); break;

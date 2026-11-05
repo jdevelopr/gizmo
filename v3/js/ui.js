@@ -771,7 +771,11 @@ export class Panel {
       orders: $('tab-orders'), stats: $('tab-stats'),
     };
     for (const b of document.querySelectorAll('.tabs button')) {
-      b.onclick = () => this.show(b.dataset.tab);
+      b.onclick = () => {
+        this.show(b.dataset.tab);
+        // The tech tree has its own page now; the tab opens it.
+        if (b.dataset.tab === 'tech') this.act('openTree');
+      };
     }
   }
 
@@ -1423,14 +1427,34 @@ export class Panel {
         'You have no Research Lab. Build one and point a belt into it — a gizmo studied ' +
         'is worth exactly what a depot would have paid, so research costs income, never cash.'));
     }
-    // One heading per branch, each with how far through it you are, and the cards
-    // for that branch under it in the order they open.
+    // The tree itself has its own page. This tab is the way in, and a summary.
+    const open = el('button', 'big tech-open', 'OPEN THE TECH TREE  <span class="k">Y</span>');
+    open.onclick = () => this.act('openTree');
+    host.appendChild(open);
     for (const br of BRANCHES) {
       const list = TECH.filter(t => (t.branch || 'economy') === br.id);
       if (!list.length) continue;
       const got = list.reduce((a, t) => a + rankOf(f.done, t.id), 0);
-      host.appendChild(el('div', 'pal-group tech-head', `${br.name}  <span>${got} / ${list.length * TECH_RANKS} ranks</span>`));
-      for (const t of list) this.techCard(host, f, t);
+      const row = el('div', 'pay');
+      row.appendChild(el('span', 'pay-n', br.name));
+      const bar = el('div', 'pay-bar');
+      const fill = el('i');
+      fill.style.width = (got / (list.length * TECH_RANKS) * 100) + '%';
+      fill.style.background = 'var(--gold)';
+      bar.appendChild(fill);
+      row.appendChild(bar);
+      row.appendChild(el('b', null, `${got}/${list.length * TECH_RANKS}`));
+      host.appendChild(row);
+    }
+    const ready = TECH.filter(t => rankOf(f.done, t.id) < TECH_RANKS && techOpen(t, f.done)
+      && f.science >= rankCost(t, f.done));
+    host.appendChild(el('div', 'sub', ready.length ? 'READY TO RESEARCH' : 'NOTHING AFFORDABLE YET'));
+    for (const t of ready.slice(0, 8)) {
+      const r = rankOf(f.done, t.id);
+      const b = el('button', 'full', `${t.name} ${ROMAN[r + 1]}  ·  ${num(rankCost(t, f.done))}`);
+      b.style.cssText = 'width:100%;margin-bottom:4px;text-align:left';
+      b.onclick = () => this.act('research', t.id);
+      host.appendChild(b);
     }
   }
 
@@ -2034,6 +2058,7 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <tr><td>Ctrl C / Ctrl V</td><td class="k">Copy the selection as a blueprint / pick the last blueprint up again. Click stamps it; R turns it</td></tr>
 <tr><td>M · U · O · H · X</td><td class="k">With a box selected: move it, upgrade it, switch it off, repair it, scrap it</td></tr>
 <tr><td>Tab</td><td class="k">Jump to the next problem on the map · clicking the warning box does the same</td></tr>
+<tr><td>Y</td><td class="k">Open the tech tree page — drag it around, click a box for what it does, + / − to zoom, 0 to fit</td></tr>
 <tr><td>T</td><td class="k">Hide or show the helper boxes — warnings, key hints, pop-ups and the walkthrough. Each one can be switched separately in the menu</td></tr>
 <tr><td>H / Shift H</td><td class="k">Repair the machine under the cursor / repair everything</td></tr>
 <tr><td>Build on top</td><td class="k">Replaces it; the old one goes to the crate, free to put back</td></tr>

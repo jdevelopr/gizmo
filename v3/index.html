@@ -131,6 +131,28 @@
   </div>
 </div>
 
+<!-- ---------------------------------------------------------- tech tree --- -->
+<div id="techtree" class="screen" hidden>
+  <div class="tt-bar">
+    <b>TECH TREE</b>
+    <span id="tt-sci"></span>
+    <span class="tt-hint">drag to move · click a box for details · + / − zoom · 0 fit · Y or Esc to close</span>
+    <div class="spacer"></div>
+    <div class="zooms">
+      <button id="tt-out" title="Zoom out (-)">&#8211;</button>
+      <button id="tt-fit" title="Fit the whole tree (0)">FIT</button>
+      <button id="tt-in" title="Zoom in (+)">+</button>
+    </div>
+    <button id="tt-close" class="hud-btn">CLOSE</button>
+  </div>
+  <div id="tt-view">
+    <div id="tt-stage">
+      <svg id="tt-lines"></svg>
+    </div>
+    <div id="tt-pop" hidden></div>
+  </div>
+</div>
+
 <!-- --------------------------------------------------------------- win --- -->
 <div id="win" class="screen sheet" hidden>
   <div class="sheet-inner narrow win-inner">

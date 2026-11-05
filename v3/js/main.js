@@ -33,6 +33,7 @@ import {
 } from './game.js';
 import { Palette, Crate, Hud, Panel, Tutorial, drawMinimap, howtoHtml, health, problems } from './ui.js';
 import { Input, makeState } from './input.js';
+import { TechTree } from './techtree.js';
 
 const $ = id => document.getElementById(id);
 
@@ -44,6 +45,7 @@ let tutorial = null;
 let hud = null;
 let panel = null;
 let input = null;
+let tree = null;
 const S = makeState();
 
 let lastFrame = 0;
@@ -81,6 +83,7 @@ function boot(game) {
     hud = new Hud();
     panel = new Panel(g, act);
     input = new Input(view, S, act, () => g);
+    tree = new TechTree(act);
     wireChrome();
     window.addEventListener('resize', () => view.resize());
   }
@@ -221,6 +224,7 @@ function frame(now) {
   palette.price(g);
   crate.update(g, S);
   panel.update(g, S);
+  if (tree?.open) tree.update(g);
   updateHint();
 
   if ((saveTimer -= dt) <= 0) { saveTimer = 20; saveGame(g); }
@@ -768,8 +772,8 @@ function act(name, payload, extra) {
     }
     case 'research': {
       const r = research(f, payload);
-      if (!r.ok) toast(g, r.msg, '#ff8a6a');
-      else { palette.key = ''; palette.build(g); panel.key = ''; }
+      if (!r.ok) { toast(g, r.msg, '#ff8a6a'); sfx('error'); }
+      else { palette.key = ''; palette.build(g); panel.key = ''; if (tree) tree.key = ''; }
       return r;
     }
 
@@ -902,6 +906,11 @@ function act(name, payload, extra) {
       setTimeout(() => n.remove(), 1800);
       return;
     }
+
+    /* --- the tech tree page --- */
+    case 'openTree':
+      if (tree.open) tree.close(); else tree.show(g);
+      return;
 
     /* --- finding things --- */
     case 'focus': {

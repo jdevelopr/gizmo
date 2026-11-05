@@ -558,3 +558,70 @@ body.hide-tut #tutorial { display: none !important; }
 .rank-pips i { width: 14px; height: 4px; background: #242a3f; }
 .rank-pips i.on { background: var(--gold); }
 .rank-note { color: var(--dimmer); font-size: 10px; }
+
+/* --- the tech tree page --- */
+#techtree { display: flex; flex-direction: column; place-items: stretch; align-items: stretch; background: #080a12; z-index: 40; }
+#techtree[hidden] { display: none; }
+.tt-bar {
+  display: flex; align-items: center; gap: 16px; padding: 10px 16px;
+  background: #0f1220; border-bottom: 2px solid var(--line); font-size: 12px;
+}
+.tt-bar b { color: var(--gold); letter-spacing: 0.12em; }
+#tt-sci { color: #b8bcff; }
+.tt-hint { color: var(--dimmer); font-size: 10px; }
+.tt-bar .spacer { flex: 1; }
+.tt-bar .zooms button { padding: 5px 8px; font-size: 12px; width: auto; min-width: 26px; }
+#tt-view {
+  flex: 1; position: relative; overflow: hidden; cursor: grab;
+  background:
+    radial-gradient(circle at 1px 1px, #1a1f33 1px, transparent 1px) 0 0 / 24px 24px,
+    #080a12;
+}
+#tt-view.grab { cursor: grabbing; }
+#tt-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+#tt-lines { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+#tt-lines path { fill: none; stroke: #2c3350; stroke-width: 3; }
+#tt-lines path.done { stroke: #6a5428; }
+#tt-lines path.lit { stroke: var(--gold); stroke-width: 4; }
+.tt-col {
+  position: absolute; top: 0; height: 44px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; border-bottom: 2px solid var(--line); font-size: 13px;
+}
+.tt-col b { color: var(--text); letter-spacing: 0.16em; }
+.tt-col span { color: var(--dimmer); font-size: 10px; margin-top: 3px; }
+.tt-node {
+  position: absolute; box-sizing: border-box; padding: 7px 9px; cursor: pointer;
+  background: #121628; border: 2px solid #2c3350; display: flex; flex-direction: column; gap: 4px;
+  transition: border-color 0.1s, transform 0.1s;
+}
+.tt-node:hover { transform: translateY(-2px); border-color: #5a6690; }
+.tt-node .tt-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+.tt-node .tt-top b { font-size: 12px; color: var(--text); line-height: 1.2; }
+.tt-node .tt-ic { display: flex; gap: 2px; flex: 0 0 auto; }
+.tt-node .tt-cost { font-size: 10px; color: var(--dim); margin-top: auto; }
+.tt-node.locked { opacity: 0.45; }
+.tt-node.open .tt-cost { color: var(--dim); }
+.tt-node.can { border-color: var(--gold); box-shadow: 0 0 10px rgba(255, 205, 117, 0.25); }
+.tt-node.can .tt-cost { color: var(--gold); }
+.tt-node.has { background: #1a1a14; }
+.tt-node.max { background: #1d2a18; border-color: #4fbf72; }
+.tt-node.max .tt-cost { color: #a7f070; }
+.tt-node.path { border-color: #b98f3d; }
+.tt-node.sel { border-color: #ffffff; box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(255, 205, 117, 0.45); }
+#tt-pop {
+  position: absolute; width: 300px; box-sizing: border-box; padding: 12px 14px; z-index: 5;
+  background: #0f1220; border: 2px solid var(--gold); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  font-size: 11px; cursor: default;
+}
+#tt-pop[hidden] { display: none; }
+#tt-pop .tt-pop-head { display: flex; justify-content: space-between; align-items: baseline; }
+#tt-pop .tt-pop-head b { color: var(--gold); font-size: 14px; }
+#tt-pop .tt-pop-head span { color: var(--dimmer); font-size: 10px; letter-spacing: 0.1em; }
+#tt-pop p { color: var(--dim); line-height: 1.45; margin: 6px 0; }
+#tt-pop .rows { margin: 8px 0; }
+#tt-pop .row b { white-space: normal; text-align: right; }
+.tt-unlocks { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+.tt-unlocks div { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.tt-unlocks canvas { background: #0c0e18; border: 1px solid #242a3f; }
+#tt-pop button.big { width: 100%; margin-top: 4px; font-size: 12px; padding: 9px; }
+.tech-open { width: 100%; padding: 12px; font-size: 13px; margin: 6px 0 12px; }

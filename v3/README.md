@@ -489,6 +489,25 @@ and "unknown" when you hover it. Picking up a locked machine by its key says whi
 research it needs. `tools/tech.mjs` checks the tree has no cycles or orphans, that every
 branch is reachable, and that every bonus does what its card says.
 
+### The tech tree is a tree
+
+Research has its own page now: a full-screen overlay over the running game, opened from
+the TECH tab or with `Y`. Each branch is a column — Production, Power, Defence, Terrain —
+with its roots at the top and deeper research below, and an elbowed line from every node
+to what it leads to. A node shows its name and rank, five rank pips, the next rank's cost
+and icons for any machines it unlocks; it glows gold when you can afford it, turns green
+when it is maxed, and greys out while its prerequisites are missing.
+
+Drag the background to move the tree; `+`/`−` or the buttons zoom, `0` or FIT shows all
+of it, and where you left it and how far in you were is remembered. Click a node and a
+card opens beside it: its description, what it does **now** and what it will do **at the
+next rank** — worked out from the same functions the game uses, so the card cannot
+drift — its prerequisites ticked or crossed, what it leads to, what it unlocks, and the
+button that researches the next rank. The selected node's whole prerequisite chain lights
+up in gold. Science banked and science per second sit in the bar along the top. The TECH
+tab itself is now a way in and a summary: progress per branch and whatever is ready to
+research.
+
 ### Five ranks of research, five levels of machine
 
 **Every research node has five ranks.** Rank I does what its card says; each rank after
@@ -665,6 +684,7 @@ differently because they want opposite fixes.
 | `M` `U` `O` `H` `X` | with a box selected: move, upgrade, switch off, repair or scrap all of it |
 | `Tab` | jump to the next problem — clicking the warning box does the same |
 | `T` | hide or show the helper boxes; each can be switched on its own in the menu |
+| `Y` | open the tech tree page |
 | click a machine | its recipe as a picture, what is inside it, and what it is short of |
 | build on top | replaces what is there; the old one goes to the crate, free to put back |
 | `X` / `Delete` | scrap a machine for half of what it cost — or, on a bare slot, sweep up what is lying there |
@@ -734,6 +754,7 @@ js/world.js         the map: ore patches, terrain, and the guaranteed opening
 js/power.js         the grid — who is on which, and how much they get
 js/bugs.js          nests, noise, swarms, mites chewing, Zappers firing, repair
 js/blueprint.js     box selection, copy and paste, moving many machines, bulk verbs
+js/techtree.js      the tech tree page: layout, drag and zoom, the node card
 js/beacon.js        the Launch Beacon: its mouths, deliveries, damage, assaults and the win
 js/sound.js         every sound, synthesised with Web Audio
 js/sim.js           the factory simulation, inherited from GIZMO 2 and made real-time

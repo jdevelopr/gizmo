@@ -28,7 +28,7 @@
 /* ------------------------------------------------------------------ world --- */
 
 /** World size, in slots per side. Fixed for a whole game; the claim is what grows. */
-export const WORLD = 56;
+export const WORLD = 80;
 
 /**
  * The square you own to begin with, centred.
@@ -686,7 +686,7 @@ export const SCRAP_RATE = 0.5;
  * immature one is out of reach.
  */
 export const EXPAND_PER_SLOT = 1.5;
-export const EXPAND_STEP = 1.16;
+export const EXPAND_STEP = 1.13;
 
 export function expandCost(claim) {
   const rings = Math.max(0, (claim - CLAIM_START) / CLAIM_STEP);
@@ -1136,7 +1136,45 @@ export function claimCells(claim) {
 }
 
 /** Terrain codes. */
-export const OPEN = 0, RUBBLE = 1, BEDROCK = 2, MOUNTAIN = 3, VALLEY = 4;
+export const OPEN = 0, RUBBLE = 1, BEDROCK = 2, MOUNTAIN = 3, VALLEY = 4, BEACON = 5;
+
+/* ----------------------------------------------------------------- beacon --- */
+
+/**
+ * The Launch Beacon: the end of the game.
+ *
+ * A five-by-five tower standing in one corner of the world, chosen by the seed.
+ * It has four mouths, one in the middle of each side, and each takes one thing:
+ * Engines from the north, Turbines from the east, Reactors from the south and Prisms
+ * from the west. Fill all four and it fires, and the world is won.
+ *
+ * It is a long way out — the corner of the map — and you have to own the land
+ * right up to it to run a belt into it. Feeding it is loud, and every creature on
+ * the map takes notice: while it is being fed, swarms come for *it*, and a quarter,
+ * a half and three quarters of the way, a huge mixed assault comes from every side.
+ * Damage to it is not just damage. Every few points of it knock delivered goods
+ * back out of the machine, so a Beacon left undefended goes backwards.
+ */
+export const BEACON_SIZE = 5;
+/** What each mouth takes, by the direction it faces. dir 0 east, 1 south, 2 west, 3 north. */
+export const BEACON_INPUTS = { 3: 11, 0: 12, 1: 13, 2: 7 };    // Engine, Turbine, Reactor, Prism
+/** And how many of each it needs. */
+export const BEACON_NEED = { 11: 500, 12: 250, 13: 100, 7: 200 };
+export const BEACON_HP = 1000;
+/** Every this many points of damage costs one delivered gizmo. */
+export const BEACON_LOSS = 4;
+/** Dollars per hit point to repair it. */
+export const BEACON_REPAIR = 3;
+/** How long after its last delivery it still counts as being fed. */
+export const BEACON_FED = 90;
+/** The extra noise a Beacon makes while it is being fed. */
+export const BEACON_NOISE = 10;
+/** Share of a swarm that goes for the Beacon while it is being fed. */
+export const BEACON_DRAW = 0.6;
+/** Progress at which an assault comes, and how big it is. */
+export const BEACON_ASSAULTS = [0.25, 0.5, 0.75];
+export const BEACON_ASSAULT_SIZE = 40;
+export const BEACON_ASSAULT_BEETLES = 4;
 
 /** What a mountain's seam can be: Scrap at the middle of the map up to Cobalt at the rim. */
 export const MOUNTAIN_ORE = [0, 1, 2, 3, 4];

@@ -38,11 +38,12 @@ import {
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
-  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN,
+  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { initBugs, stepBugs, nestAt } from './bugs.js';
 import { generateWorld } from './world.js';
+import { initBeacon, beaconMouth, beaconWants, deliver } from './beacon.js';
 
 const EPS = 1e-6;
 
@@ -94,6 +95,7 @@ export function createFactory({ cash = 400, seed = 1, world = null } = {}) {
   // Mountains: which slot belongs to which, and how much each has left in it.
   f.mtn = Int16Array.from(w.mtn || new Int16Array(n).fill(-1));
   f.mountains = (w.mountains || []).map(m => ({ id: m.id, cells: m.cells.slice(), ty: m.ty, amount: m.amount, left: m.amount }));
+  initBeacon(f);
   initBugs(f);
   return f;
 }
@@ -489,6 +491,10 @@ function pickExit(f, i, m, o) {
     cands = all.slice(at).concat(all.slice(0, at));
   }
   for (const d of cands) {
+    // Into one of the Beacon's mouths: only what that mouth takes, and only while
+    // it still wants it. Anything else waits, so a wrong item jams rather than vanishes.
+    const bt = beaconMouth(f, i, d);
+    if (bt >= 0) { if (beaconWants(f, (d + 2) % 4, o.ty)) return d; continue; }
     const to = landingOf(f, i, m, d);
     if (to < 0) return d;
     if (canAccept(f, to, o.ty, faceHit(d))) return d;
@@ -505,7 +511,8 @@ function release(f, m, i, sp) {
     const d = pickExit(f, i, m, o);
     if (d == null) { stay.push(o); continue; }
     o.dir = d;
-    o.to = landingOf(f, i, m, d);
+    o.beacon = beaconMouth(f, i, d) >= 0;
+    o.to = o.beacon ? -1 : landingOf(f, i, m, d);
     if (o.to >= 0) f.load[o.to] += sizeOf(o.ty);
     sent.push(o);
   }
@@ -550,7 +557,8 @@ function emit(f, from, out, dur, n, total) {
     x: sx + ox, y: sy + oy,
     p: 0, dur: Math.max(0.02, dur * span * (1 + n * 0.06)),
     cell: inside ? to : -1,
-    from, exit: inside ? null : out.dir,
+    from, exit: inside || out.beacon ? null : out.dir,
+    beacon: out.beacon ? 1 : 0,
     // Which face of the destination this is arriving at. Kept on the gizmo so a
     // Depot that turned one away still turns it away when it is lying on the mat
     // and asking again a tick later.
@@ -559,6 +567,11 @@ function emit(f, from, out, dur, n, total) {
 }
 
 function arrive(f, g, k) {
+  if (g.beacon) {
+    if (!deliver(f, g.ty)) f.lost++;
+    f.gizmos.splice(k, 1);
+    return;
+  }
   if (g.exit !== null) {
     f.lost++;
     f.fx.push({ k: 'lost', ty: g.ty, x: g.ex, y: g.ey });
@@ -829,6 +842,7 @@ export function buildCheck(f, spec, i) {
   if (f.terrain[i] === RUBBLE) return no(`Rubble — clear it for $${RUBBLE_COST}`);
   if (f.terrain[i] === MOUNTAIN) return no('A mountain — go round it, or drill it from beside');
   if (f.terrain[i] === VALLEY) return no('A valley — cross it with a pair of Bridges');
+  if (f.terrain[i] === BEACON) return no('The Launch Beacon — feed it through the mouth on each side');
   if (f.terrain[i] !== OPEN) return no('Bedrock will not move');
   if (spec.kind === 'ext' && f.patch[i] < 0) return no('An Extractor has to stand on ore');
   if (spec.kind === 'drill' && !nextToMountain(f, i)) return no('A Mountain Drill has to stand beside a mountain with ore left in it');
@@ -1336,6 +1350,12 @@ export function jams(f) {
     if (!m || m.off || broken(m) || !m.blocked || m.blockT <= STALL_BADGE) continue;
     for (const o of m.out || []) {
       const nx = cx(i) + DIRS[o.dir][0], ny = cy(i) + DIRS[o.dir][1];
+      const bt = beaconMouth(f, i, o.dir);
+      if (bt >= 0 && o.ty !== bt) {
+        out.push({ cell: i, ty: o.ty, into: i, kind: 'beacon',
+          why: `${TYPES[o.ty].name} into the Beacon's ${TYPES[bt].name} mouth, which takes nothing else` });
+        break;
+      }
       if (!openAt(f, nx, ny)) continue;
       const target = f.grid[cellOf(nx, ny)];
       const side = faceHit(o.dir);

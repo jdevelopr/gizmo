@@ -30,7 +30,7 @@ import {
   createFactory, starterKit, stepFactory, rebuild, drainFx, diagnose, reachesPayout,
 } from './sim.js';
 
-const SAVE_KEY = 'gizmo3.save.v1';
+const SAVE_KEY = 'gizmo3.save.v2';   // v2: the 80x80 world. A 56x56 save cannot be read.
 /** Creature kinds by the number a save stores them as. Append only. */
 const BUG_KINDS = ['mite', 'skitter', 'beetle'];
 /** Set once the first game has been walked through, or the walk was skipped. */
@@ -364,6 +364,11 @@ export function serialise(g) {
     tut: g.tut,
     ground,
     mtn,
+    beacon: f.beacon ? {
+      got: f.beacon.got, hp: Math.round(f.beacon.hp), loss: f.beacon.loss,
+      fedAgo: Math.min(1e6, Math.round(f.t - f.beacon.fedAt)), assaults: f.beacon.assaults,
+      done: f.beacon.done, doneAt: Math.round(f.beacon.doneAt || 0),
+    } : null,
     machines,
     crate,
     // Mites are saved, unlike gizmos: reloading must not be a way to make a
@@ -374,7 +379,7 @@ export function serialise(g) {
       nv: 4,
       nests: (f.nests || []).map(n => [n.cell, Math.round(n.hp), Math.round(n.anger || 0), n.kind === 'skitter' ? 1 : 0]),
       mites: (f.mites || []).map(mt => [Math.round(mt.x * 100) / 100, Math.round(mt.y * 100) / 100,
-        Math.round(mt.hp * 10) / 10, mt.max, BUG_KINDS.indexOf(mt.kind || 'mite')]),
+        Math.round(mt.hp * 10) / 10, mt.max, BUG_KINDS.indexOf(mt.kind || 'mite'), mt.beacon ? 1 : 0]),
       tremor: Math.round(f.tremor || 0),
       swarm: Math.round(f.swarm || 0),
       waves: f.waves || 0,
@@ -392,6 +397,16 @@ export function deserialise(data) {
   f.claim = Math.max(CLAIM_START, Math.min(WORLD, data.claim || CLAIM_START));
   for (const i of data.cleared || []) f.terrain[i] = OPEN;        // saves before mountains
   for (const [i, t] of data.ground || []) if (i >= 0 && i < f.terrain.length) f.terrain[i] = t;
+  if (data.beacon && f.beacon) {
+    const s = data.beacon;
+    for (const ty of Object.keys(f.beacon.got)) f.beacon.got[ty] = s.got?.[ty] || 0;
+    f.beacon.hp = s.hp ?? f.beacon.hp;
+    f.beacon.loss = s.loss || 0;
+    f.beacon.fedAt = (data.t || 0) - (s.fedAgo ?? 1e9);
+    f.beacon.assaults = s.assaults || 0;
+    f.beacon.done = !!s.done;
+    f.beacon.doneAt = s.doneAt || 0;
+  }
   for (const [id, left] of data.mtn || []) {
     const mt = f.mountains[id];
     if (!mt) continue;
@@ -445,9 +460,9 @@ export function deserialise(data) {
     // put it on; new ones will dig in elsewhere to make up the number.
     f.nests = f.nests.filter(n => f.terrain[n.cell] === OPEN);
     f.mites = [];
-    for (const [x, y, hp, max, k] of b.mites || []) {
+    for (const [x, y, hp, max, k, toBeacon] of b.mites || []) {
       const mt = spawnMite(f, x, y, max || hp, BUG_KINDS[k] || 'mite');
-      if (mt) { mt.x = x; mt.y = y; mt.hp = hp; }
+      if (mt) { mt.x = x; mt.y = y; mt.hp = hp; if (toBeacon) mt.beacon = 1; }
     }
     f.swarm = b.swarm || 0;
     f.waves = b.waves || 0;
@@ -484,6 +499,11 @@ export function loadGame() {
   } catch (e) {
     return null;
   }
+}
+
+/** A save from the 56x56 world, which this version cannot load. */
+export function hasOldSave() {
+  try { return !!localStorage.getItem('gizmo3.save.v1'); } catch (e) { return false; }
 }
 
 export function hasSave() {

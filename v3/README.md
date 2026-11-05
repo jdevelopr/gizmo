@@ -1,6 +1,6 @@
 # GIZMO 3 — Keep the lights on
 
-A single-player factory builder for a desktop computer, on a world fifty-six slots
+A single-player factory builder for a desktop computer, on a world eighty slots
 a side.
 
 GIZMO 3 lives beside the other two. The party game at the repository root is
@@ -12,7 +12,7 @@ so all three ship from the same Amplify site — the original at `/`, GIZMO 2 at
 
 ## What it is
 
-You own a **three-slot square** in the middle of a fifty-six-slot world, and nothing
+You own a **three-slot square** in the middle of a eighty-slot world, and nothing
 else. All nine of those slots are ore. Put an Extractor on one, a Market Depot a
 couple of slots away and a Conveyor between them, and that is a factory: ore out of
 the ground, along a belt, into money.
@@ -36,16 +36,16 @@ GIZMO 2 was already most of a factory game: permanent factories, a tech tree, a
 catalogue, backpressure, a tier ladder, recipes that need two feeds. What it was
 not was **big**, and almost everything here follows from fixing that.
 
-### The world is 3,136 slots instead of 49
+### The world is 6,400 slots instead of 49
 
 Forty-nine slots is a puzzle. Three thousand is a place. The change is not really
 one of degree — at 49 slots you are choosing which four machines you can afford to
-fit, and at 3,136 you are choosing where the second smelting arm goes and how you
+fit, and at 6,400 you are choosing where the second smelting arm goes and how you
 are going to get power out to it. Those are different games, and only the second
 one is Factorio-shaped.
 
 Scale is also what makes the map matter. A generated 7x7 plot could decide where
-three fixtures sat on a fence; a generated 56x56 world decides where the *ore* is,
+three fixtures sat on a fence; a generated 80x80 world decides where the *ore* is,
 and everything downstream of that — where your extractors go, where your generators
 have to go to reach them, how long the belt home is, which direction is worth
 buying land in — falls out of that one decision.
@@ -313,7 +313,7 @@ what you get for your money grows on its own — sixteen slots at the start, two
 hundred and twenty-four at the rim. On top of that sits a 16% markup per ring
 already bought. The result is cheap early and steep late, deliberately: the first
 ring is **$24**, the first three together cost less than a Generator, and by the
-outer third a ring is tens of thousands. The whole world is about $90,000.
+outer third a ring is tens of thousands. The whole world is about $350,000.
 
 Everything outside your fence is exactly as fatal as the edge of the world: you
 cannot build on it and a belt aimed at it throws away what it carries. That rule is
@@ -468,6 +468,31 @@ Three research nodes sit behind it: **Focusing** (+1.5 reach), **Arc Discharge**
 (every zap jumps to two more mites) and **Plating** (+50% hit points on everything).
 Mites are saved with the world, unlike gizmos in flight: reloading must not be a way
 to make a swarm halfway through your belts vanish.
+
+### The world is 80x80, and there is a Launch Beacon in a corner
+
+The world grew from 56 to 80 slots a side — about twice the area — and everything in
+it scaled with it: twice the ore patches, twice the nests, twice the mountains and
+valleys. The land price curve was flattened (13% markup per ring instead of 16%) so the
+whole world costs about $350,000 rather than eight times that. A 56x56 save cannot be
+carried over; the title screen says so and a new world starts fresh.
+
+**The Launch Beacon** is the end of the game: a five-by-five tower placed by the seed in
+one of the four corners, a few slots in from the edge, with three slots of clear ground
+round it. It has one mouth in the middle of each side — **Engines** from the north
+(500), **Turbines** from the east (250), **Reactors** from the south (100) and **Prisms**
+from the west (200). A belt on the slot just outside a mouth, pointing straight in,
+feeds it; a wrong item waits on the belt and the corner names the jam. You have to buy
+the land out to it.
+
+Feeding it is loud (+10 noise) and every creature on the map takes notice: while it has
+been fed in the last 90 seconds, 60% of every swarm is sent for it, and at 25%, 50% and
+75% full a 40-strong assault comes from the four nearest nests together with four
+Beetles out of the nearest mountain. Damage is harsh: every 4 points the Beacon takes
+knocks one delivered gizmo back out of it (from whichever input is furthest along), and
+at zero of its 1,000 health it takes nothing until repaired at $3 a point. Fill all four
+mouths and it fires a beam into the sky, the world is won, and a win screen offers to
+keep playing or start again. `tools/beacon.mjs` checks all of it.
 
 ### Mountains, valleys and Beetles
 
@@ -669,6 +694,7 @@ js/world.js         the map: ore patches, terrain, and the guaranteed opening
 js/power.js         the grid — who is on which, and how much they get
 js/bugs.js          nests, noise, swarms, mites chewing, Zappers firing, repair
 js/blueprint.js     box selection, copy and paste, moving many machines, bulk verbs
+js/beacon.js        the Launch Beacon: its mouths, deliveries, damage, assaults and the win
 js/sound.js         every sound, synthesised with Web Audio
 js/sim.js           the factory simulation, inherited from GIZMO 2 and made real-time
 js/render.js        the camera renderer: one ground canvas, cached machine tiles
@@ -699,6 +725,7 @@ node tools/bugs.mjs       # mites chew, broken stops, repair, Armory, Zapper
 node tools/blueprint.mjs  # select, copy, paste, rotate, move and bulk verbs
 node tools/aim.mjs        # belts aim themselves sensibly
 node tools/terrain.mjs    # mountains, drills, valleys, bridges, beetles
+node tools/beacon.mjs     # the Launch Beacon: placing, feeding, damage, assaults, winning
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

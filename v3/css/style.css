@@ -537,3 +537,12 @@ body.hide-tut #tutorial { display: none !important; }
 .show-head span { float: right; color: var(--dimmer); }
 .chk { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text); margin: 5px 0; cursor: pointer; }
 .chk input { accent-color: var(--gold); width: 14px; height: 14px; margin: 0; }
+
+/* --- the win screen --- */
+.win-inner { text-align: center; position: relative; overflow: hidden; }
+.win-inner h2 { color: #a8dcff; letter-spacing: 0.12em; text-shadow: 0 0 12px rgba(168, 220, 255, 0.6); }
+.win-burst {
+  position: absolute; left: 50%; top: 0; width: 18px; height: 100%; transform: translateX(-50%);
+  background: linear-gradient(#ffffff, rgba(168, 220, 255, 0)); opacity: 0.25; pointer-events: none;
+}
+#win-stats { margin: 14px 0; text-align: left; }

@@ -240,6 +240,7 @@ console.log('\nSkitters');
   const z = bench();
   put(z, 'zap', 25, 25);
   z.grid[cellOf(25, 25)].buf.push({ id: 1, ty: AMMO, cp: 0 });
+  put(z, 'pipe', 26, 25);            // something for them to run at
   for (let k = 0; k < 3; k++) spawnMite(z, 28.5, 25.5, null, 'skitter');
   run(z, 4);
   ok(z.zapped === 3 && z.grid[cellOf(25, 25)].charge === AMMO_CHARGES - 3, 'one shot each');

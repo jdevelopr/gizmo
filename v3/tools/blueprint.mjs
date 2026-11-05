@@ -69,7 +69,7 @@ console.log('\nMoving');
   putBack(f, bp2);
   ok(f.grid[cellOf(31, 30)] === m, 'changing your mind puts every one back');
   const ext = lift(f, [cellOf(10, 10)]);
-  const r3 = drop(f, ext, cellOf(40, 40));
+  const r3 = drop(f, ext, cellOf(62, 62));
   ok(r3.home === 1 && f.grid[cellOf(10, 10)]?.kind === 'ext', 'an Extractor dropped off ore goes home instead');
 }
 

@@ -29,11 +29,13 @@
 
 import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
-  cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY,
+  cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON,
+  BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
   ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
 } from './machines.js';
 import { heldTypes, machineLoad, contents } from './sim.js';
+import { progress as beaconProgress } from './beacon.js';
 
 /* ---------------------------------------------------------------- palette --- */
 
@@ -764,7 +766,8 @@ function paintGround(g, f) {
       }
 
       const t = f.terrain[i];
-      if (t === MOUNTAIN) drawMountain(ctx, px0, py0, f, i, !own);
+      if (t === BEACON) { px(ctx, px0, py0, CELL, CELL, '#14110a'); px(ctx, px0 + 1, py0 + 1, CELL - 2, CELL - 2, '#1e1a10'); }
+      else if (t === MOUNTAIN) drawMountain(ctx, px0, py0, f, i, !own);
       else if (t === VALLEY) drawValley(ctx, px0, py0, f, x, y, !own);
       else if (t !== OPEN) drawRock(ctx, px0, py0, t, !own);
     }
@@ -1098,7 +1101,8 @@ export class View {
     // 3. the gizmos
     this.drawGizmos(ctx, f, b, z);
 
-    // 3b. bridge spans, then nests, mites and the arcs that kill them
+    // 3b. the Beacon, bridge spans, then nests, mites and the arcs that kill them
+    this.drawBeacon(ctx, f, b, z);
     this.drawSpans(ctx, f, b, z);
     this.drawBugs(ctx, f, b, z);
     if (ui.range) this.drawRange(ctx, ui.range.cell, ui.range.r, z);
@@ -1371,6 +1375,98 @@ export class View {
     this.beams.push({ path, life: 1, hot });
   }
 
+  /**
+   * The Launch Beacon: a five-slot tower drawn live, because it changes — four
+   * mouths in the colours of what they take, a ring of lights that fills as it is
+   * fed, a spire that glows brighter the closer it is, and, once it is full, a beam
+   * straight up off the top of the screen.
+   */
+  drawBeacon(ctx, f, b, z) {
+    const bc = f.beacon;
+    if (!bc) return;
+    if (bc.x0 + BEACON_SIZE < b.x0 - 1 || bc.x0 > b.x1 + 1 || bc.y0 + BEACON_SIZE < b.y0 - 1 || bc.y0 > b.y1 + 1) {
+      if (!bc.done) return;
+    }
+    const s = z / CELL;
+    const S = BEACON_SIZE * z;
+    const [sx, sy] = this.toScreen(bc.x0, bc.y0);
+    const P = (x, y, w, h, col) => px(ctx, sx + x * s, sy + y * s, w * s, h * s, col);
+    const W = BEACON_SIZE * CELL;          // 160 art pixels a side
+    const prog = beaconProgress(f);
+    const pulse = 0.5 + 0.5 * Math.sin(this.t * 3);
+
+    if (bc.done) {
+      // The beam: from the spire to the top of the screen.
+      const cxp = sx + S / 2;
+      ctx.globalAlpha = 0.35 + 0.15 * pulse;
+      px(ctx, cxp - 14 * s, 0, 28 * s, sy + S / 2, '#a8dcff');
+      ctx.globalAlpha = 0.9;
+      px(ctx, cxp - 5 * s, 0, 10 * s, sy + S / 2, '#ffffff');
+      ctx.globalAlpha = 1;
+    }
+    // base
+    P(2, 2, W - 4, W - 4, '#0c0a06');
+    P(6, 6, W - 12, W - 12, '#2c2618');
+    P(6, 6, W - 12, 3, '#5a4c2c');
+    P(10, 10, W - 20, W - 20, '#1a160e');
+    // gold trim and corner pylons
+    for (const [x, y] of [[6, 6], [W - 26, 6], [6, W - 26], [W - 26, W - 26]]) {
+      P(x, y, 20, 20, '#3a301a'); P(x + 3, y + 3, 14, 14, '#6a5428'); P(x + 7, y + 7, 6, 6, bc.done ? '#ffffff' : shade(GOLD, 0.6 + 0.4 * pulse));
+    }
+    // the four mouths, each in the colour of what it takes, with an arrow pointing in
+    for (const [d, ty] of Object.entries(BEACON_INPUTS)) {
+      const t = TYPES[ty];
+      const full = bc.got[ty] >= BEACON_NEED[ty];
+      const dd = +d;
+      const mx = dd === 0 ? W - 22 : dd === 2 ? 2 : W / 2 - 14;
+      const my = dd === 1 ? W - 22 : dd === 3 ? 2 : W / 2 - 14;
+      const horiz = dd === 0 || dd === 2;
+      const w = horiz ? 20 : 28, h = horiz ? 28 : 20;
+      P(mx, my, w, h, '#05070d');
+      P(mx + 2, my + 2, w - 4, h - 4, full ? shade(t.color, 0.5) : '#0b0d16');
+      // chevrons pointing inward
+      const cxm = mx + w / 2, cym = my + h / 2;
+      const ix = -DIRS[dd][0], iy = -DIRS[dd][1];
+      for (let k = 0; k < 3; k++) {
+        const o = (k - 1) * 5;
+        P(cxm + ix * o - 2, cym + iy * o - 2, 4, 4, full ? '#ffffff' : t.color);
+      }
+      // a fill bar beside the mouth
+      const fr = Math.min(1, bc.got[ty] / BEACON_NEED[ty]);
+      if (horiz) {
+        const bx = dd === 0 ? W - 30 : 24;
+        P(bx, W / 2 - 22, 4, 44, '#05070d'); P(bx, W / 2 + 22 - 44 * fr, 4, 44 * fr, t.color);
+      } else {
+        const by = dd === 1 ? W - 30 : 24;
+        P(W / 2 - 22, by, 44, 4, '#05070d'); P(W / 2 - 22, by, 44 * fr, 4, t.color);
+      }
+    }
+    // the ring of lights round the spire: one lit per sixteenth of the way
+    const R = 34, lit = Math.floor(prog * 24);
+    for (let k = 0; k < 24; k++) {
+      const a = k / 24 * Math.PI * 2 - Math.PI / 2;
+      const x = W / 2 + Math.cos(a) * R - 3, y = W / 2 + Math.sin(a) * R - 3;
+      P(x, y, 6, 6, k < lit ? (bc.done ? '#ffffff' : '#a8dcff') : '#1f2433');
+    }
+    // the spire
+    P(W / 2 - 16, W / 2 - 16, 32, 32, '#0c0e18');
+    P(W / 2 - 12, W / 2 - 12, 24, 24, shade('#41a6f6', 0.35 + prog * 0.65));
+    P(W / 2 - 6, W / 2 - 6, 12, 12, bc.done ? '#ffffff' : shade('#a8dcff', 0.5 + prog * 0.5 * (0.7 + 0.3 * pulse)));
+    // hurt flash and health
+    if (bc.hurt > 0) {
+      ctx.globalAlpha = bc.hurt * 0.35; px(ctx, sx, sy, S, S, '#ff3b5c'); ctx.globalAlpha = 1;
+      bc.hurt = Math.max(0, bc.hurt - this.lastDt * 3);
+    }
+    if (!bc.done) {
+      const hp = bc.hp / BEACON_HP;
+      P(10, -8, W - 20, 5, '#05070d');
+      P(10, -8, (W - 20) * hp, 5, hp > 0.5 ? '#a7f070' : hp > 0.2 ? '#ffcd75' : '#ff5d4a');
+      if (bc.hp <= 0) {
+        ctx.globalAlpha = 0.5; px(ctx, sx, sy, S, S, '#2a0610'); ctx.globalAlpha = 1;
+      }
+    }
+  }
+
   /** A dashed rope between each paired Bridge, so it is obvious which pairs with which. */
   drawSpans(ctx, f, b, z) {
     ctx.save();
@@ -1618,6 +1714,17 @@ export class View {
       tc.fillText(fl.text, sx, sy);
     }
     tc.globalAlpha = 1;
+
+    // The Beacon's name over it, at any zoom you can see it from.
+    if (f.beacon && this.cam.zoom >= 12) {
+      const [bx, by] = this.toScreen(f.beacon.x0 + BEACON_SIZE / 2, f.beacon.y0);
+      tc.font = `700 ${this.cam.zoom >= 32 ? 13 : 11}px Silkscreen, ui-monospace, monospace`;
+      const label = f.beacon.done ? 'LAUNCH BEACON — LIT' : `LAUNCH BEACON  ${Math.round(beaconProgress(f) * 100)}%`;
+      tc.fillStyle = '#0b0d16';
+      tc.fillText(label, bx + 1, by - this.cam.zoom * 0.45 + 1);
+      tc.fillStyle = f.beacon.done ? '#ffffff' : '#a8dcff';
+      tc.fillText(label, bx, by - this.cam.zoom * 0.45);
+    }
 
     // Depot and Generator labels, close in, because those two are the ones you go
     // looking for on a map this size.

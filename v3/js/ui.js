@@ -22,12 +22,16 @@ import {
   CHARGED_MULT, shotsOf,
   repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
   SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, nestAnger, nestBrood, NEST_BROOD, nestSpec,
-  MOUNTAIN, VALLEY, BEETLE, TREMOR_COST, BRIDGE_SPAN, DRILL_BASE, DRILL_PER_TIER,
+  MOUNTAIN, VALLEY, BEETLE, TREMOR_COST, BRIDGE_SPAN, DRILL_BASE, DRILL_PER_TIER, BEACON,
+  BEACON_HP, BEACON_LOSS, BEACON_ASSAULTS, BEACON_NEED,
   NESTS, MITE, SKITTER, SKITTER_FROM,
   NEST_BROOD_MAX, NEST_ANGER, NEST_ANGER_MIN,
 } from './machines.js';
 import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
 import { mountainAt, mountainAhead } from './sim.js';
+import {
+  progress as beaconProgress, beaconLines, beaconRepairCost, beaconHot, beaconReachable, mouthApproach,
+} from './beacon.js';
 import { upgradeQuote, scrapQuote, repairQuote } from './blueprint.js';
 import { HIST_STEP } from './game.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
@@ -599,6 +603,15 @@ export class Hud {
       head = d.jams.length > 1 ? `${d.jams.length} LINES STOPPED FOR GOOD` : 'LINE STOPPED FOR GOOD';
       body = `A belt is trying to push ${j.why}. That will never clear on its own — `
         + 'move the machine, or put a Sorter in front of it to send that type elsewhere.';
+    } else if (f.beacon && !f.beacon.done && (f.mites || []).some(mt => mt.beacon && mt.st === 'chew')) {
+      head = 'THE BEACON IS UNDER ATTACK';
+      body = `It is losing a delivered gizmo for every ${BEACON_LOSS} points of damage. Get Zappers round it, `
+        + 'and keep the Ammo coming.';
+      target = cellOf(f.beacon.x0 + 2, f.beacon.y0 + 2);
+    } else if (f.beacon && !f.beacon.done && f.beacon.hp <= 0) {
+      head = 'THE BEACON IS DOWN';
+      body = `It takes nothing until it is repaired — ${money(beaconRepairCost(f))}. Click it, or open ORDERS.`;
+      target = cellOf(f.beacon.x0 + 2, f.beacon.y0 + 2);
     } else if (mitesInside(f) > 0) {
       const n = mitesInside(f);
       target = miteCell(true);
@@ -791,11 +804,14 @@ export class Panel {
           + `|${repairQuote(f, S.area).cost}` : '';
       key = `info|${multi}|${S.selected}|${m ? m.kind + m.dir + m.level + m.mut + m.mir + '|' + repairCost(m, f.done) : 'x'}` +
         `|${S.tool ? S.tool.kind + S.tool.mut : ''}|${Math.round(f.cash / 10)}` +
-        `|${m || S.selected < 0 ? '' : looseTypes(f, S.selected).length}`;
+        `|${m || S.selected < 0 ? '' : looseTypes(f, S.selected).length}`
+        + (S.selected >= 0 && f.terrain[S.selected] === BEACON && f.beacon
+          ? `|b${Object.values(f.beacon.got).join('.')}:${Math.round(f.beacon.hp / 10)}` : '');
     } else if (this.tab === 'tech') {
       key = 'tech|' + f.done.join(',') + '|' + Math.floor(f.science / 5);
     } else if (this.tab === 'orders') {
-      key = 'orders|' + g.contracts.map(c => c.id + ':' + c.done).join(',') +
+      key = 'orders|' + (f.beacon ? Object.values(f.beacon.got).join('.') + ':' + Math.round(f.beacon.hp / 10) + ':' + f.claim : '') + '|'
+        + g.contracts.map(c => c.id + ':' + c.done).join(',') +
         '|' + Array.from(g.done).join(',');
     } else {
       key = 'stats|' + Math.floor(f.t / 2);
@@ -836,6 +852,66 @@ export class Panel {
     const m = f.grid[S.selected];
     if (!m) { this.groundInfo(host, g, S.selected); return; }
     this.machineInfo(host, g, S, m);
+  }
+
+  /**
+   * The Launch Beacon: how full each mouth is, how healthy it is, and the buttons
+   * to repair it and to go and look at it. Shown when you click it, and at the top
+   * of the ORDERS tab, because it is the one order that never expires.
+   */
+  beaconCard(host, g, full) {
+    const f = g.f;
+    const b = f.beacon;
+    if (!b) return;
+    const card = el('div', 'card' + (b.done ? ' done' : ' can'));
+    const h = el('h4', null, b.done ? 'LAUNCH BEACON — LIT' : 'LAUNCH BEACON');
+    h.appendChild(el('span', 'price', `${Math.round(beaconProgress(f) * 100)}%`));
+    card.appendChild(h);
+    if (b.done) {
+      card.appendChild(el('p', null, 'It is done. The world is won — and it is still yours to keep building.'));
+    } else {
+      card.appendChild(el('p', null,
+        full ? 'The end of the game. Fill all four mouths and it fires. Feeding it is loud, every '
+          + 'creature on the map comes for it, and every ' + BEACON_LOSS + ' points of damage it takes '
+          + 'knocks a delivered gizmo back out.'
+          : `In the far ${['north-west', 'north-east', 'south-west', 'south-east'][(b.x0 > WORLD / 2 ? 1 : 0) + (b.y0 > WORLD / 2 ? 2 : 0)]} corner.`
+            + (beaconReachable(f) ? '' : ' Your land does not reach it yet.')));
+      for (const line of beaconLines(f)) {
+        const row = el('div', 'pay');
+        row.appendChild(el('span', 'pay-n', `${line.name} · ${DIR_NAME[line.dir][0]}`));
+        const bar = el('div', 'pay-bar');
+        const fill = el('i');
+        fill.style.width = Math.min(100, line.got / line.need * 100) + '%';
+        fill.style.background = TYPES[line.ty].color;
+        bar.appendChild(fill);
+        row.appendChild(bar);
+        row.appendChild(el('b', null, `${line.got}/${line.need}`));
+        card.appendChild(row);
+      }
+      const rows = el('div', 'rows');
+      addRow(rows, 'Health', `${Math.ceil(b.hp)} of ${BEACON_HP}`, b.hp >= BEACON_HP ? 'good' : b.hp > BEACON_HP * 0.3 ? 'warn' : 'bad');
+      const next = BEACON_ASSAULTS[b.assaults];
+      addRow(rows, 'Next assault', next != null ? `at ${Math.round(next * 100)}% full` : 'none left', next != null ? 'warn' : 'good');
+      addRow(rows, 'Being fed', beaconHot(f) ? 'yes — and every creature knows it' : 'no', beaconHot(f) ? 'warn' : '');
+      if (full) {
+        addRow(rows, 'Mouths', 'Engines north · Turbines east · Reactors south · Prisms west');
+        addRow(rows, 'To feed it', 'own the land beside a mouth and point a belt straight in');
+      }
+      card.appendChild(rows);
+      const rc = beaconRepairCost(f);
+      if (rc) {
+        const r = el('button', null, `REPAIR  ${money(rc)}`);
+        r.style.width = '100%';
+        r.disabled = f.cash < rc;
+        r.onclick = () => this.act('repairBeacon');
+        card.appendChild(r);
+      }
+    }
+    const go = el('button', null, 'SHOW ME');
+    go.style.cssText = 'width:100%;margin-top:6px';
+    go.onclick = () => this.act('focusBeacon');
+    card.appendChild(go);
+    host.appendChild(card);
   }
 
   /** A box of machines, and everything you can do to all of them at once. */
@@ -918,6 +994,7 @@ export class Panel {
     const t = f.terrain[i], ore = f.patch[i];
     const owned = cx(i) >= claimMin(f.claim) && cx(i) <= claimMax(f.claim)
       && cy(i) >= claimMin(f.claim) && cy(i) <= claimMax(f.claim);
+    if (f.terrain[i] === BEACON) { this.beaconCard(host, g, true); return; }
     const nest = nestAt(f, i);
     if (nest) {
       const spec = nestSpec(nest);
@@ -1378,6 +1455,7 @@ export class Panel {
    */
   orders(host, g) {
     const f = g.f;
+    this.beaconCard(host, g, false);
     if (!g.contracts.length) {
       host.appendChild(el('div', 'blank',
         'No standing orders. The board only asks for things you are already shipping, ' +
@@ -1595,6 +1673,8 @@ export function drawMinimap(canvas, g, view) {
       if (ore >= 0) {
         if (ore === 0) { r = own ? 105 : 52; gg = own ? 113 : 56; b = own ? 137 : 68; }
         else { r = own ? 47 : 24; gg = own ? 160 : 78; b = own ? 132 : 66; }
+      } else if (f.terrain[i] === BEACON) {
+        r = 255; gg = 205; b = 117;
       } else if (f.terrain[i] === MOUNTAIN) {
         r = own ? 120 : 84; gg = own ? 104 : 72; b = own ? 88 : 60;
       } else if (f.terrain[i] === VALLEY) {
@@ -1665,7 +1745,7 @@ export function howtoHtml(f) {
 
   return `
 <h3>The idea</h3>
-<p>You own a <b>three-slot square</b> in the middle of a fifty-six-slot world, and
+<p>You own a <b>three-slot square</b> in the middle of a eighty-slot world, and
 nothing else. All nine of those slots are Slag. Put an <b>Extractor</b> on one, a
 <b>Market Depot</b> a couple of slots away, and a <b>Conveyor</b> between them, and
 that is a factory: ore out of the ground, along a belt, into money. Everything after
@@ -1836,6 +1916,22 @@ builds up a Beetle burrows out of a mountain being drilled. It is slow, armoured
 ${BEETLE.hp} hit points, ten plain shots or five charged ones from a level 1 Zapper — and it
 goes for your <b>Generators</b>, and bites through one in seconds. Put a Zapper by your
 drills, and another by your power.</p>
+
+<h3>The Launch Beacon</h3>
+<p>Somewhere in one of the four corners of the world stands the <b>Launch Beacon</b>, a
+five-by-five tower, and it is the end of the game. It has a mouth in the middle of each
+side, and each takes one thing: <b>Engines</b> from the north, <b>Turbines</b> from the
+east, <b>Reactors</b> from the south and <b>Prisms</b> from the west — ${BEACON_NEED[11]},
+${BEACON_NEED[12]}, ${BEACON_NEED[13]} and ${BEACON_NEED[7]} of them. A belt on the slot
+just outside a mouth, pointing straight in, feeds it; anything that mouth does not take
+waits on the belt. You have to own the land to build that belt, so reaching it means
+buying rings all the way out to the corner.</p>
+<p>Feeding it is loud, and every creature on the map takes notice. While it is being
+fed, most of every swarm comes for <i>it</i>; at a quarter, a half and three quarters full
+a huge assault comes from the nearest nests and the nearest mountain, all at once. And
+damage costs more than health: every ${BEACON_LOSS} points of it knocks one delivered gizmo back
+out. At zero health it takes nothing until you repair it. Fill all four and it fires —
+the world is won, and you can keep building in it for as long as you like.</p>
 
 <h3>Switching things off</h3>
 <p>Any machine can be switched off, with <b>O</b> or the button in its panel. An off

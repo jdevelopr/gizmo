@@ -30,8 +30,10 @@ import {
   skitterShare, nestSpec,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
-  CHARGED, CHARGED_MULT, shotsOf, TREMOR_COST, DIRS,
+  CHARGED, CHARGED_MULT, shotsOf, TREMOR_COST, DIRS, BEACON_SIZE, BEACON_NOISE, BEACON_DRAW,
+  BEACON_ASSAULT_SIZE, BEACON_ASSAULT_BEETLES,
 } from './machines.js';
+import { beaconHot, beaconCentre, hitBeacon, assaultDue } from './beacon.js';
 
 /* ------------------------------------------------------------------ nests --- */
 
@@ -40,11 +42,11 @@ const NEST_MIN_RING = 11;
 /** And never closer to each other than this. */
 const NEST_GAP = 6;
 /** Random nests on top of the ones guarding each Sap patch. */
-const NEST_EXTRA = 8;
+const NEST_EXTRA = 16;
 /** Mite nests guarding each Sap patch. */
 const NEST_PER_SAP = 2;
 /** Skitter nests, placed by the same rules as the random Mite nests. */
-const SKITTER_NESTS = 8;
+const SKITTER_NESTS = 16;
 
 /**
  * Where the nests are on this world. A pure function of the seed, like the ore —
@@ -65,6 +67,7 @@ export function placeNests(w) {
     const i = cellOf(x, y);
     if (w.terrain[i] !== OPEN || w.patch[i] >= 0) return false;
     if (ring(x, y) < NEST_MIN_RING) return false;
+    if (nearBeacon(w.beacon, x, y)) return false;
     return out.every(n => Math.max(Math.abs(cx(n.cell) - x), Math.abs(cy(n.cell) - y)) >= NEST_GAP);
   };
   const add = (x, y, kind = 'mite') => out.push({ cell: cellOf(x, y), hp: NESTS_HP(kind), kind });
@@ -111,6 +114,15 @@ export function addMissingNests(f) {
   }
 }
 
+/** No nest within this many slots of the Beacon: the ground round it is yours to fight over. */
+const BEACON_NEST_GAP = 9;
+function nearBeacon(b, x, y) {
+  if (!b) return false;
+  const dx = Math.max(b.x0 - x, 0, x - (b.x0 + BEACON_SIZE - 1));
+  const dy = Math.max(b.y0 - y, 0, y - (b.y0 + BEACON_SIZE - 1));
+  return Math.max(dx, dy) < BEACON_NEST_GAP;
+}
+
 /** The living nest on this slot, if there is one. */
 export const nestAt = (f, i) => (f.nests || []).find(n => n.cell === i && n.hp > 0) || null;
 
@@ -143,6 +155,8 @@ export function noiseOf(f) {
     if (m.kind === 'gen') { if (m.fuel > 0) n += v; continue; }
     if (m.kind === 'ext' || m.t > 0) n += v;
   }
+  // A Beacon being fed is the loudest thing in the world.
+  if (beaconHot(f)) n += BEACON_NOISE;
   return n;
 }
 
@@ -174,6 +188,7 @@ export function stepBugs(f, dt) {
     }
   }
 
+  if (assaultDue(f)) assault(f);
   stepTremor(f, dt);
   stepMites(f, dt);
   stepZappers(f, dt);
@@ -229,10 +244,55 @@ export function sendSwarm(f, size = null) {
   for (let k = 0; k < nMite; k++) if (spawnMite(f, cx(mNest.cell) + 0.5, cy(mNest.cell) + 0.5)) sent++;
   for (let k = 0; k < nSkit; k++) if (spawnMite(f, cx(sNest.cell) + 0.5, cy(sNest.cell) + 0.5, null, 'skitter')) sent++;
   if (!sent && !mNest && !sNest) return 0;
+  // While the Beacon is being fed, most of every swarm is for it.
+  if (beaconHot(f)) {
+    for (const mt of f.mites.slice(-sent)) if (Math.random() < BEACON_DRAW) mt.beacon = 1;
+  }
   f.waves++;
   if (nMite > 0) f.fx.push({ k: 'swarm', n: nMite, cell: mNest.cell, kind: 'mite' });
   if (nSkit > 0) f.fx.push({ k: 'swarm', n: nSkit, cell: sNest.cell, kind: 'skitter' });
   return sent;
+}
+
+/**
+ * An assault on the Beacon: a quarter, a half and three quarters of the way to
+ * full, everything the four nearest nests can send comes at it at once, and Beetles
+ * burst out of the mountain nearest it. Every one of them is after the Beacon.
+ */
+export function assault(f) {
+  const bc = beaconCentre(f);
+  if (!bc) return 0;
+  const live = f.nests.filter(n => n.hp > 0)
+    .sort((a, b) => Math.hypot(cx(a.cell) - bc[0], cy(a.cell) - bc[1]) - Math.hypot(cx(b.cell) - bc[0], cy(b.cell) - bc[1]))
+    .slice(0, 4);
+  let n = 0;
+  if (live.length) {
+    for (let k = 0; k < BEACON_ASSAULT_SIZE; k++) {
+      const nest = live[k % live.length];
+      const mt = spawnMite(f, cx(nest.cell) + 0.5, cy(nest.cell) + 0.5, null, nest.kind || 'mite');
+      if (!mt) break;
+      mt.beacon = 1;
+      n++;
+    }
+  }
+  // Beetles from the nearest mountain with rock left in it, or from the map's edge.
+  let from = null, best = Infinity;
+  for (const mtn of f.mountains || []) {
+    for (const c of mtn.cells) {
+      const d = Math.hypot(cx(c) - bc[0], cy(c) - bc[1]);
+      if (d < best) { best = d; from = c; }
+    }
+  }
+  for (let k = 0; k < BEACON_ASSAULT_BEETLES; k++) {
+    const x = from != null ? cx(from) + 0.5 : (bc[0] < WORLD / 2 ? 0.5 : WORLD - 0.5);
+    const y = from != null ? cy(from) + 0.5 : bc[1];
+    const mt = spawnMite(f, x, y, null, 'beetle');
+    if (!mt) break;
+    mt.beacon = 1;
+    n++;
+  }
+  f.fx.push({ k: 'assault', n });
+  return n;
 }
 
 /** Put one creature on the map. `hp` defaults to the kind's own. */
@@ -283,9 +343,28 @@ function pickTarget(f, mt) {
 
 function stepMites(f, dt) {
   const c = (WORLD - 1) / 2 + 0.5;
+  const bAlive = !!f.beacon && !f.beacon.done && f.beacon.hp > 0;
   for (const mt of f.mites) {
     mt.ph += dt * (mt.st === 'chew' ? 14 : 9);
     mt.rt -= dt;
+    // Sent for the Beacon: walk to the nearest point on its edge and chew it.
+    if (mt.beacon && bAlive) {
+      const b = f.beacon;
+      const tx = Math.max(b.x0 - 0.15, Math.min(b.x0 + BEACON_SIZE + 0.15, mt.x)) + mt.ox * 0.4;
+      const ty = Math.max(b.y0 - 0.15, Math.min(b.y0 + BEACON_SIZE + 0.15, mt.y)) + mt.oy * 0.4;
+      const dx = tx - mt.x, dy = ty - mt.y, d = Math.hypot(dx, dy);
+      if (d < 0.2) {
+        mt.st = 'chew';
+        hitBeacon(f, (CREATURES[mt.kind] || MITE).bite * dt);
+      } else {
+        mt.st = 'walk';
+        const step = Math.min(d, mt.sp * dt);
+        mt.x += dx / d * step; mt.y += dy / d * step;
+        mt.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+      }
+      continue;
+    }
+    if (mt.beacon) mt.beacon = 0;    // nothing left to chew there: back to the factory
     let m = mt.tgt >= 0 ? f.grid[mt.tgt] : null;
     if (!m || broken(m) || (mt.st === 'walk' && mt.rt <= 0)) {
       mt.tgt = pickTarget(f, mt);
@@ -472,6 +551,7 @@ function wildSlot(f) {
     if (x >= lo && x <= hi && y >= lo && y <= hi) continue;
     const i = cellOf(x, y);
     if (f.terrain[i] !== OPEN || f.patch[i] >= 0 || f.grid[i]) continue;
+    if (nearBeacon(f.beacon, x, y)) continue;
     if (f.nests.some(n => Math.max(Math.abs(cx(n.cell) - x), Math.abs(cy(n.cell) - y)) < NEST_GAP)) continue;
     return i;
   }

@@ -26,15 +26,15 @@
  */
 
 import {
-  WORLD, CLAIM_START, DIRS, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, MOUNTAIN_ORE,
+  WORLD, CLAIM_START, DIRS, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, MOUNTAIN_ORE, BEACON, BEACON_SIZE,
   cellOf, cx, cy, inWorld, claimMin, claimCells, rng, hashSeed,
 } from './machines.js';
 
 const SLAG = 0, SAP = 8;
 
 /** How many patches of each ore the world holds. */
-const SLAG_PATCHES = 18;
-const SAP_PATCHES = 6;
+const SLAG_PATCHES = 36;
+const SAP_PATCHES = 12;
 
 /** Richness at the middle of the map and out at the rim. */
 const RICH_MIN = 0.8;
@@ -151,6 +151,7 @@ export function generateWorld(seed = 1) {
 
   const w = { seed, terrain, patch, rich, patches, start };
   scatterFeatures(w);
+  placeBeacon(w);
   return w;
 }
 
@@ -159,8 +160,8 @@ export function generateWorld(seed = 1) {
 /** Mountains and valleys never come closer to the middle than this, in rings. */
 const MOUNTAIN_MIN_RING = 8;
 const VALLEY_MIN_RING = 9;
-const MOUNTAINS = 12;
-const VALLEYS = 7;
+const MOUNTAINS = 24;
+const VALLEYS = 14;
 
 /**
  * Mountains and valleys, the obstacles that make expanding a puzzle.
@@ -247,6 +248,44 @@ export function scatterFeatures(w) {
       x += DIRS[d][0]; y += DIRS[d][1];
     }
   }
+  return w;
+}
+
+/** Clear ground left round the Beacon on every side, for the belts that feed it. */
+export const BEACON_CLEAR = 3;
+
+/**
+ * Put the Launch Beacon in one of the four corners, chosen by the seed, a few slots
+ * in from the edge. Everything under it and for three slots round it is cleared to
+ * open ground — no ore, no rock, no mountain, no valley — so all four of its mouths
+ * can actually be reached. Drawn from its own stream of random numbers.
+ */
+export function placeBeacon(w) {
+  w.beacon = null;
+  if (!w.seed) return w;
+  const rnd = rng(hashSeed((w.seed ^ 0x6265636e) >>> 0));
+  const corner = Math.floor(rnd() * 4);
+  const inset = 4 + Math.floor(rnd() * 3);
+  const far = WORLD - BEACON_SIZE - inset;
+  const x0 = corner & 1 ? far : inset;
+  const y0 = corner & 2 ? far : inset;
+  for (let y = y0 - BEACON_CLEAR; y < y0 + BEACON_SIZE + BEACON_CLEAR; y++) {
+    for (let x = x0 - BEACON_CLEAR; x < x0 + BEACON_SIZE + BEACON_CLEAR; x++) {
+      if (!inWorld(x, y)) continue;
+      const i = cellOf(x, y);
+      const inside = x >= x0 && x < x0 + BEACON_SIZE && y >= y0 && y < y0 + BEACON_SIZE;
+      w.terrain[i] = inside ? BEACON : OPEN;
+      w.patch[i] = -1;
+      w.rich[i] = 0;
+      const id = w.mtn ? w.mtn[i] : -1;
+      if (id >= 0) {
+        w.mtn[i] = -1;
+        const mt = w.mountains[id];
+        mt.cells = mt.cells.filter(c => c !== i);
+      }
+    }
+  }
+  w.beacon = { x0, y0, corner };
   return w;
 }
 

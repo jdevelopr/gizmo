@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GIZMO 3 — the big floor</title>
-<meta name="description" content="A single-player factory builder on a 56x56 world. Extract, route, assemble, and keep the lights on.">
+<meta name="description" content="A single-player factory builder on an 80x80 world. Extract, route, assemble, and keep the lights on.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
 <div id="title" class="screen">
   <div class="title-inner">
     <h1>GIZMO <span>3</span></h1>
-    <p class="tag">Fifty-six slots a side. One player. Keep the lights on.</p>
+    <p class="tag">Eighty slots a side. One player. Light the Beacon.</p>
 
     <div class="title-buttons">
       <button id="btn-continue" class="big" hidden>CONTINUE</button>
@@ -88,7 +88,7 @@
     <div id="toasts"></div>
 
     <div id="minimap">
-      <canvas id="mini" width="56" height="56"></canvas>
+      <canvas id="mini" width="80" height="80"></canvas>
     </div>
 
     <div id="hint"></div>
@@ -128,6 +128,18 @@
   <div class="sheet-inner">
     <button id="howto-close" class="x">CLOSE</button>
     <div id="howto-body"></div>
+  </div>
+</div>
+
+<!-- --------------------------------------------------------------- win --- -->
+<div id="win" class="screen sheet" hidden>
+  <div class="sheet-inner narrow win-inner">
+    <div class="win-burst"></div>
+    <h2>THE BEACON IS LIT</h2>
+    <p class="fine">The world is won.</p>
+    <div id="win-stats" class="rows"></div>
+    <button id="win-keep" class="big">KEEP PLAYING</button>
+    <button id="win-new" class="ghost">START A NEW WORLD</button>
   </div>
 </div>
 

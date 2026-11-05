@@ -14,6 +14,7 @@ import {
   expandCost, buyCost, label, PASSIVE, zapRange,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
+import { repairBeacon, progress as beaconProgress } from './beacon.js';
 import { sfx, unlock, soundOn, setSound, volume, setVolume } from './sound.js';
 import {
   areaCells, capture, rotateBp, plan, paste, lift, drop, putBack,
@@ -27,7 +28,7 @@ import {
 } from './sim.js';
 import { reachFrom } from './power.js';
 import {
-  createGame, stepGame, saveGame, loadGame, hasSave, clearSave,
+  createGame, stepGame, saveGame, loadGame, hasSave, hasOldSave, clearSave,
   ageToasts, toast, endTutorial, SPEEDS,
 } from './game.js';
 import { Palette, Crate, Hud, Panel, Tutorial, drawMinimap, howtoHtml, health, problems } from './ui.js';
@@ -58,6 +59,13 @@ function showTitle() {
   const has = hasSave();
   $('btn-continue').hidden = !has;
   $('save-note').hidden = !has;
+  // The world grew from 56x56 to 80x80, and a save is a list of slots on the old
+  // map, so it cannot be carried over. Say so rather than silently showing nothing.
+  if (!has && hasOldSave()) {
+    $('save-note').hidden = false;
+    $('save-note').textContent = 'The world is bigger now — 80 x 80 — so your old 56 x 56 world cannot be '
+      + 'loaded. Start a new one.';
+  }
 }
 
 function boot(game) {
@@ -130,6 +138,8 @@ function wireChrome() {
   $('m-volume').oninput = e => { unlock(); setVolume(e.target.value / 100); sfx('click'); };
   for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, unlock, { passive: true });
   $('alert').onclick = () => { if (hud.target >= 0) act('focus', hud.target); };
+  $('win-keep').onclick = () => { $('win').hidden = true; resume(); };
+  $('win-new').onclick = () => { $('win').hidden = true; clearSave(); paused = false; showTitle(); };
   for (const k of SHOW_KEYS) {
     $('show-' + k).checked = show[k];
     $('show-' + k).onchange = e => { show[k] = e.target.checked; applyShow(); sfx('click'); };
@@ -289,6 +299,31 @@ function playFx(fx) {
         toast(g, `A ${TYPES[e.ty]?.name || ''} mountain is worked out and has fallen in to rubble`, '#c9a26a');
         sfx('scrap');
         break;
+      case 'beaconFeed':
+        if (f0Near(e)) sfx('sell', 1.2);
+        break;
+      case 'beaconLoss':
+        if (g.f.t - (S.lastLoss || -99) > 5) {
+          S.lastLoss = g.f.t;
+          toast(g, `The Beacon is losing progress — ${TYPES[e.ty].name} knocked out`, '#ff6f6a');
+          sfx('broke');
+        }
+        break;
+      case 'beaconDown':
+        toast(g, 'The Beacon is down — it takes nothing until it is repaired', '#ff5d4a');
+        sfx('swarm');
+        break;
+      case 'assault':
+        toast(g, `ASSAULT — ${e.n} creatures are coming for the Beacon`, '#ff3b5c');
+        sfx('swarm');
+        view.pulse('#ff3b5c');
+        view.shake(4, 0.4);
+        break;
+      case 'win':
+        sfx('contract'); sfx('tech');
+        view.pulse('#ffffff');
+        showWin();
+        break;
       case 'newNest':
         toast(g, `A new ${e.kind === 'skitter' ? 'Skitter' : 'Mite'} nest has dug in to the ${compass(e.cell)}`, e.kind === 'skitter' ? '#9dff3c' : '#ff6f9a');
         sfx('stir');
@@ -335,6 +370,36 @@ function playFx(fx) {
       }
     }
   }
+}
+
+/** Is the Beacon on screen? */
+function f0Near() {
+  const bc = g.f.beacon;
+  if (!bc) return false;
+  const b = view.bounds();
+  return bc.x0 + 5 >= b.x0 && bc.x0 <= b.x1 && bc.y0 + 5 >= b.y0 && bc.y0 <= b.y1;
+}
+
+/** The win screen: the time it took and the numbers that got you there. */
+function showWin() {
+  const f = g.f;
+  const rows = $('win-stats');
+  rows.textContent = '';
+  const add = (k, v) => {
+    const r = document.createElement('div');
+    r.className = 'row good';
+    r.innerHTML = `<span>${k}</span><b>${v}</b>`;
+    rows.appendChild(r);
+  };
+  const t = Math.round(f.t);
+  add('Time', `${Math.floor(t / 3600)}h ${Math.floor(t / 60) % 60}m`);
+  add('Lifetime earnings', money(f.earned));
+  add('Machines', num(f.cells.length));
+  add('Claim', `${f.claim} x ${f.claim}`);
+  add('Creatures zapped', num(f.zapped || 0));
+  add('Swarms survived', num(f.waves || 0));
+  $('win').hidden = false;
+  paused = true;
 }
 
 /** Which way a slot lies from the middle of the map, in words. */
@@ -650,7 +715,25 @@ function act(name, payload, extra) {
       if (n) toast(g, `${n} swept up`, '#8b96b8');
       return { ok: !!n, swept: n };
     }
+    case 'repairBeacon': {
+      const r = repairBeacon(f);
+      toast(g, r.msg, r.ok ? '#ffcd75' : '#ff8a6a');
+      panel.key = '';
+      return r;
+    }
+    case 'focusBeacon': {
+      if (!f.beacon) return;
+      const c = cellOf(f.beacon.x0 + 2, f.beacon.y0 + 2);
+      view.centreOn(c);
+      if (view.cam.zoom < 16) view.cam.zoom = 16;
+      view.ping(c, '#a8dcff');
+      S.selected = c;
+      panel.show('info');
+      sfx('click');
+      return;
+    }
     case 'repair': {
+      if (payload != null && payload >= 0 && !f.grid[payload] && f.beacon && f.terrain[payload] === 5) return act('repairBeacon');
       if (payload == null || payload < 0 || !f.grid[payload]) return;
       const r = repairMachine(f, payload);
       if (!r.ok && r.msg !== 'Not damaged') toast(g, r.msg, '#ff8a6a');

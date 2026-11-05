@@ -29,7 +29,7 @@
 
 import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
-  cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK,
+  cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
   ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
 } from './machines.js';
@@ -128,7 +128,7 @@ function makeCanvas(w, h) {
 const tiles = new Map();
 
 /** How many animation frames a kind's body has. Most have one. */
-const FRAMES = { pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab: 4, arm: 4, zap: 4 };
+const FRAMES = { pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab: 4, arm: 4, zap: 4, drill: 4 };
 
 export function frameCount(kind) { return FRAMES[kind] || 1; }
 
@@ -494,6 +494,42 @@ function drawBody(ctx, m, frame) {
       break;
     }
 
+    case 'drill': {
+      // A drill head pointing into the rock, a gearbox behind it, and a chute out
+      // of the back where what it digs comes out.
+      px(ctx, 7, 7, 18, 18, '#14141a');
+      px(ctx, 8, 8, 16, 16, shade(body, 1.25));
+      const spin = frame % 4;
+      // the bit, on the facing side
+      for (let k = 0; k < 3; k++) {
+        const w = 10 - k * 3;
+        rp(ctx, cxp, cyp, d, 8 + k * 3, -w / 2, 3, w, (k + spin) % 2 ? lit : trim);
+      }
+      px(ctx, 12, 12, 8, 8, '#05070d');
+      px(ctx, 13 + (spin % 2) * 2, 13 + (spin > 1 ? 2 : 0), 4, 4, shade(trim, 1.2));
+      // the chute out the back, with a chevron pointing out of it
+      const b = (d + 2) % 4;
+      rp(ctx, cxp, cyp, b, 9, -5, 5, 10, '#05070d');
+      chevron(ctx, cxp, cyp, b, lit, 9);
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
+      break;
+    }
+
+    case 'bridge': {
+      // Planks with rope rails, running the way it faces; a post at each corner.
+      const horiz = d === 0 || d === 2;
+      px(ctx, 3, 3, CELL - 6, CELL - 6, '#1a130a');
+      for (let k = 0; k < 6; k++) {
+        const c2 = k % 2 ? shade(body, 1.4) : shade(body, 1.15);
+        if (horiz) px(ctx, 5 + k * 4, 7, 3, 18, c2); else px(ctx, 7, 5 + k * 4, 18, 3, c2);
+      }
+      if (horiz) { px(ctx, 4, 6, CELL - 8, 1, trim); px(ctx, 4, 25, CELL - 8, 1, trim); }
+      else { px(ctx, 6, 4, 1, CELL - 8, trim); px(ctx, 25, 4, 1, CELL - 8, trim); }
+      for (const [qx, qy] of [[3, 3], [26, 3], [3, 26], [26, 26]]) px(ctx, qx, qy, 3, 3, lit);
+      chevron(ctx, cxp, cyp, d, lit, 9);
+      break;
+    }
+
     case 'zap': {
       // A coil turret: a squat base, a wound column, and an orb on top that hums.
       px(ctx, 7, 20, 18, 6, '#0e0a1c');
@@ -530,6 +566,7 @@ function drawBody(ctx, m, frame) {
  */
 function drawMite(ctx, mt, sx, sy, z) {
   if (mt.kind === 'skitter') { drawSkitter(ctx, mt, sx, sy, z); return; }
+  if (mt.kind === 'beetle') { drawBeetle(ctx, mt, sx, sy, z); return; }
   const s = z / CELL;
   if (z < 16) {
     const w = Math.max(2, Math.round(z / 6));
@@ -610,6 +647,52 @@ function drawSkitter(ctx, mt, sx, sy, z) {
   }
 }
 
+/**
+ * A Beetle: big, round and bronze, a split shell with a sheen on it, a horn out
+ * front and six slow legs. Nearly twice a Mite's size, so it reads as a threat.
+ */
+function drawBeetle(ctx, mt, sx, sy, z) {
+  const s = z / CELL;
+  if (z < 16) {
+    const w = Math.max(3, Math.round(z / 4));
+    px(ctx, sx - w / 2, sy - w / 2, w, w, '#d08a3a');
+    return;
+  }
+  const horiz = mt.face === 0 || mt.face === 2;
+  const L = 16 * s, W = 12 * s;
+  const bw = horiz ? L : W, bh = horiz ? W : L;
+  const x0 = Math.round(sx - bw / 2), y0 = Math.round(sy - bh / 2);
+  const p = Math.max(1, Math.round(s));
+  const leg = Math.floor(mt.ph * 0.6) % 2;
+  for (let k = 0; k < 3; k++) {
+    const o = (k * 5 + 2) * s + ((k + leg) % 2 ? s : 0);
+    if (horiz) {
+      px(ctx, x0 + o, y0 - 3 * s, 2 * p, 3 * s, '#2a1608');
+      px(ctx, x0 + o, y0 + bh, 2 * p, 3 * s, '#2a1608');
+    } else {
+      px(ctx, x0 - 3 * s, y0 + o, 3 * s, 2 * p, '#2a1608');
+      px(ctx, x0 + bw, y0 + o, 3 * s, 2 * p, '#2a1608');
+    }
+  }
+  px(ctx, x0, y0, bw, bh, '#2a1608');
+  px(ctx, x0 + p, y0 + p, bw - 2 * p, bh - 2 * p, '#a8612a');
+  px(ctx, x0 + 2 * p, y0 + 2 * p, bw - 4 * p, bh - 4 * p, '#c97a34');
+  // the seam down the middle of the shell, and a sheen
+  if (horiz) px(ctx, x0 + p, sy - p / 2, bw - 2 * p, p, '#5a3010');
+  else px(ctx, sx - p / 2, y0 + p, p, bh - 2 * p, '#5a3010');
+  px(ctx, x0 + 3 * s, y0 + 3 * s, 4 * s, 2 * s, '#f0c080');
+  // a horn, toward where it is going
+  const [fx, fy] = [[1, 0], [0, 1], [-1, 0], [0, -1]][mt.face | 0];
+  const hx = sx + fx * (L / 2 + 2 * s), hy = sy + fy * (L / 2 + 2 * s);
+  px(ctx, hx - 2 * s, hy - 2 * s, 4 * s, 4 * s, '#2a1608');
+  px(ctx, hx - s, hy - s, 2 * s, 2 * s, mt.st === 'chew' ? '#ffd28a' : '#e0a050');
+  if (mt.hp < mt.max) {
+    const w = 16 * s;
+    px(ctx, sx - w / 2, sy - 11 * s, w, Math.max(1, 1.5 * s), '#2a1608');
+    px(ctx, sx - w / 2, sy - 11 * s, w * Math.max(0, mt.hp / mt.max), Math.max(1, 1.5 * s), '#ffd28a');
+  }
+}
+
 /** A nest: a mound of earth with holes in it and something glowing underneath. */
 function drawNest(ctx, n, sx, sy, z, t) {
   const s = z / CELL;
@@ -681,7 +764,9 @@ function paintGround(g, f) {
       }
 
       const t = f.terrain[i];
-      if (t !== OPEN) drawRock(ctx, px0, py0, t, !own);
+      if (t === MOUNTAIN) drawMountain(ctx, px0, py0, f, i, !own);
+      else if (t === VALLEY) drawValley(ctx, px0, py0, f, x, y, !own);
+      else if (t !== OPEN) drawRock(ctx, px0, py0, t, !own);
     }
   }
 
@@ -698,6 +783,59 @@ function paintGround(g, f) {
     px(ctx, fx - 2, fy + s, 2, 6, shade(FENCE, 1.5));
     px(ctx, fx + fw, fy + s, 2, 6, shade(FENCE, 1.5));
   }
+}
+
+/**
+ * A mountain slot: grey-brown crags, a snow cap on the top edge of the massif, and
+ * a few glints of the mineral in its seam, so a mountain says what it holds from
+ * across the map. Hover it for the details.
+ */
+function drawMountain(ctx, x, y, f, i, faded) {
+  const mt = f.mountains?.[f.mtn?.[i] ?? -1];
+  const vein = TYPES[mt?.ty ?? 0] || TYPES[0];
+  const up = cy(i) > 0 ? f.terrain[i - WORLD] === MOUNTAIN : false;
+  ctx.globalAlpha = faded ? 0.7 : 1;
+  px(ctx, x, y, CELL, CELL, '#2a2622');
+  // three peaks, offset by slot so a range does not tile
+  const o = (i * 7) % 6;
+  for (const [bx, w, h, col] of [[1 + o, 16, 20, '#5a5048'], [12 - o / 2, 18, 26, '#6e6358'], [18, 13, 16, '#4e463f']]) {
+    for (let k = 0; k < h; k += 2) {
+      const ww = Math.max(2, Math.round(w * (k / h)));
+      px(ctx, x + bx + (w - ww) / 2, y + CELL - h + k, ww, 2, col);
+    }
+  }
+  px(ctx, x + 13 - o / 2, y + 7, 3, 12, shade('#6e6358', 1.25));
+  if (!up) {
+    px(ctx, x + 17 - o / 2, y + 6, 6, 2, '#e8ecf8');
+    px(ctx, x + 18 - o / 2, y + 4, 4, 2, '#ffffff');
+  }
+  if (mt && mt.left > 0) {
+    for (let k = 0; k < 3; k++) {
+      const gx = x + 5 + ((i * 13 + k * 9) % (CELL - 10)), gy = y + 14 + ((i * 5 + k * 7) % 12);
+      px(ctx, gx, gy, 3, 2, vein.color);
+      px(ctx, gx, gy, 1, 1, vein.glow);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * A valley slot: a dark chasm, with a lip of lit rock on any side that is not more
+ * valley, so a run of them reads as one continuous gorge.
+ */
+function drawValley(ctx, x, y, f, gx, gy, faded) {
+  const isV = (ax, ay) => inWorld(ax, ay) && f.terrain[cellOf(ax, ay)] === VALLEY;
+  ctx.globalAlpha = faded ? 0.75 : 1;
+  px(ctx, x, y, CELL, CELL, '#06070c');
+  px(ctx, x + 6, y + 6, CELL - 12, CELL - 12, '#020306');
+  // a little light far down, for depth
+  px(ctx, x + 12 + ((gx * 3 + gy) % 6), y + 14, 2, 2, '#1b2a44');
+  const lip = '#3b3f52', lit = '#5a6078';
+  if (!isV(gx, gy - 1)) { px(ctx, x, y, CELL, 4, lip); px(ctx, x, y, CELL, 1, lit); }
+  if (!isV(gx, gy + 1)) px(ctx, x, y + CELL - 3, CELL, 3, '#1c1f2c');
+  if (!isV(gx - 1, gy)) { px(ctx, x, y, 3, CELL, lip); px(ctx, x, y, 1, CELL, lit); }
+  if (!isV(gx + 1, gy)) px(ctx, x + CELL - 3, y, 3, CELL, '#1c1f2c');
+  ctx.globalAlpha = 1;
 }
 
 function drawRock(ctx, x, y, kind, faded) {
@@ -960,7 +1098,8 @@ export class View {
     // 3. the gizmos
     this.drawGizmos(ctx, f, b, z);
 
-    // 3b. nests, mites and the arcs that kill them
+    // 3b. bridge spans, then nests, mites and the arcs that kill them
+    this.drawSpans(ctx, f, b, z);
     this.drawBugs(ctx, f, b, z);
     if (ui.range) this.drawRange(ctx, ui.range.cell, ui.range.r, z);
 
@@ -1230,6 +1369,31 @@ export class View {
   beam(path, hot = false) {
     if (this.beams.length > 40) this.beams.shift();
     this.beams.push({ path, life: 1, hot });
+  }
+
+  /** A dashed rope between each paired Bridge, so it is obvious which pairs with which. */
+  drawSpans(ctx, f, b, z) {
+    ctx.save();
+    ctx.strokeStyle = '#c9a26a';
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = Math.max(1, z / 16);
+    ctx.setLineDash([Math.max(2, z / 8), Math.max(2, z / 10)]);
+    for (const i of f.cells) {
+      const m = f.grid[i];
+      if (m?.kind !== 'bridge' || m.bin !== 1 || !(m.pair >= 0)) continue;
+      const x = cx(i), y = cy(i);
+      if (x < b.x0 - 6 || x > b.x1 + 6 || y < b.y0 - 6 || y > b.y1 + 6) continue;
+      const [ax, ay] = this.toScreen(x + 0.5, y + 0.5);
+      const [bx, by] = this.toScreen(cx(m.pair) + 0.5, cy(m.pair) + 0.5);
+      const nx = -(by - ay), ny = bx - ax, len = Math.hypot(nx, ny) || 1;
+      for (const side of [-0.28, 0.28]) {
+        ctx.beginPath();
+        ctx.moveTo(ax + nx / len * z * side, ay + ny / len * z * side);
+        ctx.lineTo(bx + nx / len * z * side, by + ny / len * z * side);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   drawBugs(ctx, f, b, z) {

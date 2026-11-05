@@ -372,6 +372,8 @@ export class Input {
         break;
       case 'o': this.act('off', this.target()); break;
       case 'z': this.act('tool', { kind: 'zap' }); break;
+      case 'g': this.act('tool', { kind: 'drill' }); break;
+      case 'n': this.act('tool', { kind: 'bridge' }); break;
       case 't': this.act('toggleHelp'); break;
       case 'b': this.act('tool', { kind: 'arm' }); break;
       case 'h':

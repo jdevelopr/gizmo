@@ -22,10 +22,12 @@ import {
   CHARGED_MULT, shotsOf,
   repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
   SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, nestAnger, nestBrood, NEST_BROOD, nestSpec,
+  MOUNTAIN, VALLEY, BEETLE, TREMOR_COST, BRIDGE_SPAN, DRILL_BASE, DRILL_PER_TIER,
   NESTS, MITE, SKITTER, SKITTER_FROM,
   NEST_BROOD_MAX, NEST_ANGER, NEST_ANGER_MIN,
 } from './machines.js';
 import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
+import { mountainAt, mountainAhead } from './sim.js';
 import { upgradeQuote, scrapQuote, repairQuote } from './blueprint.js';
 import { HIST_STEP } from './game.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
@@ -57,6 +59,7 @@ const GROUPS = [
   { name: 'PROCESSING', kinds: ['mut', 'fuse', 'asm'] },
   { name: 'MULTIPLYING', kinds: ['dup', 'trident'] },
   { name: 'DEFENCE', kinds: ['arm', 'zap'] },
+  { name: 'TERRAIN', kinds: ['drill', 'bridge'] },
 ];
 
 /** Which number key holds which kind. Ten slots, ten of the game's twelve machines. */
@@ -67,6 +70,8 @@ export const HOTKEYS = {
 };
 const KEY_OF = {};
 for (const [k, v] of Object.entries(HOTKEYS)) KEY_OF[v.kind] = k;
+// The letter keys, shown on the build bar like the numbers.
+Object.assign(KEY_OF, { arm: 'B', zap: 'Z', drill: 'G', bridge: 'N' });
 
 /** A 28-pixel picture of a machine, for a palette row or a panel heading. */
 export function icon(spec, size = 28) {
@@ -934,6 +939,7 @@ export class Panel {
       return;
     }
     host.appendChild(el('h3', null,
+      t === MOUNTAIN ? 'MOUNTAIN' : t === VALLEY ? 'VALLEY' :
       t === BEDROCK ? 'BEDROCK' : t === RUBBLE ? 'RUBBLE' :
         ore >= 0 ? `${(ORE_NAME[ore] || 'ORE').toUpperCase()} PATCH` : 'EMPTY GROUND'));
     host.appendChild(el('div', 'sub', `${cx(i)}, ${cy(i)}${owned ? '' : '  ·  outside your claim'}`));
@@ -947,6 +953,21 @@ export class Panel {
       addRow(rows, 'An Extractor here', `${(1 / cycleTime(spec, f.done)).toFixed(2)}/s at full power`);
     }
     if (t === BEDROCK) addRow(rows, 'Clearable', 'Never — route around it', 'bad');
+    if (t === MOUNTAIN) {
+      const mt = mountainAt(f, i);
+      if (mt) {
+        const tier = TYPES[mt.ty]?.tier || 0;
+        addRow(rows, 'Seam', TYPES[mt.ty].name, 'good');
+        addRow(rows, 'Left in it', `${num(mt.left)} of ${num(mt.amount)}`, mt.left < mt.amount * 0.2 ? 'warn' : '');
+        addRow(rows, 'A Drill digs', `one every ${(DRILL_BASE * (1 + DRILL_PER_TIER * tier)).toFixed(1)}s at full power`);
+      }
+      addRow(rows, 'Build on it', 'never — go round, or drill it from beside', 'bad');
+      addRow(rows, 'Drilling', 'wakes Beetles, who go for your Generators', 'warn');
+    }
+    if (t === VALLEY) {
+      addRow(rows, 'Build in it', 'never', 'bad');
+      addRow(rows, 'Cross it', `a pair of Bridges, up to ${BRIDGE_SPAN - 1} slots apart`, 'good');
+    }
     if (t === RUBBLE) addRow(rows, 'Clear it for', money(RUBBLE_COST));
     if (!owned) addRow(rows, 'To build here', 'buy the rings out to it');
     if (rows.children.length) host.appendChild(rows);
@@ -1171,6 +1192,24 @@ export class Panel {
       return rows;
     }
 
+    if (m.kind === 'drill') {
+      const mt = mountainAhead(f, cell);
+      if (mt) {
+        addRow(rows, 'Digging', `${TYPES[mt.ty].name} out of the mountain ${DIR_NAME[m.dir].toLowerCase()}`, 'good');
+        addRow(rows, 'Left in it', `${num(mt.left)} of ${num(mt.amount)}`, mt.left < mt.amount * 0.2 ? 'warn' : '');
+      } else {
+        addRow(rows, 'Digging', `nothing — no mountain with ore ${DIR_NAME[m.dir].toLowerCase()} of it`, 'bad');
+        addRow(rows, 'Fix', 'turn it (R) to face a mountain, or move it', 'bad');
+      }
+      addRow(rows, 'Unloads', `out of its back, ${DIR_NAME[(m.dir + 2) % 4].toLowerCase()}`);
+    }
+    if (m.kind === 'bridge') {
+      addRow(rows, 'Paired', m.pair >= 0
+        ? `${m.bin === 1 ? 'entry — sends to' : 'exit — takes from'} ${cx(m.pair)}, ${cy(m.pair)}`
+        : `no — put another Bridge facing ${DIR_NAME[m.dir]} up to ${BRIDGE_SPAN - 1} slots ahead`,
+        m.pair >= 0 ? 'good' : 'warn');
+      if (m.pair >= 0) addRow(rows, 'Carries', 'gizmos and power across the gap');
+    }
     if (m.kind === 'ext') {
       addRow(rows, 'Standing on', `${ORE_NAME[m.mut] || 'ore'}  ·  ${TYPES[m.mut]?.name}`);
       addRow(rows, 'Patch richness', `${(m.rich || 1).toFixed(2)}x`,
@@ -1257,6 +1296,15 @@ export class Panel {
     } else if (spec.kind === 'depot' || spec.kind === 'lab') {
       addRow(rows, 'Needs power', 'no');
       addRow(rows, 'Throughput', 'unlimited');
+    } else if (spec.kind === 'drill') {
+      addRow(rows, 'Must stand', 'beside a mountain, facing it');
+      addRow(rows, 'Digs', 'the mountain\'s seam — Scrap to Cobalt');
+      addRow(rows, 'Cycle', `${DRILL_BASE}s for Scrap, slower for richer seams`);
+      addRow(rows, 'Draws', `${KINDS.drill.draw} kW`);
+      addRow(rows, 'Beware', 'drilling wakes Beetles', 'warn');
+    } else if (spec.kind === 'bridge') {
+      addRow(rows, 'Pairs with', `a Bridge facing the same way, up to ${BRIDGE_SPAN - 1} slots ahead`);
+      addRow(rows, 'Carries', 'gizmos and power over anything');
     } else if (spec.kind === 'zap') {
       addRow(rows, 'Eats', `Ammo — ${AMMO_CHARGES} shots each`);
       addRow(rows, 'Reach', `${zapRange({ level: 1 }, f.done)} slots`);
@@ -1416,6 +1464,10 @@ export class Panel {
     const skAlive = (f.mites || []).filter(m => m.kind === 'skitter').length;
     addRow(bug, 'Mites alive', num((f.mites?.length || 0) - skAlive), f.mites?.length ? 'warn' : 'good');
     addRow(bug, 'Skitters alive', num(skAlive), skAlive ? 'warn' : 'good');
+    const btAlive = (f.mites || []).filter(m => m.kind === 'beetle').length;
+    addRow(bug, 'Beetles alive', num(btAlive), btAlive ? 'warn' : 'good');
+    addRow(bug, 'Next Beetle', f.cells.some(i => f.grid[i]?.kind === 'drill')
+      ? `${Math.round((f.tremor || 0) / TREMOR_COST * 100)}% of the way` : 'not while nothing is drilling');
     addRow(bug, 'Mite nests', num((f.nests || []).filter(n => n.kind !== 'skitter').length));
     addRow(bug, 'Skitter nests', num((f.nests || []).filter(n => n.kind === 'skitter').length));
     addRow(bug, 'Nest limit', `${num(f.nests?.length || 0)} of ${num(f.nestCap || 0)}`);
@@ -1543,6 +1595,10 @@ export function drawMinimap(canvas, g, view) {
       if (ore >= 0) {
         if (ore === 0) { r = own ? 105 : 52; gg = own ? 113 : 56; b = own ? 137 : 68; }
         else { r = own ? 47 : 24; gg = own ? 160 : 78; b = own ? 132 : 66; }
+      } else if (f.terrain[i] === MOUNTAIN) {
+        r = own ? 120 : 84; gg = own ? 104 : 72; b = own ? 88 : 60;
+      } else if (f.terrain[i] === VALLEY) {
+        r = 4; gg = 5; b = 10;
       } else if (f.terrain[i] !== OPEN) {
         const s = f.terrain[i] === BEDROCK ? 1 : 0;
         r = own ? (s ? 62 : 96) : (s ? 34 : 52);
@@ -1557,6 +1613,8 @@ export function drawMinimap(canvas, g, view) {
         else if (m.kind === 'lab') { r = 184; gg = 188; b = 255; }
         else if (m.kind === 'ext') { r = 224; gg = 138; b = 60; }
         else if (m.kind === 'zap') { r = 143; gg = 108; b = 255; }
+        else if (m.kind === 'drill') { r = 210; gg = 214; b = 230; }
+        else if (m.kind === 'bridge') { r = 201; gg = 162; b = 106; }
         else if (broken(m)) { r = 120; gg = 20; b = 40; }
         else if (m.net < 0 && KINDS[m.kind].draw > 0) { r = 70; gg = 82; b = 128; }
         else { r = 150; gg = 168; b = 206; }
@@ -1571,7 +1629,9 @@ export function drawMinimap(canvas, g, view) {
   for (const mt of f.mites || []) {
     const x = Math.floor(mt.x), y = Math.floor(mt.y);
     if (x < 0 || y < 0 || x >= WORLD || y >= WORLD) continue;
-    if (mt.kind === 'skitter') put(cellOf(x, y), 190, 255, 90); else put(cellOf(x, y), 255, 79, 122);
+    if (mt.kind === 'skitter') put(cellOf(x, y), 190, 255, 90);
+    else if (mt.kind === 'beetle') put(cellOf(x, y), 255, 170, 60);
+    else put(cellOf(x, y), 255, 79, 122);
   }
   ctx.putImageData(img, 0, 0);
 
@@ -1757,6 +1817,26 @@ everything queued in it and in its hands, for when it was fed the wrong things.
 Belt the Ammo to your Zappers like anything else; a Balancer will share one Armory
 between two of them.</p>
 
+<h3>Mountains, valleys and Beetles</h3>
+<p><b>Mountains</b> are clumps of rock you cannot build on or run a belt through.
+Each one has a seam of one mineral in it — Scrap near the middle of the map, up to
+Cobalt out at the rim — and a <b>Mountain Drill</b> (<b>G</b>) set beside it and facing
+it digs that mineral out and pushes it out of its back. Richer seams dig slower, but
+they come out of the rock already climbed: a Cobalt seam is four Mutator tiers you did
+not have to build. A mountain holds a set amount; worked out, it falls in to rubble you
+can clear and build on. Hover a mountain to see what is in it and how much is left.</p>
+<p><b>Valleys</b> are long, thin chasms. Nothing can stand in them; cross with a pair of
+<b>Bridges</b> (<b>N</b>). Two Bridges facing the same way, up to ${BRIDGE_SPAN - 1} slots
+apart, pair up and carry gizmos — and power — straight over whatever is between them. A
+Bridge set down on the edge of a valley faces across it, and one set down in line with
+an unpaired Bridge turns to match it. A dashed rope shows which pairs with which.</p>
+<p><b>Beetles</b> are the third creature. They do not live in nests: they live in the
+mountains, and drilling wakes them. Every Drill at work adds to a tremor, and when it
+builds up a Beetle burrows out of a mountain being drilled. It is slow, armoured —
+${BEETLE.hp} hit points, ten plain shots or five charged ones from a level 1 Zapper — and it
+goes for your <b>Generators</b>, and bites through one in seconds. Put a Zapper by your
+drills, and another by your power.</p>
+
 <h3>Switching things off</h3>
 <p>Any machine can be switched off, with <b>O</b> or the button in its panel. An off
 machine does nothing, draws no power, and turns everything away — so the line behind
@@ -1811,6 +1891,7 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <tr><td>M</td><td class="k">Pick a machine up and move it, for free</td></tr>
 <tr><td>O</td><td class="k">Switch a machine off, or back on</td></tr>
 <tr><td>Z / B</td><td class="k">Pick up a Zapper / an Armory to build</td></tr>
+<tr><td>G / N</td><td class="k">Pick up a Mountain Drill / a Bridge to build</td></tr>
 <tr><td>Shift drag</td><td class="k">Select every machine in a box</td></tr>
 <tr><td>Ctrl C / Ctrl V</td><td class="k">Copy the selection as a blueprint / pick the last blueprint up again. Click stamps it; R turns it</td></tr>
 <tr><td>M · U · O · H · X</td><td class="k">With a box selected: move it, upgrade it, switch it off, repair it, scrap it</td></tr>

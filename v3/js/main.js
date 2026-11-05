@@ -261,9 +261,10 @@ function playFx(fx) {
       case 'kill':
         if (seen(e.x, e.y)) {
           sfx('kill');
-          const sk = e.kind === 'skitter';
-          view.burst(e.x, e.y, sk ? '#9dff3c' : '#ff6f9a', sk ? 8 : 10, 3, 0.5, 3);
-          view.burst(e.x, e.y, sk ? '#e8ffb0' : '#ffd0e0', 4, 1.5, 0.35, 2);
+          const col = { skitter: ['#9dff3c', '#e8ffb0'], beetle: ['#c97a34', '#ffd28a'] }[e.kind] || ['#ff6f9a', '#ffd0e0'];
+          view.burst(e.x, e.y, col[0], e.kind === 'beetle' ? 18 : 10, 3, 0.5, 3);
+          view.burst(e.x, e.y, col[1], 4, 1.5, 0.35, 2);
+          if (e.kind === 'beetle') view.shake(2.5, 0.2);
         }
         break;
       case 'broke':
@@ -279,6 +280,15 @@ function playFx(fx) {
       case 'rot': sfx('rot'); break;
       case 'move': sfx('move'); break;
       case 'swarm': sfx('swarm'); view.pulse('#ff3b5c'); break;
+      case 'beetle':
+        sfx('broke');
+        toast(g, `A Beetle has burrowed out of a mountain to the ${compass(e.cell)} — it is after your Generators`, '#ffb060');
+        if (near(e.cell)) { view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#6e6358', 14, 2.5, 0.7, 4); view.shake(3, 0.3); }
+        break;
+      case 'mined':
+        toast(g, `A ${TYPES[e.ty]?.name || ''} mountain is worked out and has fallen in to rubble`, '#c9a26a');
+        sfx('scrap');
+        break;
       case 'newNest':
         toast(g, `A new ${e.kind === 'skitter' ? 'Skitter' : 'Mite'} nest has dug in to the ${compass(e.cell)}`, e.kind === 'skitter' ? '#9dff3c' : '#ff6f9a');
         sfx('stir');
@@ -443,7 +453,7 @@ function updateHint() {
   } else if (S.selected >= 0 && g.f.grid[S.selected]) {
     txt = '<b>R</b> turn  <b>M</b> move  <b>X</b> scrap  <b>H</b> repair  <b>Q</b> copy to hand  ·  drag to pan  ·  <b>V</b> power  <b>?</b> controls';
   } else {
-    txt = '<b>drag</b> to move the map  ·  <b>Shift drag</b> select  ·  <b>1</b>–<b>0</b> build  <b>Z</b> zapper  <b>B</b> armory  ·  <b>Tab</b> next problem  <b>?</b> controls';
+    txt = '<b>drag</b> to move the map  ·  <b>Shift drag</b> select  ·  <b>1</b>–<b>0</b> build  <b>Z</b> zapper  <b>B</b> armory  <b>G</b> drill  <b>N</b> bridge  ·  <b>Tab</b> next problem  <b>?</b> controls';
   }
   if (n.dataset.txt !== txt) { n.dataset.txt = txt; n.innerHTML = txt; }
 }

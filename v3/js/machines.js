@@ -309,6 +309,24 @@ export const KINDS = {
     price: 150, cycle: 1.0, cap: 2, hold: 8, travel: 0.52, draw: 8,
     body: '#4a4416', trim: '#c9c23f', lit: '#fbffb8',
   },
+  drill: {
+    name: 'Mountain Drill', short: 'DRILL',
+    // Like an Extractor it takes nothing in. It faces a mountain and digs that
+    // mountain's seam out, and pushes what it digs out of its *back*.
+    desc: 'Set it beside a mountain, facing it, and it digs out the mineral in that '
+      + 'mountain — up to Cobalt, straight out of the rock, no Mutator needed — and pushes '
+      + 'it out of its back. Slow, and a mountain runs out. Drilling wakes Beetles.',
+    price: 260, cycle: 2.0, cap: 0, hold: 2, travel: 0.4, draw: 10,
+    body: '#3a3a44', trim: '#9aa0b8', lit: '#e0e4f0',
+  },
+  bridge: {
+    name: 'Bridge', short: 'BRIDGE',
+    desc: 'Comes in pairs. Two Bridges facing the same way, up to four slots apart, carry '
+      + 'gizmos and power straight over whatever is between them — a valley, rock, another '
+      + 'belt. A Bridge on its own is just a belt.',
+    price: 80, cycle: 0.3, cap: 1, hold: 1, travel: 0.3, draw: 1,
+    body: '#4a3a24', trim: '#c9a26a', lit: '#ffe0a8',
+  },
   zap: {
     name: 'Zapper', short: 'ZAPPER',
     // Passive: it has a mouth and never a job. bugs.js loads it and fires it.
@@ -359,7 +377,7 @@ export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort']);
  */
 
 /** Noise each kind makes while it is working (and not switched off or broken). */
-export const NOISE = { ext: 1, gen: 1.4, asm: 0.6, fuse: 0.4, mut: 0.3, dup: 0.5, trident: 0.5, arm: 0.4 };
+export const NOISE = { ext: 1, gen: 1.4, asm: 0.6, fuse: 0.4, mut: 0.3, dup: 0.5, trident: 0.5, arm: 0.4, drill: 1.2 };
 
 /** Noise-seconds that fill the gauge and send one swarm. */
 export const SWARM_COST = 1100;
@@ -383,7 +401,19 @@ export const MITE = { hp: 12, speed: 0.8, bite: 1.5, hpPerWave: 0, hpMax: 12 };
 export const SKITTER = { hp: 1, speed: 1.8, bite: 4 };
 
 /** The two kinds of creature, by the name stored on each one. */
-export const CREATURES = { mite: MITE, skitter: SKITTER };
+/**
+ * Beetles: the third creature, and the slow one. A bronze shell that takes ten plain
+ * shots or five charged ones from a level 1 Zapper, a crawl at less than half a
+ * Mite's pace, and a bite that goes through a Generator in seconds. They do not
+ * come from nests. They burrow out of mountains — and what wakes them is drilling.
+ * Every Mountain Drill at work adds to a tremor, and when it builds up, a Beetle
+ * digs its way out of a mountain being drilled and makes for your power.
+ */
+export const BEETLE = { hp: 60, speed: 0.35, bite: 6 };
+/** Drill-seconds of tremor that wake one Beetle. */
+export const TREMOR_COST = 200;
+
+export const CREATURES = { mite: MITE, skitter: SKITTER, beetle: BEETLE };
 
 /** From which swarm (counting from 0) Skitters start joining in, and how many. */
 export const SKITTER_FROM = 4;
@@ -443,7 +473,7 @@ export const NEST_POP_MAX = 240;
 /** Hit points, by kind. Belts are flimsy on purpose: they are what mites eat first. */
 export const MAX_HP = {
   pipe: 12, store: 20, bal: 15, sort: 15, ext: 30, gen: 40, depot: 50, lab: 40,
-  dup: 30, trident: 30, mut: 30, asm: 35, fuse: 30, arm: 30, zap: 45,
+  dup: 30, trident: 30, mut: 30, asm: 35, fuse: 30, arm: 30, zap: 45, drill: 40, bridge: 25,
 };
 
 /** What Plating research multiplies every machine's hit points by. */
@@ -610,6 +640,7 @@ export function label(spec) {
   if (spec.kind === 'asm') return `${TYPES[recipeOf(spec).out].name} Assembler`;
   if (spec.kind === 'ext') return 'Extractor';
   if (spec.kind === 'arm') return 'Armory';
+  if (spec.kind === 'drill') return 'Mountain Drill';
   const t = TYPED[spec.kind];
   return t ? `${TYPES[spec.mut ?? 1].name} ${t}` : KINDS[spec.kind].name;
 }
@@ -701,6 +732,7 @@ export function cycleTime(m, done = []) {
   if (m.kind === 'mut') base = MUT_CYCLE[m.mut ?? 1];
   else if (m.kind === 'asm') base = recipeOf(m).cycle;
   else if (m.kind === 'arm') base = ARMORY.cycle;
+  else if (m.kind === 'drill') base = DRILL_BASE * (1 + DRILL_PER_TIER * (TYPES[m.mut]?.tier || 0));
   else if (m.kind === 'ext') base = KINDS.ext.cycle / Math.max(0.2, m.rich || 1) / yieldBonus(done);
   else base = KINDS[m.kind].cycle;
   // Storage levels buy capacity and a copier's levels buy exits. Neither buys speed.
@@ -806,10 +838,16 @@ export function outputs(m, inputs) {
   switch (m.kind) {
     case 'pipe':
     case 'store':
+    case 'bridge':
       return [{ ty: a, dir: d, cp: copy }];
 
     // An Extractor takes nothing in and makes one of whatever it is standing on.
     // `mut` is the ore type, written when it is placed.
+    // A Mountain Drill faces the rock and unloads out of its back. `mut` is the
+    // mineral in the mountain it faces, written when it starts each job.
+    case 'drill':
+      return [{ ty: m.mut >= 0 && m.mut <= 4 ? m.mut : 0, dir: (d + 2) % 4, cp: 0 }];
+
     case 'ext':
       // `mut` is the ore under it. A negative one would mean standing on bare
       // ground, which nothing should allow — but a gizmo with no type would take
@@ -886,7 +924,7 @@ export function outputs(m, inputs) {
  */
 export function acceptsFrom(m, side) {
   if (!m) return false;
-  if (m.kind === 'ext') return false;             // an Extractor has no mouth at all
+  if (m.kind === 'ext' || m.kind === 'drill') return false;   // no mouth at all
   if (m.kind === 'depot' || m.kind === 'lab') return side === (m.dir | 0);
   return true;
 }
@@ -902,7 +940,7 @@ export function wants(m, ty, side = null) {
   // A machine the mites have chewed through takes nothing until it is repaired.
   if (broken(m)) return false;
   if (side != null && !acceptsFrom(m, side)) return false;
-  if (m.kind === 'ext') return false;
+  if (m.kind === 'ext' || m.kind === 'drill') return false;
   if (m.kind === 'depot' || m.kind === 'lab' || m.kind === 'gen') return true;
   if (m.kind === 'zap') return isAmmo(ty);
   // An Armory has no per-ingredient limit: it takes Scrap and Copper for as long as
@@ -936,7 +974,7 @@ export function wants(m, ty, side = null) {
 export function canEverAccept(m, ty, side = null) {
   if (!m) return true;
   if (side != null && !acceptsFrom(m, side)) return false;
-  if (m.kind === 'ext') return false;
+  if (m.kind === 'ext' || m.kind === 'drill') return false;
   if (m.kind === 'zap') return isAmmo(ty);
   if (m.kind === 'asm' || m.kind === 'arm') return twoInput(m).ins.includes(ty);
   if (m.kind === 'fuse') return fusable(ty);
@@ -1036,6 +1074,8 @@ export function exitDirs(m) {
   switch (m.kind) {
     case 'depot': case 'lab': case 'gen': case 'zap':
       return [];
+    case 'drill':
+      return [(d + 2) % 4];
     case 'bal':
       return balDirs(m);
     case 'sort':
@@ -1096,7 +1136,21 @@ export function claimCells(claim) {
 }
 
 /** Terrain codes. */
-export const OPEN = 0, RUBBLE = 1, BEDROCK = 2;
+export const OPEN = 0, RUBBLE = 1, BEDROCK = 2, MOUNTAIN = 3, VALLEY = 4;
+
+/** What a mountain's seam can be: Scrap at the middle of the map up to Cobalt at the rim. */
+export const MOUNTAIN_ORE = [0, 1, 2, 3, 4];
+
+/**
+ * A Mountain Drill's cycle, by what it is digging. Richer seams are harder rock, so
+ * a Cobalt seam comes out much more slowly than a Scrap one — but it comes out as
+ * Cobalt, which is four Mutator tiers you did not have to build.
+ */
+export const DRILL_BASE = 2.0;
+export const DRILL_PER_TIER = 0.6;
+
+/** How far apart two Bridges can be and still pair: up to four slots between them. */
+export const BRIDGE_SPAN = 5;
 
 /* --------------------------------------------------------------- research --- */
 
@@ -1162,7 +1216,7 @@ export const techOpen = (t, done) => (t.needs || []).every(n => done.includes(n)
 
 /** Everything a set of finished research makes buildable. */
 export function unlockedBy(done = []) {
-  const out = new Set(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse', 'arm', 'zap']);
+  const out = new Set(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse', 'arm', 'zap', 'drill', 'bridge']);
   for (const id of done) for (const u of techById(id)?.unlocks || []) out.add(u);
   return out;
 }
@@ -1213,6 +1267,8 @@ export function catalogue(done = [], counts = {}) {
   if (on.has('trident')) add({ kind: 'trident' });
   add({ kind: 'arm' });
   add({ kind: 'zap' });
+  add({ kind: 'drill' });
+  add({ kind: 'bridge' });
   return out;
 }
 

@@ -30,7 +30,7 @@ import {
   skitterShare, nestSpec,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
-  CHARGED, CHARGED_MULT, shotsOf,
+  CHARGED, CHARGED_MULT, shotsOf, TREMOR_COST, DIRS,
 } from './machines.js';
 
 /* ------------------------------------------------------------------ nests --- */
@@ -124,6 +124,7 @@ export function initBugs(f) {
   f.zapped = 0;         // mites killed, lifetime
   f.chewed = 0;         // machines broken, lifetime
   f.nextNest = -1;      // factory time at which the next new nest digs in, -1 = not due
+  f.tremor = 0;         // drill-seconds banked toward the next Beetle
   setNestLimit(f);
   f.stirred = 0;        // the "they are stirring" warning has gone out for this swarm
   f.mid = 1;
@@ -173,8 +174,33 @@ export function stepBugs(f, dt) {
     }
   }
 
+  stepTremor(f, dt);
   stepMites(f, dt);
   stepZappers(f, dt);
+}
+
+/**
+ * Drilling wakes Beetles. Every Mountain Drill hard at work adds to a tremor, and
+ * once it has built up a Beetle burrows out of a mountain being drilled — so the
+ * more you drill, the more often, and always right where your drills are.
+ */
+function stepTremor(f, dt) {
+  const active = [];
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (m?.kind === 'drill' && !m.off && !broken(m) && m.t > 0) active.push(i);
+  }
+  if (!active.length || f.t < SWARM_GRACE) return;
+  f.tremor = (f.tremor || 0) + active.length * dt;
+  if (f.tremor < TREMOR_COST) return;
+  f.tremor -= TREMOR_COST;
+  const at = active[Math.floor(Math.random() * active.length)];
+  const d = f.grid[at].dir | 0;
+  const face = cellOf(cx(at) + DIRS[d][0], cy(at) + DIRS[d][1]);
+  const id = f.mtn?.[face] ?? -1;
+  const cells = id >= 0 ? f.mountains[id].cells : [face];
+  const c = cells[Math.floor(Math.random() * cells.length)];
+  if (spawnMite(f, cx(c) + 0.5, cy(c) + 0.5, null, 'beetle')) f.fx.push({ k: 'beetle', cell: c });
 }
 
 /** One of the three nests of this kind nearest the middle, at random. */
@@ -240,11 +266,14 @@ export function spawnMite(f, x, y, hp = null, kind = 'mite') {
 function pickTarget(f, mt) {
   let best = -1, score = Infinity;
   const beltsOnly = mt.kind === 'skitter';
+  // A Beetle wants your power: Generators first, anything at all if there are none.
+  const gensOnly = mt.kind === 'beetle' && f.cells.some(i => f.grid[i]?.kind === 'gen' && !broken(f.grid[i]));
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m || broken(m)) continue;
     // A Skitter eats conveyors and nothing else.
     if (beltsOnly && m.kind !== 'pipe' && m.kind !== 'store') continue;
+    if (gensOnly && m.kind !== 'gen') continue;
     const d = Math.hypot(cx(i) + 0.5 - mt.x, cy(i) + 0.5 - mt.y);
     const s = PLUMBING.has(m.kind) ? d * 0.7 : d;
     if (s < score) { score = s; best = i; }

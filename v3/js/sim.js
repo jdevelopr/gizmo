@@ -38,7 +38,7 @@ import {
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
-  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE,
+  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { initBugs, stepBugs, nestAt } from './bugs.js';
@@ -91,6 +91,9 @@ export function createFactory({ cash = 400, seed = 1, world = null } = {}) {
     mapRev: 0,          // bumped whenever the ground itself changes, so the
                         // renderer knows to repaint its one big floor canvas
   };
+  // Mountains: which slot belongs to which, and how much each has left in it.
+  f.mtn = Int16Array.from(w.mtn || new Int16Array(n).fill(-1));
+  f.mountains = (w.mountains || []).map(m => ({ id: m.id, cells: m.cells.slice(), ty: m.ty, amount: m.amount, left: m.amount }));
   initBugs(f);
   return f;
 }
@@ -128,8 +131,92 @@ export function rebuild(f) {
   const cells = [];
   for (let i = 0; i < f.grid.length; i++) if (f.grid[i]) cells.push(i);
   f.cells = cells;
+  pairBridges(f);
   solveTopology(f);
   relink(f);
+}
+
+/* ---------------------------------------------------------------- bridges --- */
+
+/**
+ * Pair up Bridges. Along any line of Bridges facing the same way, each one within
+ * BRIDGE_SPAN of the last, they pair off in order — first with second, third with
+ * fourth — exactly like an underground belt. An entry sends what it is given to its
+ * exit; an exit sends it on ahead; a Bridge with no partner is just a belt.
+ *
+ * `pair` is the partner's slot, `bin` says which end this is: 1 entry, 2 exit.
+ */
+export function pairBridges(f) {
+  const bridges = [];
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (m?.kind === 'bridge') { m.pair = -1; m.bin = 0; bridges.push(i); }
+  }
+  const ahead = i => {
+    const m = f.grid[i], d = m.dir | 0;
+    for (let k = 1; k <= BRIDGE_SPAN; k++) {
+      const x = cx(i) + DIRS[d][0] * k, y = cy(i) + DIRS[d][1] * k;
+      if (!inWorld(x, y)) return -1;
+      const n = f.grid[cellOf(x, y)];
+      if (n?.kind === 'bridge' && (n.dir | 0) === d) return cellOf(x, y);
+    }
+    return -1;
+  };
+  const behind = new Set();
+  for (const i of bridges) { const a = ahead(i); if (a >= 0) behind.add(a); }
+  for (const i of bridges) {
+    if (behind.has(i)) continue;          // not the start of a line
+    let at = i, entry = true;
+    for (let guard = 0; guard < 64; guard++) {
+      const nx = ahead(at);
+      if (nx < 0) break;
+      if (entry) {
+        f.grid[at].pair = nx; f.grid[at].bin = 1;
+        f.grid[nx].pair = at; f.grid[nx].bin = 2;
+      }
+      entry = !entry;
+      at = nx;
+    }
+  }
+}
+
+/** Where a machine's output in direction `d` lands: the next slot, or a Bridge's partner. */
+function landingOf(f, i, m, d) {
+  if (m.kind === 'bridge' && m.bin === 1 && m.pair >= 0 && d === (m.dir | 0)) return m.pair;
+  const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
+  return openAt(f, nx, ny) ? cellOf(nx, ny) : -1;
+}
+
+/* --------------------------------------------------------------- mountains --- */
+
+/** The mountain a Drill at `i` is facing, if it has anything left in it. */
+export function mountainAhead(f, i) {
+  const m = f.grid[i];
+  if (!m) return null;
+  const d = m.dir | 0;
+  const x = cx(i) + DIRS[d][0], y = cy(i) + DIRS[d][1];
+  if (!inWorld(x, y)) return null;
+  const id = f.mtn?.[cellOf(x, y)] ?? -1;
+  if (id < 0) return null;
+  const mt = f.mountains[id];
+  return mt && mt.left > 0 ? mt : null;
+}
+
+/** The mountain whose rock is on this slot, worked out or not. */
+export const mountainAt = (f, i) => {
+  const id = f.mtn?.[i] ?? -1;
+  return id >= 0 ? f.mountains[id] || null : null;
+};
+
+/**
+ * A mountain worked out to nothing falls in: its slots become rubble, which can be
+ * cleared and built on like any other.
+ */
+function exhaust(f, mt) {
+  mt.left = 0;
+  for (const c of mt.cells) { f.terrain[c] = RUBBLE; f.mtn[c] = -1; }
+  f.mapRev++;
+  f.fx.push({ k: 'mined', cell: mt.cells[0], ty: mt.ty });
 }
 
 /**
@@ -362,6 +449,14 @@ function runPassive(f, m, i) {
 }
 
 function startJob(f, m, i) {
+  // A Drill digs whatever is in the mountain it faces, and stops when there is none.
+  if (m.kind === 'drill') {
+    const mt = mountainAhead(f, i);
+    if (!mt) { m.t = 0; m.out = null; m.waiting = 1; return; }
+    m.mut = mt.ty;
+    mt.left--;
+    if (mt.left <= 0) exhaust(f, mt);
+  }
   const take = pickInputs(m);
   if (!take) { m.t = 0; m.out = null; m.waiting = 1; return; }
   m.waiting = 0;
@@ -394,9 +489,9 @@ function pickExit(f, i, m, o) {
     cands = all.slice(at).concat(all.slice(0, at));
   }
   for (const d of cands) {
-    const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
-    if (!openAt(f, nx, ny)) return d;
-    if (canAccept(f, cellOf(nx, ny), o.ty, faceHit(d))) return d;
+    const to = landingOf(f, i, m, d);
+    if (to < 0) return d;
+    if (canAccept(f, to, o.ty, faceHit(d))) return d;
   }
   return null;
 }
@@ -410,8 +505,8 @@ function release(f, m, i, sp) {
     const d = pickExit(f, i, m, o);
     if (d == null) { stay.push(o); continue; }
     o.dir = d;
-    const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
-    if (openAt(f, nx, ny)) f.load[cellOf(nx, ny)] += sizeOf(o.ty);
+    o.to = landingOf(f, i, m, d);
+    if (o.to >= 0) f.load[o.to] += sizeOf(o.ty);
     sent.push(o);
   }
 
@@ -442,15 +537,19 @@ function emit(f, from, out, dur, n, total) {
   const sx = cx(from) + 0.5, sy = cy(from) + 0.5;
   const spread = total > 1 ? (n / (total - 1) - 0.5) * 0.34 : 0;
   const ox = -dy * spread, oy = dx * spread;
-  const nx = cx(from) + dx, ny = cy(from) + dy;
-  const inside = openAt(f, nx, ny);
+  // Normally the next slot; across a Bridge, the far end — and the flight takes as
+  // long as the span is wide.
+  const to = out.to ?? -1;
+  const inside = to >= 0;
+  const ex = inside ? cx(to) + 0.5 : sx + dx, ey = inside ? cy(to) + 0.5 : sy + dy;
+  const span = inside ? Math.max(1, Math.abs(cx(to) - cx(from)) + Math.abs(cy(to) - cy(from))) : 1;
 
   f.gizmos.push({
     id: f.nid++, ty: out.ty, cp: out.cp ? 1 : 0, st: 'fly',
-    sx: sx + ox, sy: sy + oy, ex: sx + dx + ox, ey: sy + dy + oy,
+    sx: sx + ox, sy: sy + oy, ex: ex + ox, ey: ey + oy,
     x: sx + ox, y: sy + oy,
-    p: 0, dur: Math.max(0.02, dur * (1 + n * 0.06)),
-    cell: inside ? cellOf(nx, ny) : -1,
+    p: 0, dur: Math.max(0.02, dur * span * (1 + n * 0.06)),
+    cell: inside ? to : -1,
     from, exit: inside ? null : out.dir,
     // Which face of the destination this is arriving at. Kept on the gizmo so a
     // Depot that turned one away still turns it away when it is lying on the mat
@@ -488,7 +587,7 @@ export { machineLoad, contents };
 /* ------------------------------------------------------------ auto-facing --- */
 
 /** Machines that aim themselves when set down: the routing family, plus Storage. */
-const AUTO_FACE = new Set(['pipe', 'store', 'bal', 'sort', 'ext', 'depot', 'lab']);
+const AUTO_FACE = new Set(['pipe', 'store', 'bal', 'sort', 'ext', 'depot', 'lab', 'drill', 'bridge']);
 
 /** Every Depot on the map, which is what a loose belt wants to be pointing at. */
 export function depotsOf(f) {
@@ -512,6 +611,45 @@ export function depotsOf(f) {
 export function smartDir(f, i) {
   const m = f.grid[i];
   if (!m || !AUTO_FACE.has(m.kind)) return null;
+
+  // A Drill faces the mountain with the most left in it, preferring a side whose
+  // back — where it unloads — is open ground or a machine that takes things.
+  if (m.kind === 'drill') {
+    let best = null, score = -Infinity;
+    for (let d = 0; d < 4; d++) {
+      const x = cx(i) + DIRS[d][0], y = cy(i) + DIRS[d][1];
+      if (!inWorld(x, y)) continue;
+      const id = f.mtn?.[cellOf(x, y)] ?? -1;
+      if (id < 0 || !(f.mountains[id]?.left > 0)) continue;
+      const b = (d + 2) % 4;
+      const bx = cx(i) + DIRS[b][0], by = cy(i) + DIRS[b][1];
+      const s2 = f.mountains[id].left / 1e4 + (openAt(f, bx, by) ? 2 : 0)
+        + (openAt(f, bx, by) && f.grid[cellOf(bx, by)] && acceptsFrom(f.grid[cellOf(bx, by)], faceHit(b)) ? 3 : 0);
+      if (s2 > score) { score = s2; best = d; }
+    }
+    return best ?? m.dir;
+  }
+
+  // A Bridge lines up with a lone Bridge pointing at it, to pair; otherwise it
+  // faces across a valley if it stands on the edge of one; otherwise it is a belt.
+  if (m.kind === 'bridge') {
+    for (let d = 0; d < 4; d++) {
+      const back = (d + 2) % 4;
+      for (let k = 1; k <= BRIDGE_SPAN; k++) {
+        const x = cx(i) + DIRS[back][0] * k, y = cy(i) + DIRS[back][1] * k;
+        if (!inWorld(x, y)) break;
+        const n = f.grid[cellOf(x, y)];
+        if (n?.kind === 'bridge') {
+          if ((n.dir | 0) === d && !(n.bin === 1 && n.pair >= 0)) return d;
+          break;
+        }
+      }
+    }
+    for (let d = 0; d < 4; d++) {
+      const x = cx(i) + DIRS[d][0], y = cy(i) + DIRS[d][1];
+      if (inWorld(x, y) && f.terrain[cellOf(x, y)] === VALLEY) return d;
+    }
+  }
 
   // A Depot and a Lab have a mouth rather than an exit, so "which way should this
   // face" is a different question: point it at whatever is already firing at this
@@ -689,8 +827,11 @@ export function buildCheck(f, spec, i) {
   if (!Number.isInteger(i) || i < 0 || i >= f.grid.length) return no('Off the map');
   if (!claimed(i, f.claim)) return no('You do not own this land');
   if (f.terrain[i] === RUBBLE) return no(`Rubble — clear it for $${RUBBLE_COST}`);
+  if (f.terrain[i] === MOUNTAIN) return no('A mountain — go round it, or drill it from beside');
+  if (f.terrain[i] === VALLEY) return no('A valley — cross it with a pair of Bridges');
   if (f.terrain[i] !== OPEN) return no('Bedrock will not move');
   if (spec.kind === 'ext' && f.patch[i] < 0) return no('An Extractor has to stand on ore');
+  if (spec.kind === 'drill' && !nextToMountain(f, i)) return no('A Mountain Drill has to stand beside a mountain with ore left in it');
   if (nestAt(f, i)) return no('A nest — zap it out first');
   // Building over the top of something is allowed, and is the normal way to change
   // your mind about a slot. Whatever was there goes in the crate — unless the crate
@@ -700,6 +841,17 @@ export function buildCheck(f, spec, i) {
     return no('Crate is full — place or scrap something from it first');
   }
   return yes();
+}
+
+/** Is there a mountain with ore left in it on any side of this slot? */
+export function nextToMountain(f, i) {
+  for (let d = 0; d < 4; d++) {
+    const x = cx(i) + DIRS[d][0], y = cy(i) + DIRS[d][1];
+    if (!inWorld(x, y)) continue;
+    const id = f.mtn?.[cellOf(x, y)] ?? -1;
+    if (id >= 0 && f.mountains[id]?.left > 0) return true;
+  }
+  return false;
 }
 
 /**
@@ -920,6 +1072,7 @@ export function moveMachine(f, from, to) {
   if (!claimed(to, f.claim)) return no('You do not own this land');
   if (f.terrain[to] !== OPEN) return no('Something is in the way');
   if (m.kind === 'ext' && f.patch[to] < 0) return no('An Extractor has to stand on ore');
+  if (m.kind === 'drill' && !nextToMountain(f, to)) return no('A Mountain Drill has to stand beside a mountain');
   if (nestAt(f, to)) return no('A nest — zap it out first');
   if (f.grid[to]) {
     // Dropping one machine on another puts the one underneath in the crate, the
@@ -1226,8 +1379,8 @@ export function reachesPayout(f) {
       if (!m) continue;
       if (m.kind === 'depot') return true;
       for (const d of exitDirs(m)) {
-        const nx = cx(at) + DIRS[d][0], ny = cy(at) + DIRS[d][1];
-        if (openAt(f, nx, ny)) queue.push(cellOf(nx, ny));
+        const to = landingOf(f, at, m, d);
+        if (to >= 0) queue.push(to);
       }
     }
   }

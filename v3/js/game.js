@@ -22,7 +22,7 @@
 import {
   TYPES, RAW, WORLD, CLAIM_START, MILESTONES, TUTORIAL, CONTRACT_SLOTS,
   CONTRACT_PREMIUM, CONTRACT_GRACE, CONTRACT_GAP, cellOf, cx, cy, rng, hashSeed,
-  money, makeMachine, techById, unlockedBy, OPEN,
+  money, makeMachine, techById, unlockedBy, OPEN, MOUNTAIN, VALLEY,
 } from './machines.js';
 import { generateWorld } from './world.js';
 import { spawnMite, addMissingNests } from './bugs.js';
@@ -31,6 +31,8 @@ import {
 } from './sim.js';
 
 const SAVE_KEY = 'gizmo3.save.v1';
+/** Creature kinds by the number a save stores them as. Append only. */
+const BUG_KINDS = ['mite', 'skitter', 'beetle'];
 /** Set once the first game has been walked through, or the walk was skipped. */
 const TAUGHT_KEY = 'gizmo3.taught.v1';
 const STEP = 1 / 30;              // the simulation's fixed tick
@@ -337,11 +339,14 @@ export function serialise(g) {
     machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.charge | 0, m.hot | 0]);
   }
   const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10]);
-  const cleared = [];
-  const base = generateWorld(f.seed);
+  // Every slot whose ground differs from what the seed made: rubble cleared, and
+  // mountains worked out to rubble. Stored with what the ground is now.
+  const ground = [];
+  const base = f.world?.terrain || generateWorld(f.seed).terrain;
   for (let i = 0; i < f.terrain.length; i++) {
-    if (f.terrain[i] !== base.terrain[i]) cleared.push(i);
+    if (f.terrain[i] !== base[i]) ground.push([i, f.terrain[i]]);
   }
+  const mtn = (f.mountains || []).filter(m => m.left < m.amount).map(m => [m.id, m.left]);
   return {
     v: 1,
     seed: f.seed,
@@ -357,7 +362,8 @@ export function serialise(g) {
     shipped: Array.from(f.shipped).map(n => Math.round(n)),
     milestones: Array.from(g.done),
     tut: g.tut,
-    cleared,
+    ground,
+    mtn,
     machines,
     crate,
     // Mites are saved, unlike gizmos: reloading must not be a way to make a
@@ -368,7 +374,8 @@ export function serialise(g) {
       nv: 4,
       nests: (f.nests || []).map(n => [n.cell, Math.round(n.hp), Math.round(n.anger || 0), n.kind === 'skitter' ? 1 : 0]),
       mites: (f.mites || []).map(mt => [Math.round(mt.x * 100) / 100, Math.round(mt.y * 100) / 100,
-        Math.round(mt.hp * 10) / 10, mt.max, mt.kind === 'skitter' ? 1 : 0]),
+        Math.round(mt.hp * 10) / 10, mt.max, BUG_KINDS.indexOf(mt.kind || 'mite')]),
+      tremor: Math.round(f.tremor || 0),
       swarm: Math.round(f.swarm || 0),
       waves: f.waves || 0,
       zapped: f.zapped || 0,
@@ -383,7 +390,14 @@ export function deserialise(data) {
   const world = generateWorld(data.seed);
   const f = createFactory({ seed: data.seed, world, cash: data.cash || 0 });
   f.claim = Math.max(CLAIM_START, Math.min(WORLD, data.claim || CLAIM_START));
-  for (const i of data.cleared || []) f.terrain[i] = OPEN;
+  for (const i of data.cleared || []) f.terrain[i] = OPEN;        // saves before mountains
+  for (const [i, t] of data.ground || []) if (i >= 0 && i < f.terrain.length) f.terrain[i] = t;
+  for (const [id, left] of data.mtn || []) {
+    const mt = f.mountains[id];
+    if (!mt) continue;
+    mt.left = left;
+    if (left <= 0) for (const c of mt.cells) f.mtn[c] = -1;
+  }
   f.mapRev++;
   f.earned = data.earned || 0;
   f.spent = data.spent || 0;
@@ -408,6 +422,13 @@ export function deserialise(data) {
       m.mut = f.patch[i];
       m.rich = f.rich[i] || 1;
     }
+    // A save from before mountains and valleys may have a machine standing where
+    // one now is. The machine wins: the ground under it is made open again.
+    if (f.terrain[i] === MOUNTAIN || f.terrain[i] === VALLEY) {
+      f.terrain[i] = OPEN;
+      const id = f.mtn[i];
+      if (id >= 0) { f.mtn[i] = -1; const mt = f.mountains[id]; mt.cells = mt.cells.filter(c => c !== i); }
+    }
     f.grid[i] = m;
   }
   for (const [kind, dir, level, mut, mir, off, hp] of data.crate || []) {
@@ -420,9 +441,12 @@ export function deserialise(data) {
     f.nests = (b.nests || []).filter(([c, hp]) => Number.isInteger(c) && hp > 0)
       .map(([cell, hp, anger, k]) => ({ cell, hp: hp * scale, anger: anger || 0, kind: k ? 'skitter' : 'mite' }));
     if (!(b.nv >= 4)) addMissingNests(f);
+    // Nowhere for a nest to stand on a mountain or in a valley that an older save
+    // put it on; new ones will dig in elsewhere to make up the number.
+    f.nests = f.nests.filter(n => f.terrain[n.cell] === OPEN);
     f.mites = [];
     for (const [x, y, hp, max, k] of b.mites || []) {
-      const mt = spawnMite(f, x, y, max || hp, k ? 'skitter' : 'mite');
+      const mt = spawnMite(f, x, y, max || hp, BUG_KINDS[k] || 'mite');
       if (mt) { mt.x = x; mt.y = y; mt.hp = hp; }
     }
     f.swarm = b.swarm || 0;
@@ -430,6 +454,7 @@ export function deserialise(data) {
     f.zapped = b.zapped || 0;
     f.chewed = b.chewed || 0;
     f.nextNest = Number.isFinite(b.nextNest) ? b.nextNest : -1;
+    f.tremor = b.tremor || 0;
   }
   rebuild(f);
 

@@ -469,6 +469,37 @@ Three research nodes sit behind it: **Focusing** (+1.5 reach), **Arc Discharge**
 Mites are saved with the world, unlike gizmos in flight: reloading must not be a way
 to make a swarm halfway through your belts vanish.
 
+### Mountains, valleys and Beetles
+
+Expanding used to be a matter of money: buy the next ring and build on it. Now the
+ground fights back.
+
+**Mountains** — about a dozen per world, never within eight rings of the middle and
+never on ore — are clumps of rock nothing can be built on or run through. Each holds a
+seam of one mineral, Scrap near the middle of the map up to Cobalt at the rim, and a
+finite 2,000 units of it. A **Mountain Drill** (`G`, $260) set beside a mountain turns
+to face it, digs the seam out and pushes it out of its back. It is slow — 2 seconds a
+Scrap, 6.8 a Cobalt — but what comes out is already four Mutator tiers up. A worked-out
+mountain falls in to rubble you can clear and build on. Hover any mountain to see its
+seam and how much is left; the seam also glints in its colour on the map.
+
+**Valleys** — seven long, wandering chasms per world — cannot be built in. A pair of
+**Bridges** (`N`, $80 each) facing the same way, up to four slots apart, carries gizmos
+*and power* across whatever is between them, like an underground belt: a line of
+Bridges pairs off two by two, and a lone Bridge is just a belt. A Bridge set on the
+edge of a valley faces across it; one set in line with an unpaired Bridge turns to
+match it. A dashed rope shows the pair.
+
+**Beetles** are the third creature, and the slow one: 60 hit points (ten plain or five
+charged shots at level 1), less than half a Mite's speed, and a bite that goes through a
+Generator in seconds — Generators are all they want. They do not live in nests: they
+live in the mountains, and **drilling wakes them**. Every Drill at work adds to a
+tremor, and every 200 drill-seconds a Beetle burrows out of a mountain being drilled.
+Mountains are pure functions of the seed, drawn from their own random stream so no ore
+moved; an older save with a machine where a mountain now stands keeps the machine.
+
+`tools/terrain.mjs` checks all of it.
+
 ### Quality of life
 
 **Boxes and blueprints.** Shift-drag draws a box round any number of machines. The
@@ -562,6 +593,7 @@ differently because they want opposite fixes.
 | `M` | pick a machine up and move it, for free |
 | `O` | switch a machine off, or back on |
 | `Z` / `B` | pick up a Zapper / an Armory to build |
+| `G` / `N` | pick up a Mountain Drill / a Bridge to build |
 | `H` / `Shift H` | repair the machine under the cursor / repair everything |
 | `Shift` drag | select every machine in a box |
 | `Ctrl C` / `Ctrl V` | copy the box as a blueprint / pick the last blueprint up again |
@@ -666,6 +698,7 @@ node tools/economy.mjs    # the cost tables, and what real builds earn
 node tools/bugs.mjs       # mites chew, broken stops, repair, Armory, Zapper
 node tools/blueprint.mjs  # select, copy, paste, rotate, move and bulk verbs
 node tools/aim.mjs        # belts aim themselves sensibly
+node tools/terrain.mjs    # mountains, drills, valleys, bridges, beetles
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

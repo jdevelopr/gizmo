@@ -26,7 +26,7 @@
  */
 
 import {
-  WORLD, CLAIM_START, DIRS, OPEN, RUBBLE, BEDROCK,
+  WORLD, CLAIM_START, DIRS, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, MOUNTAIN_ORE,
   cellOf, cx, cy, inWorld, claimMin, claimCells, rng, hashSeed,
 } from './machines.js';
 
@@ -149,8 +149,109 @@ export function generateWorld(seed = 1) {
   // The corridor is walked last, so nothing placed above it survives on it.
   for (const i of sacred) if (terrain[i] !== OPEN) terrain[i] = OPEN;
 
-  return { seed, terrain, patch, rich, patches, start };
+  const w = { seed, terrain, patch, rich, patches, start };
+  scatterFeatures(w);
+  return w;
 }
+
+/* --------------------------------------------------------------- features --- */
+
+/** Mountains and valleys never come closer to the middle than this, in rings. */
+const MOUNTAIN_MIN_RING = 8;
+const VALLEY_MIN_RING = 9;
+const MOUNTAINS = 12;
+const VALLEYS = 7;
+
+/**
+ * Mountains and valleys, the obstacles that make expanding a puzzle.
+ *
+ * Drawn from their own stream of random numbers, after everything else, and only on
+ * ground with no ore under it — so they moved no ore patch on any existing world.
+ *
+ * A **mountain** is a blob of impassable rock with one mineral seam in it, Scrap at
+ * the inside of the map up to Cobalt at the rim, and a finite amount of it. A
+ * Mountain Drill set beside it and facing it digs that mineral out. A **valley** is
+ * a long, thin chasm: nothing can stand in it, and a belt has to cross it on a
+ * Bridge.
+ */
+export function scatterFeatures(w) {
+  const n = WORLD * WORLD;
+  w.mtn = new Int16Array(n).fill(-1);
+  w.mountains = [];
+  if (!w.seed) return w;                       // the test bench stays flat
+  const rnd = rng(hashSeed((w.seed ^ 0x6d746e73) >>> 0));
+  const c = (WORLD - 1) / 2;
+  const ring = (x, y) => Math.max(Math.abs(x - c), Math.abs(y - c));
+  const free = (x, y, min) => inWorld(x, y) && ring(x, y) >= min && w.patch[cellOf(x, y)] < 0
+    && w.terrain[cellOf(x, y)] !== MOUNTAIN && w.terrain[cellOf(x, y)] !== VALLEY;
+
+  for (let k = 0; k < MOUNTAINS; k++) {
+    let seedCell = -1;
+    for (let guard = 0; guard < 200 && seedCell < 0; guard++) {
+      const x = Math.floor(rnd() * WORLD), y = Math.floor(rnd() * WORLD);
+      if (free(x, y, MOUNTAIN_MIN_RING)) seedCell = cellOf(x, y);
+    }
+    if (seedCell < 0) continue;
+    const id = w.mountains.length;
+    const size = 5 + Math.floor(rnd() * 10);
+    const cells = [seedCell];
+    const front = [seedCell];
+    w.terrain[seedCell] = MOUNTAIN; w.mtn[seedCell] = id;
+    let guard = 0;
+    while (cells.length < size && front.length && guard++ < size * 20) {
+      const at = front[Math.floor(rnd() * front.length)];
+      const d = DIRS[Math.floor(rnd() * 4)];
+      const x = cx(at) + d[0], y = cy(at) + d[1];
+      if (!free(x, y, MOUNTAIN_MIN_RING)) continue;
+      const i = cellOf(x, y);
+      w.terrain[i] = MOUNTAIN; w.mtn[i] = id;
+      cells.push(i); front.push(i);
+    }
+    // The seam: richer the further out the mountain stands.
+    const r = ring(cx(seedCell), cy(seedCell)) / c;
+    const tier = Math.max(0, Math.min(MOUNTAIN_ORE.length - 1, Math.floor(r * 4.2 + rnd() * 1.4) - 1));
+    w.mountains.push({ id, cells, ty: MOUNTAIN_ORE[tier], amount: MOUNTAIN_ORE_AMOUNT });
+  }
+
+  for (let k = 0; k < VALLEYS; k++) {
+    let x = -1, y = -1;
+    for (let guard = 0; guard < 200; guard++) {
+      const tx = Math.floor(rnd() * WORLD), ty = Math.floor(rnd() * WORLD);
+      if (free(tx, ty, VALLEY_MIN_RING)) { x = tx; y = ty; break; }
+    }
+    if (x < 0) continue;
+    let d = Math.floor(rnd() * 4);
+    const len = 10 + Math.floor(rnd() * 9);
+    for (let s = 0; s < len; s++) {
+      // Blocked? Try bending round it before giving up, so a chasm that meets an
+      // ore patch curves past it rather than stopping dead.
+      if (!free(x, y, VALLEY_MIN_RING) && s > 0) {
+        const px0 = x - DIRS[d][0], py0 = y - DIRS[d][1];
+        let turned = false;
+        for (const t of [1, 3]) {
+          const nd = (d + t) % 4;
+          if (free(px0 + DIRS[nd][0], py0 + DIRS[nd][1], VALLEY_MIN_RING)) {
+            d = nd; x = px0 + DIRS[nd][0]; y = py0 + DIRS[nd][1]; turned = true; break;
+          }
+        }
+        if (!turned) break;
+      }
+      if (!free(x, y, VALLEY_MIN_RING)) break;
+      w.terrain[cellOf(x, y)] = VALLEY;
+      // now and then the chasm is two wide
+      const side = DIRS[(d + 1) % 4];
+      if (rnd() < 0.3 && free(x + side[0], y + side[1], VALLEY_MIN_RING)) {
+        w.terrain[cellOf(x + side[0], y + side[1])] = VALLEY;
+      }
+      if (rnd() < 0.25) d = (d + (rnd() < 0.5 ? 1 : 3)) % 4;   // it wanders
+      x += DIRS[d][0]; y += DIRS[d][1];
+    }
+  }
+  return w;
+}
+
+/** How much a mountain holds before it is worked out. */
+export const MOUNTAIN_ORE_AMOUNT = 2000;
 
 /**
  * The world before anyone generated one: no rock, ore only where the opening needs
@@ -171,7 +272,7 @@ export function plainWorld() {
   patches.push(growPatch(rnd, patch, rich, SLAG, start.ext, 30, 1.0, terrain,
     { lo: c - 4, hi: c + 4 }, opening));
   patches.push(growPatch(rnd, patch, rich, SAP, cellOf(c + SAP_MIN_RING + 2, c), 16, 1.25, terrain));
-  return { seed: 0, terrain, patch, rich, patches, start };
+  return scatterFeatures({ seed: 0, terrain, patch, rich, patches, start });
 }
 
 /**

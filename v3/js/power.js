@@ -105,10 +105,18 @@ export function solveTopology(f) {
       else claimedBy[at] = k;
       if (dist[at] >= reach) continue;
       const x = cx(at), y = cy(at);
-      for (let d = 0; d < 4; d++) {
-        const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
-        if (!inWorld(nx, ny)) continue;
-        const ni = cellOf(nx, ny);
+      for (let d = 0; d < 5; d++) {
+        let ni;
+        if (d < 4) {
+          const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+          if (!inWorld(nx, ny)) continue;
+          ni = cellOf(nx, ny);
+        } else {
+          // A paired Bridge carries power across to its partner, gap and all.
+          const b = g[at];
+          if (!b || b.kind !== 'bridge' || !(b.pair >= 0)) continue;
+          ni = b.pair;
+        }
         if (seen[ni] === k || !g[ni]) continue;    // an empty slot is a broken wire
         seen[ni] = k;
         dist[ni] = dist[at] + 1;

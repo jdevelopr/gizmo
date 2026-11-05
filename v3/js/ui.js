@@ -20,7 +20,7 @@ import {
   upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE, PLUMBING,
   ONE_MOUTH, acceptsFrom, faceHit, ARMORY, AMMO, AMMO_CHARGES, broken, maxHp,
   repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
-  SWARM_GRACE, twoInput,
+  SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE,
 } from './machines.js';
 import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
@@ -927,6 +927,9 @@ export class Panel {
     } else {
       add(cap < MAX_LEVEL ? 'NEEDS OVERCLOCKING' : 'MAX LEVEL', null, false, true);
     }
+    if (CLEARABLE.has(m.kind)) {
+      add('CLEAR MACHINE', () => this.act('clearBuf', cell), true);
+    }
     add(`SCRAP  +${money(scrapValue(m))} <span class="k">X</span>`, () => this.act('scrap', cell), true);
     host.appendChild(acts);
 
@@ -1062,7 +1065,14 @@ export class Panel {
 
     // A two-input machine keeps a queue per ingredient, and which of them is empty
     // is the whole story of why it is or is not running. So show them.
-    if (m.kind === 'asm' || m.kind === 'arm') {
+    if (m.kind === 'arm') {
+      addRow(rows, 'Recipe', recipeText(ARMORY));
+      for (const ty of ARMORY.ins) {
+        const n = queued(m, ty);
+        addRow(rows, `${TYPES[ty].name} queued`, String(n), n ? 'good' : 'warn');
+      }
+      addRow(rows, 'Short of one?', `after ${ARM_RESOLVE}s, 3 Scrap or 2 Copper do instead`);
+    } else if (m.kind === 'asm') {
       addRow(rows, 'Recipe', recipeText(twoInput(m)));
       for (const ty of twoInput(m).ins) {
         const n = queued(m, ty);
@@ -1133,7 +1143,7 @@ export class Panel {
       addRow(rows, 'Recipe', recipeText(ARMORY));
       addRow(rows, 'Cycle', `${ARMORY.cycle.toFixed(2)}s`);
       addRow(rows, 'Draws', `${KINDS.arm.draw} kW while working`);
-      addRow(rows, 'Tip', 'bring Scrap and Copper in on different faces');
+      addRow(rows, 'Feed', 'one mixed belt is fine — it sorts out a lopsided ratio itself');
     } else {
       addRow(rows, 'Cycle', `${cycleTime({ ...spec, level: 1, rich: 1 }, f.done).toFixed(2)}s`);
       addRow(rows, 'Draws', `${KINDS[spec.kind].draw} kW while working`);
@@ -1524,8 +1534,12 @@ spike on its grid, and a browned-out Zapper fires slowly. With nothing moving in
 reach, it will chip away at a nest instead, and a dead nest pays
 ${money(NEST_BOUNTY)}.</p>
 <p>Ammo comes from an <b>Armory</b> (<b>B</b>): one Scrap and one Copper make one Ammo.
-The easy build is a Balancer on a Slag line, its branch through a Copper Mutator, and
-the two arms brought into <b>different faces</b> of the Armory — then it never stalls.
+The easy build is a Balancer on a Slag line with its branch through a Copper Mutator,
+merged back onto one belt. The Armory takes either ingredient for as long as it has room,
+and if it is left short of one half for a second it makes do with the other — three Scrap
+or two Copper make an Ammo too — so a lopsided feed never stops it.</p>
+<p>Every Assembler, Fuser and Armory has a <b>CLEAR MACHINE</b> button that throws out
+everything queued in it and in its hands, for when it was fed the wrong things.
 Belt the Ammo to your Zappers like anything else; a Balancer will share one Armory
 between two of them.</p>
 

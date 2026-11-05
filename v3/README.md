@@ -427,9 +427,14 @@ moving in reach it chips at a nest instead, and a dead nest pays a bounty before
 another digs in somewhere far off.
 
 **The Armory** (`B`) presses one Scrap and one Copper into one Ammo. The natural
-build is a Balancer on a Slag line with its branch through a Copper Mutator, and the
-two arms brought into *different faces* of the Armory — merged onto one belt, a run
-of Scrap can fill the Scrap queue and stand in front of the Copper forever.
+build is a Balancer on a Slag line with its branch through a Copper Mutator, merged
+back onto one belt. That used to be able to stop for good — a run of Scrap filled the
+Scrap queue and stood in front of the Copper forever — so the Armory now sorts it out
+itself: it takes either ingredient for as long as it has room, and after a second short
+of one half it makes do with the other (three Scrap, or two Copper, make an Ammo).
+
+Every Assembler, Fuser and Armory has a **CLEAR MACHINE** button that throws out
+whatever is queued in it and in its hands. Like sweeping, it pays nothing.
 
 Three research nodes sit behind it: **Focusing** (+1.5 reach), **Arc Discharge**
 (every zap jumps to two more mites) and **Plating** (+50% hit points on everything).

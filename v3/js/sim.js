@@ -38,7 +38,7 @@ import {
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
-  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp,
+  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { initBugs, stepBugs, nestAt } from './bugs.js';
@@ -905,6 +905,24 @@ export function applyAction(f, a) {
       m.blocked = 0; m.blockT = 0; m.waitT = 0;
       f.fx.push({ k: m.off ? 'switchoff' : 'switchon', cell: a.i });
       return yes(m.off ? 'Switched off' : 'Switched on');
+    }
+
+    /**
+     * Empty a two-input machine. Whatever is queued at its mouth and whatever is in
+     * its hands is thrown out — like sweeping, it pays nothing — and it starts its
+     * next job from nothing. The cure for an Assembler that was fed the wrong
+     * things while you were rebuilding the line in front of it.
+     */
+    case 'clearBuf': {
+      if (!m) return no('Nothing there');
+      if (!CLEARABLE.has(m.kind)) return no('Nothing to clear');
+      const n = m.buf.length + m.work.length;
+      if (!n && !m.out) return no('Already empty');
+      m.buf.length = 0; m.work = []; m.out = null; m.t = 0;
+      m.blocked = 0; m.waiting = 0; m.blockT = 0; m.waitT = 0;
+      f.swept += n;
+      f.fx.push({ k: 'sweep', cell: a.i, n });
+      return yes(`Cleared ${n}`);
     }
 
     case 'mir': {

@@ -13,7 +13,7 @@ import {
   WORLD, cellOf, AMMO, MAX_HP, AMMO_CHARGES, broken, maxHp, repairCost, SWARM_GRACE,
   SWARM_COST, catalogue, wants,
 } from '../js/machines.js';
-import { createFactory, stepFactory, build, rebuild, diagnose } from '../js/sim.js';
+import { createFactory, stepFactory, build, rebuild, diagnose, applyAction } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
 import { placeNests, spawnMite, repairMachine, repairAll, noiseOf } from '../js/bugs.js';
 
@@ -125,6 +125,45 @@ console.log('\nThe Armory');
   run(f, 60);
   ok(f.shipped[AMMO] > 10, `a split Slag line makes Ammo (${f.shipped[AMMO]} in a minute)`);
   ok(!diagnose(f).jams.length, 'and nothing jams');
+}
+
+console.log('\nThe Armory sorts out a lopsided feed');
+{
+  // The build that used to stop for good: both arms merged onto one belt.
+  const f = bench();
+  f.patch[cellOf(10, 10)] = 0; f.rich[cellOf(10, 10)] = 2;
+  put(f, 'ext', 10, 10);
+  put(f, 'bal', 11, 10);
+  put(f, 'pipe', 12, 10, { dir: 1 });
+  put(f, 'mut', 11, 11, { mut: 1 });
+  put(f, 'pipe', 12, 11);
+  put(f, 'arm', 13, 11);
+  put(f, 'pipe', 14, 11);
+  put(f, 'depot', 15, 11);
+  run(f, 60);
+  const a = f.shipped[AMMO];
+  run(f, 60);
+  ok(a > 10, `a merged belt makes Ammo (${a} in the first minute)`);
+  ok(f.shipped[AMMO] - a > 10, `and is still making it a minute later (${f.shipped[AMMO] - a})`);
+
+  // Scrap only: it should still press Ammo, three at a time.
+  const g = bench();
+  g.patch[cellOf(10, 10)] = 0; g.rich[cellOf(10, 10)] = 2;
+  put(g, 'ext', 10, 10); put(g, 'pipe', 11, 10); put(g, 'arm', 12, 10);
+  put(g, 'pipe', 13, 10); put(g, 'depot', 14, 10);
+  run(g, 60);
+  ok(g.shipped[AMMO] > 5, `Scrap alone still makes Ammo (${g.shipped[AMMO]})`);
+}
+
+console.log('\nClearing a machine');
+{
+  const f = bench();
+  put(f, 'arm', 20, 20);
+  const m = f.grid[cellOf(20, 20)];
+  m.buf.push({ id: 1, ty: 0, cp: 0 }, { id: 2, ty: 0, cp: 0 });
+  ok(applyAction(f, { a: 'clearBuf', i: cellOf(20, 20) }).ok && !m.buf.length, 'CLEAR empties an Armory');
+  put(f, 'pipe', 21, 21);
+  ok(!applyAction(f, { a: 'clearBuf', i: cellOf(21, 21) }).ok, 'and is refused on a belt');
 }
 
 console.log('\nThe Zapper');

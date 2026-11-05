@@ -290,8 +290,9 @@ export const KINDS = {
   },
   arm: {
     name: 'Armory', short: 'ARMORY',
-    desc: 'Presses one Scrap and one Copper into one Ammo, and takes from any side. Bring '
-      + 'the two in on different faces and it never stalls. Ammo is what a Zapper fires.',
+    desc: 'Presses one Scrap and one Copper into one Ammo, from any side and off one mixed '
+      + 'belt. Short of one half, it makes do: three Scrap, or two Copper, do the same job. '
+      + 'Ammo is what a Zapper fires.',
     price: 150, cycle: 1.0, cap: 2, hold: 8, travel: 0.52, draw: 8,
     body: '#4a4416', trim: '#c9c23f', lit: '#fbffb8',
   },
@@ -425,6 +426,22 @@ export const zapChain = (done = []) => (hasTech(done, 'arc') ? ARC_CHAIN : 0);
 
 /** The Armory's one recipe. */
 export const ARMORY = { ins: [0, 1], out: AMMO, cycle: 1.0, price: 150 };
+
+/**
+ * How long an Armory waits on a lopsided feed before it sorts itself out.
+ *
+ * One Scrap and one Copper is the recipe, but a feed is never that tidy — a merged
+ * belt delivers runs of one and then the other, and a Balancer that skips a busy
+ * arm sends a run of Scrap down the straight. An Assembler would wait for the half
+ * it is short of. An Armory is a press, not a jeweller: after a moment short of one
+ * ingredient it makes do with the other. Three Scrap do the job of a Scrap and a
+ * Copper (two of them are fused on the die), and two Copper do it too (one is
+ * ground down). It wastes a little metal and it never stops.
+ */
+export const ARM_RESOLVE = 1.0;
+
+/** The two-input machines whose queues can be emptied by hand. */
+export const CLEARABLE = new Set(['asm', 'arm', 'fuse']);
 
 /** The recipe a two-input machine is building, or null for everything else. */
 export const twoInput = m =>
@@ -766,7 +783,7 @@ export function outputs(m, inputs) {
     case 'asm':
     case 'arm': {
       const r = twoInput(m);
-      const cp = (inputs[0]?.cp && inputs[1]?.cp) ? 1 : 0;
+      const cp = inputs.length && inputs.every(g => g?.cp) ? 1 : 0;
       return [{ ty: r.out, dir: d, cp }];
     }
 
@@ -817,7 +834,10 @@ export function wants(m, ty, side = null) {
   if (m.kind === 'ext') return false;
   if (m.kind === 'depot' || m.kind === 'lab' || m.kind === 'gen') return true;
   if (m.kind === 'zap') return ty === AMMO;
-  if (m.kind === 'asm' || m.kind === 'arm') {
+  // An Armory has no per-ingredient limit: it takes Scrap and Copper for as long as
+  // it has room, so a run of one can never stand in front of the other on a belt.
+  if (m.kind === 'arm') return twoInput(m).ins.includes(ty);
+  if (m.kind === 'asm') {
     if (!twoInput(m).ins.includes(ty)) return false;
     return queued(m, ty) < LANE;
   }
@@ -877,7 +897,16 @@ export function pickInputs(m) {
       want.splice(k, 1);
       take.push(i);
     }
-    return want.length ? null : take;
+    if (!want.length) return take;
+    // An Armory short of one ingredient makes do with the other, once it has
+    // waited long enough to be sure the other is not coming.
+    if (m.kind === 'arm' && (m.waitT || 0) >= ARM_RESOLVE) {
+      const idx = ty => m.buf.map((g, i) => (g.ty === ty ? i : -1)).filter(i => i >= 0);
+      const scrap = idx(ARMORY.ins[0]), copper = idx(ARMORY.ins[1]);
+      if (scrap.length >= 3) return scrap.slice(0, 3);
+      if (copper.length >= 2) return copper.slice(0, 2);
+    }
+    return null;
   }
 
   if (m.kind === 'fuse') {

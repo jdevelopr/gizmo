@@ -433,6 +433,14 @@ function act(name, payload, extra) {
       return r;
     }
     case 'filt': return applyAction(f, { a: 'filt', i: payload.i, ty: payload.ty });
+    case 'clearBuf': {
+      if (payload == null || payload < 0 || !f.grid[payload]) return;
+      const r = applyAction(f, { a: 'clearBuf', i: payload });
+      toast(g, r.ok ? `${label(f.grid[payload]).toUpperCase()} — ${r.msg.toLowerCase()}` : r.msg,
+        r.ok ? '#8b96b8' : '#ff8a6a');
+      panel.key = '';
+      return r;
+    }
     case 'up': {
       const r = applyAction(f, { a: 'up', i: payload });
       if (!r.ok) toast(g, r.msg, '#ff8a6a');

@@ -31,7 +31,7 @@ import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
   cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
-  ARMORY, broken, maxHp, AMMO_CHARGES, NEST_HP,
+  ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec,
 } from './machines.js';
 import { heldTypes, machineLoad, contents } from './sim.js';
 
@@ -529,6 +529,7 @@ function drawBody(ctx, m, frame) {
  * question is how many and where.
  */
 function drawMite(ctx, mt, sx, sy, z) {
+  if (mt.kind === 'skitter') { drawSkitter(ctx, mt, sx, sy, z); return; }
   const s = z / CELL;
   if (z < 16) {
     const w = Math.max(2, Math.round(z / 6));
@@ -574,22 +575,67 @@ function drawMite(ctx, mt, sx, sy, z) {
   }
 }
 
+/**
+ * A Skitter: a long, thin, segmented thing in acid green, with a pair of legs on
+ * every segment that ripple as it runs. Drawn as a chain of segments trailing behind
+ * the head, so it reads as fast even standing still.
+ */
+function drawSkitter(ctx, mt, sx, sy, z) {
+  const s = z / CELL;
+  if (z < 16) {
+    const w = Math.max(2, Math.round(z / 7));
+    px(ctx, sx - w / 2, sy - w / 2, w, w, '#9dff3c');
+    return;
+  }
+  const [fx, fy] = [[1, 0], [0, 1], [-1, 0], [0, -1]][mt.face | 0];
+  const seg = 3 * s, n = 5;
+  const p = Math.max(1, Math.round(s));
+  const wig = mt.st === 'chew' ? 0 : 1;
+  for (let k = n - 1; k >= 0; k--) {
+    // Each segment sits a step behind the one in front, swaying side to side.
+    const sway = Math.sin(mt.ph * 1.6 - k * 1.1) * 1.2 * s * wig;
+    const cxp = sx - fx * k * seg * 0.95 + -fy * sway;
+    const cyp = sy - fy * k * seg * 0.95 + fx * sway;
+    const leg = ((Math.floor(mt.ph * 2) + k) % 2) ? 2 * s : s;
+    // legs, out to either side
+    px(ctx, cxp - fy * (seg / 2 + leg) - p / 2, cyp + fx * (seg / 2 + leg) - p / 2, p, p, '#1f3a08');
+    px(ctx, cxp + fy * (seg / 2 + leg) - p / 2, cyp - fx * (seg / 2 + leg) - p / 2, p, p, '#1f3a08');
+    px(ctx, cxp - seg / 2 - p / 2, cyp - seg / 2 - p / 2, seg + p, seg + p, '#122405');
+    px(ctx, cxp - seg / 2, cyp - seg / 2, seg, seg, k === 0 ? '#c8ff6a' : (k % 2 ? '#6fd11f' : '#86e830'));
+    if (k === 0) {
+      // eyes and mandibles
+      px(ctx, cxp + fx * seg / 2 - fy * s - p / 2, cyp + fy * seg / 2 + fx * s - p / 2, p, p, '#ffffff');
+      px(ctx, cxp + fx * (seg / 2 + s) + fy * s - p / 2, cyp + fy * (seg / 2 + s) - fx * s - p / 2, p, p, '#ffe14a');
+    }
+  }
+}
+
 /** A nest: a mound of earth with holes in it and something glowing underneath. */
 function drawNest(ctx, n, sx, sy, z, t) {
   const s = z / CELL;
-  if (z < 16) { px(ctx, sx + z * 0.2, sy + z * 0.2, z * 0.6, z * 0.6, '#7a1f4a'); return; }
+  const sk = n.kind === 'skitter';
+  // Skitter nests are a different mound: green-black, glowing acid, and spiky.
+  const pal = sk
+    ? { low: '#3a5c0e', glow: '#9dff3c', shadow: '#0a1404', base: '#1a2e08', mid: '#2c4a0c', top: '#3f6614' }
+    : { low: '#7a1f4a', glow: '#ff4f7a', shadow: '#1c0a14', base: '#3b1430', mid: '#5c1f48', top: '#7e2c62' };
+  if (z < 16) { px(ctx, sx + z * 0.2, sy + z * 0.2, z * 0.6, z * 0.6, pal.low); return; }
   const glow = 0.75 + Math.sin(t * 3 + n.cell) * 0.25;
-  px(ctx, sx + 3 * s, sy + 10 * s, 26 * s, 18 * s, '#1c0a14');
-  px(ctx, sx + 5 * s, sy + 8 * s, 22 * s, 18 * s, '#3b1430');
-  px(ctx, sx + 8 * s, sy + 5 * s, 16 * s, 8 * s, '#5c1f48');
-  px(ctx, sx + 8 * s, sy + 5 * s, 16 * s, 2 * s, '#7e2c62');
+  px(ctx, sx + 3 * s, sy + 10 * s, 26 * s, 18 * s, pal.shadow);
+  px(ctx, sx + 5 * s, sy + 8 * s, 22 * s, 18 * s, pal.base);
+  px(ctx, sx + 8 * s, sy + 5 * s, 16 * s, 8 * s, pal.mid);
+  px(ctx, sx + 8 * s, sy + 5 * s, 16 * s, 2 * s, pal.top);
+  if (sk) for (const [qx, qy] of [[6, 6], [24, 7], [4, 16], [26, 18], [15, 2]]) {
+    px(ctx, sx + qx * s, sy + qy * s, 2 * s, 4 * s, pal.top);
+    px(ctx, sx + qx * s, sy + qy * s, 2 * s, s, shade(pal.glow, 0.7));
+  }
   for (const [hx, hy] of [[9, 12], [18, 10], [13, 18], [21, 19]]) {
     px(ctx, sx + hx * s, sy + hy * s, 4 * s, 3 * s, '#05070d');
-    px(ctx, sx + (hx + 1) * s, sy + (hy + 1) * s, 2 * s, s, shade('#ff4f7a', glow));
+    px(ctx, sx + (hx + 1) * s, sy + (hy + 1) * s, 2 * s, s, shade(pal.glow, glow));
   }
-  if (n.hp < NEST_HP) {
+  const max = nestSpec(n).hp;
+  if (n.hp < max) {
     px(ctx, sx + 4 * s, sy + 2 * s, 24 * s, 2 * s, '#05070d');
-    px(ctx, sx + 4 * s, sy + 2 * s, 24 * s * Math.max(0, n.hp / NEST_HP), 2 * s, '#ff4f7a');
+    px(ctx, sx + 4 * s, sy + 2 * s, 24 * s * Math.max(0, n.hp / max), 2 * s, pal.glow);
   }
 }
 

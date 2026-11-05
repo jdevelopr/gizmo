@@ -12,10 +12,11 @@
 import {
   WORLD, cellOf, AMMO, MAX_HP, AMMO_CHARGES, broken, maxHp, repairCost, SWARM_GRACE,
   SWARM_COST, catalogue, wants, NEST_HP, NEST_BOUNTY, nestBrood, nestAnger,
+  MITE, SKITTER, ZAP_DAMAGE, NESTS, SKITTER_FROM,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild, diagnose, applyAction } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
-import { placeNests, spawnMite, repairMachine, repairAll, noiseOf } from '../js/bugs.js';
+import { placeNests, spawnMite, repairMachine, repairAll, noiseOf, sendSwarm } from '../js/bugs.js';
 
 let fails = 0;
 const ok = (cond, what, detail = '') => {
@@ -175,10 +176,10 @@ console.log('\nThe Zapper');
   run(f, 3);
   ok(f.zapped === 0, 'without Ammo it does nothing');
   ok(wants(z, AMMO) && !wants(z, 0), 'it takes Ammo and nothing else');
-  z.buf.push({ id: 1, ty: AMMO, cp: 0 });
-  run(f, 6);
-  ok(f.zapped === 4, `with one Ammo it kills a small swarm (${f.zapped} of 4)`);
-  ok(z.charge === AMMO_CHARGES - 4, 'spending one shot each');
+  z.buf.push({ id: 1, ty: AMMO, cp: 0 }, { id: 2, ty: AMMO, cp: 0 });
+  run(f, 14);
+  ok(f.zapped === 4, `with two Ammo it kills a small swarm (${f.zapped} of 4)`);
+  ok(z.charge + z.buf.length * AMMO_CHARGES === 2 * AMMO_CHARGES - 8, 'spending two shots on each Mite');
   ok(z.kills === 4, 'and keeps count');
 }
 
@@ -212,6 +213,82 @@ console.log('\nBesieging a nest');
   f.mites.length = 0;
   run(f, 3);
   ok(!f.nests.length && f.cash - cash === NEST_BOUNTY, 'and a dead nest pays out $2,000');
+}
+
+console.log('\nSkitters');
+{
+  ok(MITE.hp > ZAP_DAMAGE[0] && MITE.hp <= 2 * ZAP_DAMAGE[0], `a Mite takes two shots from a base Zapper (${MITE.hp} hp, ${ZAP_DAMAGE[0]} a shot)`);
+  ok(SKITTER.hp <= Math.min(...ZAP_DAMAGE), 'a Skitter dies to one shot from anything');
+  ok(SKITTER.speed > MITE.speed && SKITTER.bite > MITE.bite, 'and is faster and bites harder');
+
+  const f = bench();
+  put(f, 'gen', 20, 20);
+  put(f, 'depot', 21, 20);
+  put(f, 'pipe', 30, 20);
+  const sk = spawnMite(f, 20.5, 21.5, null, 'skitter');
+  run(f, 4);
+  ok(sk.tgt === cellOf(30, 20), 'a Skitter runs past a Generator and a Depot to get at a belt');
+  run(f, 6);
+  const belt = f.grid[cellOf(30, 20)];
+  ok(belt.hp < MAX_HP.pipe, 'and chews it');
+  const g = bench();
+  put(g, 'gen', 20, 20);
+  const lone = spawnMite(g, 20.5, 21.5, null, 'skitter');
+  run(g, 3);
+  ok(g.grid[cellOf(20, 20)].hp === maxHp(g.grid[cellOf(20, 20)]), 'with no belts on the map, it leaves everything else alone');
+
+  const z = bench();
+  put(z, 'zap', 25, 25);
+  z.grid[cellOf(25, 25)].buf.push({ id: 1, ty: AMMO, cp: 0 });
+  for (let k = 0; k < 3; k++) spawnMite(z, 28.5, 25.5, null, 'skitter');
+  run(z, 4);
+  ok(z.zapped === 3 && z.grid[cellOf(25, 25)].charge === AMMO_CHARGES - 3, 'one shot each');
+}
+
+console.log('\nSkitter nests');
+{
+  let worlds = 150, without = 0, tight = 0;
+  for (let s = 1; s <= worlds; s++) {
+    const n = placeNests(generateWorld(s * 104729));
+    if (!n.some(x => x.kind === 'skitter')) without++;
+    for (const a of n) for (const b of n) {
+      if (a !== b && Math.max(Math.abs(a.cell % WORLD - b.cell % WORLD),
+        Math.abs(Math.floor(a.cell / WORLD) - Math.floor(b.cell / WORLD))) < 6) tight++;
+    }
+  }
+  ok(without === 0, `every one of ${worlds} worlds has Skitter nests`);
+  ok(tight === 0, 'spaced like Mite nests: never within six slots of any other nest');
+  ok(NESTS.skitter.hp === 1.5 * NESTS.mite.hp && NESTS.skitter.bounty === 10000,
+    'a Skitter nest has 1.5x the health of a Mite nest and pays $10,000');
+
+  const f = bench();
+  f.waves = SKITTER_FROM + 4;
+  f.nests = [{ cell: cellOf(5, 5), hp: NESTS.mite.hp, kind: 'mite' }, { cell: cellOf(50, 50), hp: NESTS.skitter.hp, kind: 'skitter' }];
+  sendSwarm(f, 12);
+  const nSk = f.mites.filter(m => m.kind === 'skitter').length;
+  ok(nSk > 0 && nSk < 12, `later swarms are part Skitter (${nSk} of 12)`);
+  const early = bench();
+  early.nests = f.nests.map(n => ({ ...n }));
+  sendSwarm(early, 12);
+  ok(!early.mites.some(m => m.kind === 'skitter'), 'early swarms are all Mites');
+
+  const s = bench();
+  s.nests = [{ cell: cellOf(30, 25), hp: NESTS.skitter.hp, kind: 'skitter' }];
+  put(s, 'zap', 26, 25);
+  const zz = s.grid[cellOf(26, 25)];
+  for (let k = 0; k < 6; k++) zz.buf.push({ id: 700 + k, ty: AMMO, cp: 0 });
+  let skBrood = 0;
+  for (let i = 0; i < 30 * 40; i++) {
+    run(s, 1 / 30);
+    for (const e of s.fx) if (e.k === 'brood' && e.kind === 'skitter') skBrood++;
+    s.fx.length = 0;
+  }
+  ok(skBrood > 0, 'a Skitter nest under fire sends out Skitters');
+  const cash = s.cash;
+  s.nests[0].hp = 3; s.nests[0].anger = 0; s.mites.length = 0;
+  zz.buf.push({ id: 999, ty: AMMO, cp: 0 });
+  run(s, 3);
+  ok(s.cash - cash === 10000, 'and pays $10,000 when it dies');
 }
 
 console.log('\nThe Zapper draws power while it recharges');

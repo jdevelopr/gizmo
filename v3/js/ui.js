@@ -20,7 +20,8 @@ import {
   upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE, PLUMBING,
   ONE_MOUTH, acceptsFrom, faceHit, ARMORY, AMMO, AMMO_CHARGES, broken, maxHp,
   repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
-  SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, nestAnger, nestBrood, NEST_BROOD,
+  SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, nestAnger, nestBrood, NEST_BROOD, nestSpec,
+  NESTS, MITE, SKITTER, SKITTER_FROM,
   NEST_BROOD_MAX, NEST_ANGER, NEST_ANGER_MIN,
 } from './machines.js';
 import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
@@ -594,7 +595,7 @@ export class Hud {
     } else if (mitesInside(f) > 0) {
       const n = mitesInside(f);
       target = miteCell(true);
-      head = n > 1 ? `${n} MITES IN THE FACTORY` : 'A MITE IN THE FACTORY';
+      head = n > 1 ? `${n} BUGS IN THE FACTORY` : 'A BUG IN THE FACTORY';
       body = (f.cells.some(i => f.grid[i]?.kind === 'zap')
         ? 'Check your Zappers have Ammo and power, and that they reach the line being eaten.'
         : 'They are chewing your machines. Build a Zapper (Z) near them and belt Ammo into it from an Armory (B).');
@@ -629,7 +630,8 @@ export class Hud {
         + `showing the colour on the map; click it to see which queue is empty. A two-input `
         + `machine takes both halves off one belt happily — what it cannot do is invent the half you are not sending.`;
     } else if ((f.mites?.length || 0) > 0) {
-      head = `${f.mites.length} MITE${f.mites.length > 1 ? 'S' : ''} ON THE WAY`;
+      const sk = f.mites.filter(m => m.kind === 'skitter').length;
+      head = `${f.mites.length} BUG${f.mites.length > 1 ? 'S' : ''} ON THE WAY` + (sk ? ` · ${sk} SKITTER${sk > 1 ? 'S' : ''}` : '');
       target = miteCell(false);
       body = 'A swarm is crossing the wilds toward your fence. Zappers with Ammo stop them; '
         + 'whatever gets through will chew your belts first.';
@@ -911,17 +913,20 @@ export class Panel {
       && cy(i) >= claimMin(f.claim) && cy(i) <= claimMax(f.claim);
     const nest = nestAt(f, i);
     if (nest) {
-      host.appendChild(el('h3', null, 'MITE NEST'));
+      const spec = nestSpec(nest);
+      const sk = nest.kind === 'skitter';
+      host.appendChild(el('h3', null, spec.name.toUpperCase()));
       host.appendChild(el('div', 'sub', `${cx(i)}, ${cy(i)}`));
       const r = el('div', 'rows');
-      addRow(r, 'Health', `${Math.ceil(nest.hp)} of ${NEST_HP}`, 'bad');
-      addRow(r, 'Destroying it pays', money(NEST_BOUNTY), 'good');
-      addRow(r, 'When shot', `${nestBrood(nest)} mites every ${nestAnger(nest)} damage`, 'warn');
+      addRow(r, 'Health', `${num(Math.ceil(nest.hp))} of ${num(spec.hp)}`, 'bad');
+      addRow(r, 'Destroying it pays', money(spec.bounty), 'good');
+      if (sk) addRow(r, 'Skitters', 'fast, eat only belts, die to one shot', 'warn');
+      addRow(r, 'When shot', `${nestBrood(nest)} ${sk ? 'Skitters' : 'Mites'} every ${nestAnger(nest)} damage`, 'warn');
       host.appendChild(r);
       host.appendChild(el('p', 'body',
         'Swarms come out of here when your factory gets loud. A Zapper with nothing else '
         + 'to shoot at will chip away at a nest in its reach, but it is a siege: thousands '
-        + 'of shots, and every few it takes a brood of mites comes out for the Zapper. Park '
+        + `of shots, and every few it takes a brood comes out — ${sk ? 'Skitters go for the belts feeding the Zapper' : 'Mites go for the Zapper itself'}. Park `
         + 'two or three Zappers together, keep the Ammo coming, and it pays well. Another '
         + 'nest digs in somewhere far off, eventually.'));
       return;
@@ -1401,8 +1406,11 @@ export class Panel {
       : f.t < SWARM_GRACE ? `not before ${clock(SWARM_GRACE)}  ·  about ${clock(eta)}` : `in about ${clock(eta)}`,
       isFinite(eta) && eta < 60 ? 'warn' : '');
     addRow(bug, 'Swarms so far', num(f.waves || 0));
-    addRow(bug, 'Mites alive', num(f.mites?.length || 0), f.mites?.length ? 'warn' : 'good');
-    addRow(bug, 'Nests', num(f.nests?.length || 0));
+    const skAlive = (f.mites || []).filter(m => m.kind === 'skitter').length;
+    addRow(bug, 'Mites alive', num((f.mites?.length || 0) - skAlive), f.mites?.length ? 'warn' : 'good');
+    addRow(bug, 'Skitters alive', num(skAlive), skAlive ? 'warn' : 'good');
+    addRow(bug, 'Mite nests', num((f.nests || []).filter(n => n.kind !== 'skitter').length));
+    addRow(bug, 'Skitter nests', num((f.nests || []).filter(n => n.kind === 'skitter').length));
     addRow(bug, 'Mites zapped', num(f.zapped || 0));
     addRow(bug, 'Machines chewed through', num(f.chewed || 0), f.chewed ? 'warn' : '');
     addRow(bug, 'Broken right now', num(d.broken || 0), d.broken ? 'bad' : 'good');
@@ -1548,10 +1556,13 @@ export function drawMinimap(canvas, g, view) {
     }
   }
   // Nests, and every mite on the map, in the one colour nothing else uses.
-  for (const n of f.nests || []) put(n.cell, 200, 40, 110);
+  for (const n of f.nests || []) {
+    if (n.kind === 'skitter') put(n.cell, 120, 200, 40); else put(n.cell, 200, 40, 110);
+  }
   for (const mt of f.mites || []) {
     const x = Math.floor(mt.x), y = Math.floor(mt.y);
-    if (x >= 0 && y >= 0 && x < WORLD && y < WORLD) put(cellOf(x, y), 255, 79, 122);
+    if (x < 0 || y < 0 || x >= WORLD || y >= WORLD) continue;
+    if (mt.kind === 'skitter') put(cellOf(x, y), 190, 255, 90); else put(cellOf(x, y), 255, 79, 122);
   }
   ctx.putImageData(img, 0, 0);
 
@@ -1692,7 +1703,7 @@ again. The build ghost is green on empty ground and amber when it is about to
 replace something.</p>
 
 <h3>Mites</h3>
-<p>Out beyond your fence are <b>nests</b>, and there is always one near every Sap
+<p>Out beyond your fence are <b>nests</b>, and there are always two near every Sap
 patch. They are woken by <b>noise</b>: every Extractor digging, every Generator
 burning and every heavy machine working is loud, and the louder your factory, the
 more often a swarm sets out for it — and the bigger it is. Nothing comes for the
@@ -1714,6 +1725,14 @@ shooting, and a Zapper always deals with mites before it goes back to the nest. 
 hurt a nest is, the harder it fights — from ${NEST_BROOD} mites every ${NEST_ANGER} damage at
 full health to ${NEST_BROOD_MAX} every ${NEST_ANGER_MIN} at the end. Bring
 several Zappers and plenty of Ammo — a dead nest pays ${money(NEST_BOUNTY)}.</p>
+<p>A Mite has ${MITE.hp} hit points: two shots from a level 1 Zapper.</p>
+<p><b>Skitters</b> are the second creature: long, green and fast, ${SKITTER.speed / MITE.speed}x a
+Mite's speed with a bite ${Math.round(SKITTER.bite / MITE.bite * 10) / 10}x as hard — and they eat
+<b>conveyors and nothing else</b>, running straight past every other machine to reach one. One
+shot from anything kills one. From swarm ${SKITTER_FROM + 1} onward a growing share of every
+swarm is Skitters, racing in from their own nests while the Mites plod in from theirs.
+A <b>Skitter nest</b> has ${num(NESTS.skitter.hp)} hit points, sends out Skitter broods that go
+for the belts around the Zapper attacking it, and pays ${money(NESTS.skitter.bounty)}.</p>
 <p>Ammo comes from an <b>Armory</b> (<b>B</b>): one Scrap and one Copper make one Ammo.
 The easy build is a Balancer on a Slag line with its branch through a Copper Mutator,
 merged back onto one belt. The Armory takes either ingredient for as long as it has room,

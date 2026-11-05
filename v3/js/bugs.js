@@ -24,9 +24,10 @@
  */
 
 import {
-  WORLD, cellOf, cx, cy, inWorld, inClaim, claimMin, claimMax, OPEN,
+  WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN,
   rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, SWARM_COST,
-  SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_HP, NEST_BOUNTY, NEST_REGROW,
+  SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_REGROW, CREATURES, SKITTER,
+  skitterShare, nestSpec,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
 } from './machines.js';
@@ -38,7 +39,11 @@ const NEST_MIN_RING = 11;
 /** And never closer to each other than this. */
 const NEST_GAP = 6;
 /** Random nests on top of the ones guarding each Sap patch. */
-const NEST_EXTRA = 4;
+const NEST_EXTRA = 8;
+/** Mite nests guarding each Sap patch. */
+const NEST_PER_SAP = 2;
+/** Skitter nests, placed by the same rules as the random Mite nests. */
+const SKITTER_NESTS = 8;
 
 /**
  * Where the nests are on this world. A pure function of the seed, like the ore —
@@ -61,14 +66,16 @@ export function placeNests(w) {
     if (ring(x, y) < NEST_MIN_RING) return false;
     return out.every(n => Math.max(Math.abs(cx(n.cell) - x), Math.abs(cy(n.cell) - y)) >= NEST_GAP);
   };
-  const add = (x, y) => out.push({ cell: cellOf(x, y), hp: NEST_HP });
+  const add = (x, y, kind = 'mite') => out.push({ cell: cellOf(x, y), hp: NESTS_HP(kind), kind });
 
   for (const p of w.patches || []) {
     if (p.ty !== 8 || !p.cells.length) continue;
-    for (let guard = 0; guard < 80; guard++) {
-      const a = rnd() * Math.PI * 2, r = 3 + rnd() * 3;
-      const x = Math.round(p.x + Math.cos(a) * r), y = Math.round(p.y + Math.sin(a) * r);
-      if (ok(x, y)) { add(x, y); break; }
+    for (let k = 0; k < NEST_PER_SAP; k++) {
+      for (let guard = 0; guard < 80; guard++) {
+        const a = rnd() * Math.PI * 2, r = 3 + rnd() * (k ? 5 : 3);
+        const x = Math.round(p.x + Math.cos(a) * r), y = Math.round(p.y + Math.sin(a) * r);
+        if (ok(x, y)) { add(x, y); break; }
+      }
     }
   }
   for (let k = 0; k < NEST_EXTRA; k++) {
@@ -77,7 +84,30 @@ export function placeNests(w) {
       if (ring(x, y) >= NEST_MIN_RING + 3 && ok(x, y)) { add(x, y); break; }
     }
   }
+  // Drawn after every Mite nest, so adding them moved none of those.
+  for (let k = 0; k < SKITTER_NESTS; k++) {
+    for (let guard = 0; guard < 200; guard++) {
+      const x = Math.floor(rnd() * WORLD), y = Math.floor(rnd() * WORLD);
+      if (ring(x, y) >= NEST_MIN_RING + 3 && ok(x, y)) { add(x, y, 'skitter'); break; }
+    }
+  }
   return out;
+}
+
+const NESTS_HP = kind => nestSpec({ kind }).hp;
+
+/**
+ * A save from before Skitters, or from before the nest count was doubled, has
+ * fewer nests than its seed now makes. Give it the ones it is missing — wherever
+ * nothing has been built since, and never crowding a nest it already has.
+ */
+export function addMissingNests(f) {
+  f.nests = f.nests || [];
+  for (const n of placeNests(f.world)) {
+    if (f.grid[n.cell] || claimed(n.cell, f.claim)) continue;
+    if (f.nests.some(o => Math.max(Math.abs(cx(o.cell) - cx(n.cell)), Math.abs(cy(o.cell) - cy(n.cell))) < NEST_GAP)) continue;
+    f.nests.push(n);
+  }
 }
 
 /** The living nest on this slot, if there is one. */
@@ -145,32 +175,53 @@ export function stepBugs(f, dt) {
   stepZappers(f, dt);
 }
 
-/** Send one swarm from a nest near the factory. */
-export function sendSwarm(f, size = null) {
-  const live = f.nests.filter(n => n.hp > 0);
-  if (!live.length) return 0;
+/** One of the three nests of this kind nearest the middle, at random. */
+function nearNest(f, kind) {
+  const live = f.nests.filter(n => n.hp > 0 && (n.kind || 'mite') === kind);
+  if (!live.length) return null;
   const c = (WORLD - 1) / 2;
   live.sort((a, b) => Math.hypot(cx(a.cell) - c, cy(a.cell) - c) - Math.hypot(cx(b.cell) - c, cy(b.cell) - c));
-  const nest = live[Math.floor(Math.random() * Math.min(3, live.length))];
-  const n = Math.min(size ?? swarmSize(f.noise, f.waves), MITE_CAP - f.mites.length);
-  const hp = Math.min(MITE.hpMax, MITE.hp + f.waves * MITE.hpPerWave);
-  for (let k = 0; k < n; k++) spawnMite(f, cx(nest.cell) + 0.5, cy(nest.cell) + 0.5, hp);
-  f.waves++;
-  if (n > 0) f.fx.push({ k: 'swarm', n, cell: nest.cell });
-  return n;
+  return live[Math.floor(Math.random() * Math.min(3, live.length))];
 }
 
-export function spawnMite(f, x, y, hp = MITE.hp) {
+/**
+ * Send one swarm. Mites come from a Mite nest near the factory; from the fifth
+ * swarm on, a share of it is Skitters, from a Skitter nest — so a swarm can arrive
+ * from two directions at once, the fast half first.
+ */
+export function sendSwarm(f, size = null) {
+  const total = Math.min(size ?? swarmSize(f.noise, f.waves), MITE_CAP - f.mites.length);
+  const sNest = nearNest(f, 'skitter');
+  const mNest = nearNest(f, 'mite');
+  let nSkit = sNest ? Math.round(total * skitterShare(f.waves)) : 0;
+  let nMite = total - nSkit;
+  if (!mNest) { nSkit += nMite; nMite = 0; }
+  if (!sNest) nSkit = 0;
+  let sent = 0;
+  for (let k = 0; k < nMite; k++) if (spawnMite(f, cx(mNest.cell) + 0.5, cy(mNest.cell) + 0.5)) sent++;
+  for (let k = 0; k < nSkit; k++) if (spawnMite(f, cx(sNest.cell) + 0.5, cy(sNest.cell) + 0.5, null, 'skitter')) sent++;
+  if (!sent && !mNest && !sNest) return 0;
+  f.waves++;
+  if (nMite > 0) f.fx.push({ k: 'swarm', n: nMite, cell: mNest.cell, kind: 'mite' });
+  if (nSkit > 0) f.fx.push({ k: 'swarm', n: nSkit, cell: sNest.cell, kind: 'skitter' });
+  return sent;
+}
+
+/** Put one creature on the map. `hp` defaults to the kind's own. */
+export function spawnMite(f, x, y, hp = null, kind = 'mite') {
   if (!f.mites) initBugs(f);
   if (f.mites.length >= MITE_CAP) return null;
+  const spec = CREATURES[kind] || MITE;
+  const h = hp ?? spec.hp;
   const mt = {
     id: f.mid++,
+    kind,
     x: x + (Math.random() - 0.5) * 0.8,
     y: y + (Math.random() - 0.5) * 0.8,
-    hp, max: hp,
+    hp: h, max: h,
     tgt: -1, st: 'walk', rt: 0,
     ox: (Math.random() - 0.5) * 0.5, oy: (Math.random() - 0.5) * 0.5,
-    sp: MITE.speed * (0.85 + Math.random() * 0.3),
+    sp: spec.speed * (0.85 + Math.random() * 0.3),
     ph: Math.random() * 10,
     face: 0,
   };
@@ -186,9 +237,12 @@ export function spawnMite(f, x, y, hp = MITE.hp) {
  */
 function pickTarget(f, mt) {
   let best = -1, score = Infinity;
+  const beltsOnly = mt.kind === 'skitter';
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m || broken(m)) continue;
+    // A Skitter eats conveyors and nothing else.
+    if (beltsOnly && m.kind !== 'pipe' && m.kind !== 'store') continue;
     const d = Math.hypot(cx(i) + 0.5 - mt.x, cy(i) + 0.5 - mt.y);
     const s = PLUMBING.has(m.kind) ? d * 0.7 : d;
     if (s < score) { score = s; best = i; }
@@ -214,7 +268,7 @@ function stepMites(f, dt) {
     const d = Math.hypot(dx, dy);
     if (m && d < 0.12) {
       mt.st = 'chew';
-      m.hp = Math.max(0, (m.hp ?? maxHp(m, f.done)) - MITE.bite * dt);
+      m.hp = Math.max(0, (m.hp ?? maxHp(m, f.done)) - (CREATURES[mt.kind] || MITE).bite * dt);
       m.hurt = 1;
       if (m.hp <= 0) {
         f.chewed++;
@@ -282,7 +336,7 @@ function stepZappers(f, dt) {
       }
       for (const mt of hit) {
         mt.hp -= zapDamage(m);
-        if (mt.hp <= 0) { dead = true; m.kills = (m.kills || 0) + 1; f.zapped++; f.fx.push({ k: 'kill', x: mt.x, y: mt.y }); }
+        if (mt.hp <= 0) { dead = true; m.kills = (m.kills || 0) + 1; f.zapped++; f.fx.push({ k: 'kill', x: mt.x, y: mt.y, kind: mt.kind }); }
       }
       f.fx.push({ k: 'zap', cell: i, path });
       m.charge--;
@@ -317,25 +371,27 @@ function stepZappers(f, dt) {
  * moment and they know exactly where the shooting is coming from.
  */
 function brood(f, nest, zapper) {
-  const hp = Math.min(MITE.hpMax, MITE.hp + f.waves * MITE.hpPerWave);
+  const kind = nest.kind || 'mite';
   let n = 0;
   const size = nestBrood(nest);
   for (let k = 0; k < size; k++) {
-    const mt = spawnMite(f, cx(nest.cell) + 0.5, cy(nest.cell) + 0.5, hp);
+    const mt = spawnMite(f, cx(nest.cell) + 0.5, cy(nest.cell) + 0.5, null, kind);
     if (!mt) break;
-    mt.tgt = zapper;
-    mt.rt = 5;            // committed: it does not go looking for a softer belt
+    // Mites go for the Zapper doing the shooting. Skitters only eat belts, so they
+    // go for the belt that feeds it its Ammo — which is worse.
+    if (kind === 'mite') { mt.tgt = zapper; mt.rt = 5; }
     n++;
   }
-  if (n) f.fx.push({ k: 'brood', cell: nest.cell, n });
+  if (n) f.fx.push({ k: 'brood', cell: nest.cell, n, kind });
 }
 
 function killNest(f, nest) {
   nest.hp = 0;
-  f.cash += NEST_BOUNTY;
-  f.earned += NEST_BOUNTY;
-  f.regrow.push(f.t + NEST_REGROW);
-  f.fx.push({ k: 'nest', cell: nest.cell, v: NEST_BOUNTY });
+  const pay = nestSpec(nest).bounty;
+  f.cash += pay;
+  f.earned += pay;
+  f.regrow.push({ t: f.t + NEST_REGROW, kind: nest.kind || 'mite' });
+  f.fx.push({ k: 'nest', cell: nest.cell, v: pay, kind: nest.kind || 'mite' });
   f.nests = f.nests.filter(n => n.hp > 0);
 }
 
@@ -345,7 +401,11 @@ function killNest(f, nest) {
  * one, and the next one is further away.
  */
 function regrowNests(f) {
-  if (!f.regrow.length || f.regrow[0] > f.t) return;
+  const next = f.regrow[0];
+  if (next == null) return;
+  const at = typeof next === 'number' ? next : next.t;
+  if (at > f.t) return;
+  const kind = (typeof next === 'number' ? 'mite' : next.kind) || 'mite';
   f.regrow.shift();
   const lo = claimMin(f.claim) - 5, hi = claimMax(f.claim) + 5;
   for (let guard = 0; guard < 300; guard++) {
@@ -354,7 +414,7 @@ function regrowNests(f) {
     const i = cellOf(x, y);
     if (f.terrain[i] !== OPEN || f.patch[i] >= 0 || f.grid[i]) continue;
     if (f.nests.some(n => Math.max(Math.abs(cx(n.cell) - x), Math.abs(cy(n.cell) - y)) < NEST_GAP)) continue;
-    f.nests.push({ cell: i, hp: NEST_HP });
+    f.nests.push({ cell: i, hp: NESTS_HP(kind), kind });
     return;
   }
 }

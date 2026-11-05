@@ -25,7 +25,7 @@ import {
   money, makeMachine, techById, unlockedBy, OPEN,
 } from './machines.js';
 import { generateWorld } from './world.js';
-import { spawnMite } from './bugs.js';
+import { spawnMite, addMissingNests } from './bugs.js';
 import {
   createFactory, starterKit, stepFactory, rebuild, drainFx, diagnose, reachesPayout,
 } from './sim.js';
@@ -363,14 +363,18 @@ export function serialise(g) {
     // Mites are saved, unlike gizmos: reloading must not be a way to make a
     // swarm that is halfway through your belts simply vanish.
     bugs: {
-      nv: 2,     // nest health scale: version 1 nests had a hundredth of it
-      nests: (f.nests || []).map(n => [n.cell, Math.round(n.hp), Math.round(n.anger || 0)]),
-      mites: (f.mites || []).map(mt => [Math.round(mt.x * 100) / 100, Math.round(mt.y * 100) / 100, Math.round(mt.hp * 10) / 10, mt.max]),
+      // 1: nests had a hundredth of today's health. 2: no Skitters. 3: half the
+      // nests. 4: today.
+      nv: 4,
+      nests: (f.nests || []).map(n => [n.cell, Math.round(n.hp), Math.round(n.anger || 0), n.kind === 'skitter' ? 1 : 0]),
+      mites: (f.mites || []).map(mt => [Math.round(mt.x * 100) / 100, Math.round(mt.y * 100) / 100,
+        Math.round(mt.hp * 10) / 10, mt.max, mt.kind === 'skitter' ? 1 : 0]),
       swarm: Math.round(f.swarm || 0),
       waves: f.waves || 0,
       zapped: f.zapped || 0,
       chewed: f.chewed || 0,
-      regrow: (f.regrow || []).map(t => Math.round(t)),
+      regrow: (f.regrow || []).map(r => (typeof r === 'number' ? [Math.round(r), 0]
+        : [Math.round(r.t), r.kind === 'skitter' ? 1 : 0])),
     },
   };
 }
@@ -414,17 +418,18 @@ export function deserialise(data) {
   if (b) {
     const scale = b.nv >= 2 ? 1 : 100;
     f.nests = (b.nests || []).filter(([c, hp]) => Number.isInteger(c) && hp > 0)
-      .map(([cell, hp, anger]) => ({ cell, hp: hp * scale, anger: anger || 0 }));
+      .map(([cell, hp, anger, k]) => ({ cell, hp: hp * scale, anger: anger || 0, kind: k ? 'skitter' : 'mite' }));
+    if (!(b.nv >= 4)) addMissingNests(f);
     f.mites = [];
-    for (const [x, y, hp, max] of b.mites || []) {
-      const mt = spawnMite(f, x, y, max || hp);
+    for (const [x, y, hp, max, k] of b.mites || []) {
+      const mt = spawnMite(f, x, y, max || hp, k ? 'skitter' : 'mite');
       if (mt) { mt.x = x; mt.y = y; mt.hp = hp; }
     }
     f.swarm = b.swarm || 0;
     f.waves = b.waves || 0;
     f.zapped = b.zapped || 0;
     f.chewed = b.chewed || 0;
-    f.regrow = b.regrow || [];
+    f.regrow = (b.regrow || []).map(r => (Array.isArray(r) ? { t: r[0], kind: r[1] ? 'skitter' : 'mite' } : { t: r, kind: 'mite' }));
   }
   rebuild(f);
 

@@ -358,7 +358,24 @@ export const SWARM_GRACE = 420;
 export const MITE_CAP = 140;
 
 /** A mite, at the first swarm. Later swarms are a little tougher. */
-export const MITE = { hp: 5, speed: 0.8, bite: 1.5, hpPerWave: 0.18, hpMax: 14 };
+export const MITE = { hp: 12, speed: 0.8, bite: 1.5, hpPerWave: 0, hpMax: 12 };
+
+/**
+ * Skitters: the second creature. Long, thin and fast, and they eat belts and
+ * nothing else — a Skitter walks straight past a Generator to get at the conveyor
+ * behind it. They bite much harder than a Mite and run twice as fast, but one shot
+ * from anything kills one. They come out of their own nests, and from the fifth
+ * swarm onward a growing share of every swarm is Skitters.
+ */
+export const SKITTER = { hp: 1, speed: 1.8, bite: 4 };
+
+/** The two kinds of creature, by the name stored on each one. */
+export const CREATURES = { mite: MITE, skitter: SKITTER };
+
+/** From which swarm (counting from 0) Skitters start joining in, and how many. */
+export const SKITTER_FROM = 4;
+export const skitterShare = waves =>
+  waves < SKITTER_FROM ? 0 : Math.min(0.5, 0.15 + (waves - SKITTER_FROM) * 0.05);
 
 /** How big a swarm is, given how loud the factory is and how many have come before. */
 export const swarmSize = (noise, waves) =>
@@ -374,6 +391,13 @@ export const swarmSize = (noise, waves) =>
  */
 export const NEST_HP = 12000;
 export const NEST_BOUNTY = 2000;
+
+/** The two kinds of nest. A Skitter nest is half as hard again, and pays five times. */
+export const NESTS = {
+  mite: { hp: NEST_HP, bounty: NEST_BOUNTY, name: 'Mite nest' },
+  skitter: { hp: 18000, bounty: 10000, name: 'Skitter nest' },
+};
+export const nestSpec = n => NESTS[n?.kind] || NESTS.mite;
 export const NEST_ANGER = 90;
 export const NEST_BROOD = 3;
 
@@ -387,7 +411,7 @@ export const NEST_BROOD_MAX = 9;
 export const NEST_ANGER_MIN = 25;
 
 /** How hurt a nest is, 0 (untouched) to 1 (about to die). */
-const rageOf = n => 1 - Math.max(0, Math.min(1, n.hp / NEST_HP));
+const rageOf = n => 1 - Math.max(0, Math.min(1, n.hp / nestSpec(n).hp));
 
 /** Damage it takes before the next brood comes out. */
 export const nestAnger = n => Math.round(NEST_ANGER - (NEST_ANGER - NEST_ANGER_MIN) * rageOf(n));

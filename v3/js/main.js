@@ -259,7 +259,12 @@ function playFx(fx) {
         }
         break;
       case 'kill':
-        if (seen(e.x, e.y)) { sfx('kill'); view.burst(e.x, e.y, '#ff6f9a', 10, 3, 0.5, 3); view.burst(e.x, e.y, '#ffd0e0', 4, 1.5, 0.35, 2); }
+        if (seen(e.x, e.y)) {
+          sfx('kill');
+          const sk = e.kind === 'skitter';
+          view.burst(e.x, e.y, sk ? '#9dff3c' : '#ff6f9a', sk ? 8 : 10, 3, 0.5, 3);
+          view.burst(e.x, e.y, sk ? '#e8ffb0' : '#ffd0e0', 4, 1.5, 0.35, 2);
+        }
         break;
       case 'broke':
         sfx('broke');
@@ -300,9 +305,13 @@ function playFx(fx) {
     else if (e.k === 'repair') view.float(`-$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#ffcd75');
     else if (e.k === 'nest') {
       view.float(`+$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#a7f070');
-      toast(g, `Nest destroyed — ${money(e.v)} bounty`, '#a7f070');
+      toast(g, `${e.kind === 'skitter' ? 'Skitter nest' : 'Nest'} destroyed — ${money(e.v)} bounty`, '#a7f070');
     } else if (e.k === 'stir') toast(g, 'The mites are stirring. A swarm is coming soon.', '#ff9ab8');
-    else if (e.k === 'swarm') toast(g, `A swarm of ${e.n} mites is coming from the ${compass(e.cell)}`, '#ff6f9a');
+    else if (e.k === 'swarm') {
+      toast(g, e.kind === 'skitter'
+        ? `${e.n} Skitter${e.n > 1 ? 's are' : ' is'} racing in from the ${compass(e.cell)} — they eat belts`
+        : `A swarm of ${e.n} mites is coming from the ${compass(e.cell)}`, e.kind === 'skitter' ? '#9dff3c' : '#ff6f9a');
+    }
     else if (e.k === 'broke') {
       // Throttled: a swarm loose on a belt run breaks things faster than anybody
       // wants to read about them one at a time.

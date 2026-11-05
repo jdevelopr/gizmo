@@ -401,7 +401,7 @@ which costs a few seconds of production and saves a great deal of complexity.
 ### Mites, Zappers and the Armory
 
 A factory with nothing to push back against is a spreadsheet that runs itself. So
-out beyond the fence there are **nests** — one near every Sap patch and a few more
+out beyond the fence there are **nests** — two near every Sap patch and more
 in the far rings, a pure function of the seed like the ore — and they are woken by
 **noise**.
 
@@ -410,6 +410,22 @@ fills a gauge; every time it fills, a swarm leaves the nest nearest you, bigger 
 louder you are. Nothing comes for the first seven minutes, so the opening is still
 the opening, and the STATS tab shows how loud you are and roughly when the next
 swarm is due.
+
+There are about thirty nests on a world: two near every Sap patch, eight more
+scattered through the far rings, and eight **Skitter nests** placed by the same
+rules — no closer than eleven rings to the middle and never within six slots of
+another nest. Older saves are given the nests they are missing when they load.
+
+**Skitters** are the second creature: long, thin, acid green and fast — 2.25x a
+Mite's speed with a bite 2.7x as hard — and they eat **conveyors and nothing else**,
+running straight past every other machine to reach one. One shot from anything kills
+one. From the fifth swarm onward a growing share of every swarm is Skitters (15%,
+rising to half), racing in from their own nests while the Mites plod in from theirs. A
+Skitter nest has 18,000 hit points — half as hard again as a Mite nest — sends out
+broods of Skitters that go for the belts around the Zapper attacking it, and pays
+**$10,000**.
+
+A Mite has a flat 12 hit points: two shots from a Zapper at any level.
 
 **Mites chew, belts first.** They walk straight at the nearest thing you have
 built, counting belts as nearer than they are, because a belt is long, cheap and

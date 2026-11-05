@@ -691,7 +691,7 @@ export function buildCheck(f, spec, i) {
   if (f.terrain[i] === RUBBLE) return no(`Rubble — clear it for $${RUBBLE_COST}`);
   if (f.terrain[i] !== OPEN) return no('Bedrock will not move');
   if (spec.kind === 'ext' && f.patch[i] < 0) return no('An Extractor has to stand on ore');
-  if (nestAt(f, i)) return no('A mite nest — zap it out first');
+  if (nestAt(f, i)) return no('A nest — zap it out first');
   // Building over the top of something is allowed, and is the normal way to change
   // your mind about a slot. Whatever was there goes in the crate — unless the crate
   // is full, which is the one thing that can stop it.
@@ -920,7 +920,7 @@ export function moveMachine(f, from, to) {
   if (!claimed(to, f.claim)) return no('You do not own this land');
   if (f.terrain[to] !== OPEN) return no('Something is in the way');
   if (m.kind === 'ext' && f.patch[to] < 0) return no('An Extractor has to stand on ore');
-  if (nestAt(f, to)) return no('A mite nest — zap it out first');
+  if (nestAt(f, to)) return no('A nest — zap it out first');
   if (f.grid[to]) {
     // Dropping one machine on another puts the one underneath in the crate, the
     // same as building over it does. Nothing on this map is ever destroyed by

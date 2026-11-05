@@ -27,6 +27,7 @@ import {
   WORLD, cellOf, cx, cy, inWorld, inClaim, claimMin, claimMax, OPEN,
   rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, SWARM_COST,
   SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_HP, NEST_BOUNTY, NEST_REGROW,
+  NEST_ANGER, NEST_BROOD,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
 } from './machines.js';
 
@@ -293,14 +294,38 @@ function stepZappers(f, dt) {
     const nest = (f.nests || []).find(n => n.hp > 0
       && Math.hypot(cx(n.cell) + 0.5 - x, cy(n.cell) + 0.5 - y) <= r);
     if (nest) {
-      nest.hp -= zapDamage(m);
+      const dmg = zapDamage(m);
+      nest.hp -= dmg;
       f.fx.push({ k: 'zap', cell: i, path: [[x, y], [cx(nest.cell) + 0.5, cy(nest.cell) + 0.5]] });
       m.charge--;
       m.cool = zapCool(m);
-      if (nest.hp <= 0) killNest(f, nest);
+      if (nest.hp <= 0) { killNest(f, nest); continue; }
+      // It fights back: every so much damage, a brood comes out for the Zapper.
+      nest.anger = (nest.anger || 0) + dmg;
+      while (nest.anger >= NEST_ANGER) {
+        nest.anger -= NEST_ANGER;
+        brood(f, nest, i);
+      }
     }
   }
   if (dead) f.mites = f.mites.filter(mt => mt.hp > 0);
+}
+
+/**
+ * A nest under fire sends out defenders. They are as tough as the swarms of the
+ * moment and they know exactly where the shooting is coming from.
+ */
+function brood(f, nest, zapper) {
+  const hp = Math.min(MITE.hpMax, MITE.hp + f.waves * MITE.hpPerWave);
+  let n = 0;
+  for (let k = 0; k < NEST_BROOD; k++) {
+    const mt = spawnMite(f, cx(nest.cell) + 0.5, cy(nest.cell) + 0.5, hp);
+    if (!mt) break;
+    mt.tgt = zapper;
+    mt.rt = 5;            // committed: it does not go looking for a softer belt
+    n++;
+  }
+  if (n) f.fx.push({ k: 'brood', cell: nest.cell, n });
 }
 
 function killNest(f, nest) {

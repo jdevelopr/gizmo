@@ -561,9 +561,13 @@ export function smartDir(f, i) {
       const nm = f.grid[cellOf(nx, ny)];
       if (target != null) score += (here - gap(nx, ny)) * 8;
       if (nm) {
-        // Handing off to a machine is good; firing into one that fires back is not.
-        if (exitDirs(nm).includes((d + 2) % 4)) score -= 16;
-        else if (nm.kind === 'depot' || nm.kind === 'lab' || nm.kind === 'gen') score += 26;
+        // Handing off to a machine is good; firing into one that fires back is not,
+        // and firing into a face that can never take anything — the back of an
+        // Extractor, the solid side of a Depot — is worse than firing at nothing.
+        if (!acceptsFrom(nm, faceHit(d))) score -= 40;
+        else if (exitDirs(nm).includes((d + 2) % 4)) score -= 16;
+        else if (nm.kind === 'depot' || nm.kind === 'lab' || nm.kind === 'gen' || nm.kind === 'zap') score += 26;
+        else if ((nm.kind === 'pipe' || nm.kind === 'store') && (nm.dir | 0) === d) score += 14;   // joins a run going the same way
         else score += 8;
       }
       if (target != null && here - gap(nx, ny) > 0
@@ -576,6 +580,79 @@ export function smartDir(f, i) {
 
     if (score > bestScore) { bestScore = score; best = d; }
   }
+  return best;
+}
+
+/* ------------------------------------------------------------ belt joining --- */
+
+const BELTISH = new Set(['pipe', 'store']);
+
+/**
+ * Is this belt going nowhere? It points off the claim, at bare ground, at a face
+ * that can never take anything, or straight back at whatever is feeding it.
+ */
+export function deadEnd(f, i) {
+  const m = f.grid[i];
+  if (!m || !BELTISH.has(m.kind)) return false;
+  const d = m.dir | 0;
+  const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
+  if (!openAt(f, nx, ny)) return true;
+  const n = f.grid[cellOf(nx, ny)];
+  if (!n) return true;
+  if (!acceptsFrom(n, faceHit(d)) || n.kind === 'ext') return true;
+  return exitDirs(n).includes((d + 2) % 4);
+}
+
+/**
+ * A machine just landed here: any belt next to it that was going nowhere turns to
+ * feed it. This is what makes extending a line feel right — put a belt down beside
+ * the end of a run, at any angle, and the run bends to meet it rather than carrying
+ * on into empty ground. Belts you turned by hand are left exactly as you set them.
+ */
+export function adoptFeeders(f, i) {
+  const m = f.grid[i];
+  if (!m) return 0;
+  let n = 0;
+  for (let d = 0; d < 4; d++) {
+    const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
+    if (!openAt(f, nx, ny)) continue;
+    const j = cellOf(nx, ny);
+    const b = f.grid[j];
+    if (!b || !BELTISH.has(b.kind) || b.handAim || !deadEnd(f, j)) continue;
+    const toMe = (d + 2) % 4;                       // the direction from b to here
+    if (!acceptsFrom(m, faceHit(toMe))) continue;   // it could not get in that way
+    if (exitDirs(m).includes(d)) continue;          // and never into my own output
+    b.dir = toMe;
+    b.flash = 1;
+    n++;
+  }
+  return n;
+}
+
+/**
+ * The end of a dragged run: if there is a machine right beside it that would take
+ * what the belt carries — and it is not the belt behind — point at that instead of
+ * carrying on into nothing. Otherwise keep the direction the drag was going.
+ */
+export function handoffDir(f, i) {
+  const m = f.grid[i];
+  if (!m) return null;
+  let best = null, bestScore = 0;
+  for (let d = 0; d < 4; d++) {
+    const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
+    if (!openAt(f, nx, ny)) continue;
+    const n = f.grid[cellOf(nx, ny)];
+    if (!n || !acceptsFrom(n, faceHit(d)) || n.kind === 'ext') continue;
+    if (exitDirs(n).includes((d + 2) % 4)) continue;          // that is my feeder
+    const s2 = (n.kind === 'depot' || n.kind === 'lab' || n.kind === 'gen' || n.kind === 'zap') ? 3
+      : BELTISH.has(n.kind) ? 1 : 2;
+    if (s2 > bestScore) { bestScore = s2; best = d; }
+  }
+  // Only take the hand-off if the way the drag was going is not already one.
+  const ahead = (m.dir | 0);
+  const ax = cx(i) + DIRS[ahead][0], ay = cy(i) + DIRS[ahead][1];
+  const an = openAt(f, ax, ay) ? f.grid[cellOf(ax, ay)] : null;
+  if (an && acceptsFrom(an, faceHit(ahead)) && an.kind !== 'ext' && !exitDirs(an).includes((ahead + 2) % 4)) return null;
   return best;
 }
 
@@ -686,8 +763,12 @@ export function build(f, spec, i, opt = {}) {
   f.cash -= cost;
   f.spent += cost;
   const m = placeRaw(f, spec, i);
+  // Anything left pointing at nothing next door turns to feed the newcomer first,
+  // so the newcomer's own facing is worked out with its feeders already in place.
+  if (opt.dir == null || opt.adopt) adoptFeeders(f, i);
   if (opt.dir != null) m.dir = opt.dir;
   else autoFace(f, i);
+  if (opt.hand) m.handAim = 1;
   if (opt.mir != null) m.mir = opt.mir ? 1 : 0;
   rebuild(f);
   f.fx.push({ k: 'build', cell: i, kind: spec.kind });
@@ -749,6 +830,8 @@ export function placeFromCrate(f, key, i, opt = {}) {
   f.grid[i] = m;
   f.dirty = true;
   if (m.kind === 'ext') { m.mut = f.patch[i]; m.rich = f.rich[i] || 1; }
+  m.handAim = opt.hand ? 1 : 0;
+  if (opt.dir == null || opt.adopt) adoptFeeders(f, i);
   if (opt.dir != null) m.dir = opt.dir;
   else autoFace(f, i);
   if (opt.mir != null) m.mir = opt.mir ? 1 : 0;
@@ -881,8 +964,10 @@ export function applyAction(f, a) {
     case 'rot': {
       if (!m) return no('Nothing there');
       m.dir = (m.dir + (a.back ? 3 : 1)) % 4;
-      // A mouth you have turned yourself stops turning itself.
+      // A mouth you have turned yourself stops turning itself, and a belt you have
+      // turned yourself is never re-aimed by one built beside it.
       if (ONE_MOUTH.has(m.kind)) m.aimed = 1;
+      m.handAim = 1;
       relink(f);            // turning one belt changes how its neighbours join it
       f.fx.push({ k: 'rot', cell: a.i });
       return yes();

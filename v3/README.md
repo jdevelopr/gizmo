@@ -423,8 +423,11 @@ scaled by the damage.
 two things from the factory it guards: **Ammo**, six shots each, belted in like
 anything else, and **power**, which it draws while it recharges between shots — so a
 swarm is a spike on its grid, and a browned-out Zapper fires slowly. With nothing
-moving in reach it chips at a nest instead, and a dead nest pays a bounty before
-another digs in somewhere far off.
+moving in reach it chips at a nest instead. That is a siege: a nest has 12,000 hit
+points, and every 90 points of damage it takes a brood of three mites comes out and
+goes straight for the Zapper doing the shooting. A Zapper always shoots mites before
+nests, so it turns on the brood and then goes back to the nest. A dead nest pays
+$2,000, and another digs in somewhere far off ten minutes later.
 
 **The Armory** (`B`) presses one Scrap and one Copper into one Ammo. The natural
 build is a Balancer on a Slag line with its branch through a Copper Mutator, merged
@@ -466,6 +469,17 @@ the speaker in the HUD, volume is in the menu, and both are remembered.
 **Juice.** Sparks when a mite dies, coins hopping out of a Depot on a rich sale,
 dust when something is built, a shake when a nest goes up, and a coloured pulse
 across the screen for a swarm, a contract, a ring of land or a finished research.
+
+**Belts aim themselves.** A single click with a belt in hand used to point it
+whichever way the tool happened to be facing — east, unless you had pressed `R`. Now
+it aims itself like everything else: on along whatever feeds it, into a Depot mouth or
+a machine beside it, toward the nearest Depot otherwise, and never into the back of an
+Extractor, the solid side of a Depot, or the belt behind it. The ghost shows the way
+it will face before you click. Put a belt beside the end of a run that stops in
+mid-air and the run bends to feed it; the end of a dragged run hands off to a machine
+right beside it. Press `R` on the tool and it goes down exactly as you turned it; a
+belt you turned by hand on the map is never re-aimed by anything built beside it.
+`tools/aim.mjs` checks all of it.
 
 **Hiding the helpers.** The warning box, the key hints along the bottom, the pop-up
 messages and the walkthrough card can each be switched off in the menu, or all at
@@ -626,6 +640,7 @@ node tools/feeds.mjs      # can one belt feed a machine that needs two things?
 node tools/economy.mjs    # the cost tables, and what real builds earn
 node tools/bugs.mjs       # mites chew, broken stops, repair, Armory, Zapper
 node tools/blueprint.mjs  # select, copy, paste, rotate, move and bulk verbs
+node tools/aim.mjs        # belts aim themselves sensibly
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

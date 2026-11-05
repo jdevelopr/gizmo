@@ -363,7 +363,8 @@ export function serialise(g) {
     // Mites are saved, unlike gizmos: reloading must not be a way to make a
     // swarm that is halfway through your belts simply vanish.
     bugs: {
-      nests: (f.nests || []).map(n => [n.cell, Math.round(n.hp)]),
+      nv: 2,     // nest health scale: version 1 nests had a hundredth of it
+      nests: (f.nests || []).map(n => [n.cell, Math.round(n.hp), Math.round(n.anger || 0)]),
       mites: (f.mites || []).map(mt => [Math.round(mt.x * 100) / 100, Math.round(mt.y * 100) / 100, Math.round(mt.hp * 10) / 10, mt.max]),
       swarm: Math.round(f.swarm || 0),
       waves: f.waves || 0,
@@ -411,7 +412,9 @@ export function deserialise(data) {
   }
   const b = data.bugs;
   if (b) {
-    f.nests = (b.nests || []).filter(([c, hp]) => Number.isInteger(c) && hp > 0).map(([cell, hp]) => ({ cell, hp }));
+    const scale = b.nv >= 2 ? 1 : 100;
+    f.nests = (b.nests || []).filter(([c, hp]) => Number.isInteger(c) && hp > 0)
+      .map(([cell, hp, anger]) => ({ cell, hp: hp * scale, anger: anger || 0 }));
     f.mites = [];
     for (const [x, y, hp, max] of b.mites || []) {
       const mt = spawnMite(f, x, y, max || hp);

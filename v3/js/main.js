@@ -23,7 +23,7 @@ import { View, ZOOMS, DEFAULT_ZOOM } from './render.js';
 import {
   build, buildCheck, moveMachine, scrapMachine, applyAction, research,
   countKind, rebuild, replaceMode, placeFromCrate, scrapFromCrate, stashMachine,
-  sweepGround, looseAt,
+  sweepGround, looseAt, handoffDir, relink, smartDir,
 } from './sim.js';
 import { reachFrom } from './power.js';
 import {
@@ -274,6 +274,9 @@ function playFx(fx) {
       case 'rot': sfx('rot'); break;
       case 'move': sfx('move'); break;
       case 'swarm': sfx('swarm'); view.pulse('#ff3b5c'); break;
+      case 'brood':
+        if (near(e.cell)) { sfx('stir'); view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#8a2346', 10, 2, 0.5, 3); }
+        break;
       case 'stir': sfx('stir'); break;
       case 'nest':
         sfx('nest');
@@ -326,13 +329,14 @@ function compass(cell) {
  * difference is which pocket it came out of — and because the crate empties as it
  * goes, so the hand has to let go of itself when the last one is gone.
  */
-function place(spec, cell, dir, mir) {
+function place(spec, cell, dir, mir, extra = {}) {
+  const opt = { dir, mir, ...extra };
   if (spec.crate) {
-    const r = placeFromCrate(g.f, spec.crate, cell, { dir, mir });
+    const r = placeFromCrate(g.f, spec.crate, cell, opt);
     if (r.ok && !r.left) act('tool', null);
     return r;
   }
-  return build(g.f, spec, cell, { dir, mir });
+  return build(g.f, spec, cell, opt);
 }
 
 /** Where the blueprint in your hand would land, and what it would cost. */
@@ -377,7 +381,17 @@ function updateGhost() {
   // own costs nothing either, so neither is ever blocked by an empty wallet.
   const free = !!S.tool.crate || mode === 'reaim';
   const cost = free ? 0 : buyCost(S.tool, countKind(g.f, S.tool.kind));
-  S.ghost = { cell: S.hover, spec: S.tool, mode, ok: check.ok && g.f.cash >= cost };
+  // Show the way it will actually face: unless you have turned it yourself, a
+  // machine aims itself when it lands, and the ghost should say where.
+  let spec = S.tool;
+  if (!S.tool.dirSet && mode === 'new' && check.ok) {
+    const probe = { kind: S.tool.kind, dir: S.tool.dir, mir: S.tool.mir, mut: S.tool.mut, level: 1, buf: [], work: [] };
+    g.f.grid[S.hover] = probe;
+    const d = smartDir(g.f, S.hover);
+    g.f.grid[S.hover] = null;
+    if (d != null) spec = { ...S.tool, dir: d };
+  }
+  S.ghost = { cell: S.hover, spec, mode, ok: check.ok && g.f.cash >= cost };
   if (S.tool.kind === 'gen') S.reach = reachFrom(g.f, S.hover, { level: 1 });
   if (S.tool.kind === 'zap') S.range = { cell: S.hover, r: zapRange({ level: S.tool.level || 1 }, g.f.done) };
 }
@@ -444,14 +458,16 @@ function act(name, payload, extra) {
       }
       $('stage').classList.add('build');
       const keep = S.tool && S.tool.kind === payload.kind ? S.tool : null;
-      S.tool = { dir: keep?.dir ?? 0, mir: keep?.mir ?? 0, mut: 1, ...payload };
+      S.tool = { dir: keep?.dir ?? 0, mir: keep?.mir ?? 0, mut: 1, ...payload, dirSet: !!keep?.dirSet };
       palette.select(S.tool);
       S.selected = -1;
       panel.show('info');
       return;
     }
     case 'rotTool':
-      if (S.tool) S.tool.dir = (S.tool.dir + (payload > 0 ? 1 : 3)) % 4;
+      // Turning what is in your hand means you have an opinion: from now on it goes
+      // down the way you turned it, until you pick something else up.
+      if (S.tool) { S.tool.dir = (S.tool.dir + (payload > 0 ? 1 : 3)) % 4; S.tool.dirSet = true; }
       return;
     case 'flipTool':
       if (S.tool) S.tool.mir = S.tool.mir ? 0 : 1;
@@ -491,7 +507,10 @@ function act(name, payload, extra) {
     }
 
     case 'build': {
-      const r = place(payload.spec, payload.cell, payload.spec.dir, payload.spec.mir);
+      // A single click aims itself, unless you turned the thing in your hand with R
+      // first — then it goes down exactly the way you turned it.
+      const spec = payload.spec;
+      const r = place(spec, payload.cell, spec.dirSet ? spec.dir : null, spec.mir, { hand: !!spec.dirSet });
       if (!r.ok) { toast(g, r.msg, '#ff8a6a'); sfx('error'); }
       else if (r.crated) toast(g, `${label(r.crated).toUpperCase()} to the crate`, '#a8dcff');
       return r;
@@ -505,10 +524,24 @@ function act(name, payload, extra) {
     case 'buildRun': {
       let laid = 0, spent = 0, stopped = null;
       let aimed = 0;
-      for (const step of payload.path) {
+      const spec = payload.spec;
+      const path = payload.path;
+      const lastOk = path.map(p => p.ok).lastIndexOf(true);
+      const firstOk = path.findIndex(p => p.ok);
+      for (let k = 0; k < path.length; k++) {
+        const step = path[k];
         if (!step.ok) { if (!stopped && step.why) stopped = step.why; continue; }
-        const r = place(payload.spec, step.cell, step.dir, payload.spec.mir);
+        // A click without a drag is a single belt and aims itself. In a real drag,
+        // every belt points at the next; the first also lets a dead-ended run next
+        // to it bend in to feed it; and the last hands off to whatever is beside it.
+        const single = path.length === 1 && !spec.dirSet;
+        const r = place(spec, step.cell, single ? null : step.dir, spec.mir,
+          { adopt: k === firstOk, hand: !!spec.dirSet });
         if (!r.ok) { stopped = r.msg; break; }
+        if (k === lastOk && !single && !spec.dirSet && r.machine) {
+          const d = handoffDir(f, step.cell);
+          if (d != null && d !== r.machine.dir) { r.machine.dir = d; relink(f); }
+        }
         if (r.mode === 'reaim') aimed++;
         else laid++;
         spent += r.cost || 0;

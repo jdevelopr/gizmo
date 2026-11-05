@@ -364,9 +364,18 @@ export const MITE = { hp: 5, speed: 0.8, bite: 1.5, hpPerWave: 0.18, hpMax: 14 }
 export const swarmSize = (noise, waves) =>
   Math.min(24, 2 + Math.floor(Math.sqrt(Math.max(0, noise)) * 0.8 + waves * 0.25));
 
-/** A nest. Out of reach of everything but a Zapper parked close to the fence. */
-export const NEST_HP = 120;
-export const NEST_BOUNTY = 150;
+/**
+ * A nest. Out of reach of everything but a Zapper parked close to the fence, and
+ * a siege rather than a skirmish: it takes thousands of shots, and it fights back.
+ * Every NEST_ANGER points of damage it takes, a brood of NEST_BROOD mites boils out
+ * and goes straight for the Zapper that is shooting at it — and a Zapper always
+ * shoots mites before nests, so it has to deal with them before it can carry on.
+ * Clearing one is a project worth a lot of Ammo, and it pays like one.
+ */
+export const NEST_HP = 12000;
+export const NEST_BOUNTY = 2000;
+export const NEST_ANGER = 90;
+export const NEST_BROOD = 3;
 /** Seconds before a destroyed nest is replaced by a new one, somewhere far off. */
 export const NEST_REGROW = 600;
 

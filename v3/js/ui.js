@@ -918,9 +918,10 @@ export class Panel {
       host.appendChild(r);
       host.appendChild(el('p', 'body',
         'Swarms come out of here when your factory gets loud. A Zapper with nothing else '
-        + 'to shoot at will chip away at a nest in its reach — so a Zapper parked near the '
-        + 'fence, fed Ammo, clears the ground beyond it. Another nest will dig in somewhere '
-        + 'far off, eventually.'));
+        + 'to shoot at will chip away at a nest in its reach, but it is a siege: thousands '
+        + 'of shots, and every few it takes a brood of mites comes out for the Zapper. Park '
+        + 'two or three Zappers together, keep the Ammo coming, and it pays well. Another '
+        + 'nest digs in somewhere far off, eventually.'));
       return;
     }
     host.appendChild(el('h3', null,
@@ -1705,8 +1706,10 @@ to the damage. Belts have ${MAX_HP.pipe} hit points; a Market Depot has ${MAX_HP
 ${zapRange({ level: 1 }, f?.done || [])} slots at level 1 — and every <b>Ammo</b> you feed it is
 ${AMMO_CHARGES} shots. It draws power while it recharges between shots, so a swarm is a
 spike on its grid, and a browned-out Zapper fires slowly. With nothing moving in
-reach, it will chip away at a nest instead, and a dead nest pays
-${money(NEST_BOUNTY)}.</p>
+reach, it will chip away at a nest instead. A nest has ${num(NEST_HP)} hit points and it
+fights back: every few shots a brood of mites comes out and goes for the Zapper doing the
+shooting, and a Zapper always deals with mites before it goes back to the nest. Bring
+several Zappers and plenty of Ammo — a dead nest pays ${money(NEST_BOUNTY)}.</p>
 <p>Ammo comes from an <b>Armory</b> (<b>B</b>): one Scrap and one Copper make one Ammo.
 The easy build is a Balancer on a Slag line with its branch through a Copper Mutator,
 merged back onto one belt. The Armory takes either ingredient for as long as it has room,

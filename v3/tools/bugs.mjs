@@ -11,7 +11,7 @@
  */
 import {
   WORLD, cellOf, AMMO, MAX_HP, AMMO_CHARGES, broken, maxHp, repairCost, SWARM_GRACE,
-  SWARM_COST, catalogue, wants,
+  SWARM_COST, catalogue, wants, NEST_HP, NEST_BOUNTY,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild, diagnose, applyAction } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
@@ -180,6 +180,33 @@ console.log('\nThe Zapper');
   ok(f.zapped === 4, `with one Ammo it kills a small swarm (${f.zapped} of 4)`);
   ok(z.charge === AMMO_CHARGES - 4, 'spending one shot each');
   ok(z.kills === 4, 'and keeps count');
+}
+
+console.log('\nBesieging a nest');
+{
+  const f = bench();
+  f.nests = [{ cell: cellOf(30, 25), hp: NEST_HP }];
+  put(f, 'zap', 26, 25);
+  const z = f.grid[cellOf(26, 25)];
+  for (let k = 0; k < 4; k++) z.buf.push({ id: 500 + k, ty: AMMO, cp: 0 });
+  ok(NEST_HP === 12000 && NEST_BOUNTY === 2000, 'a nest has 12,000 hit points and pays $2,000');
+  let broods = 0, firstBrood = null;
+  for (let i = 0; i < 30 * 30; i++) {
+    run(f, 1 / 30);
+    for (const e of f.fx) if (e.k === 'brood') { broods++; if (firstBrood == null) firstBrood = f.mites.map(m => m.tgt); }
+    f.fx.length = 0;
+  }
+  const nest = f.nests[0];
+  ok(nest.hp < NEST_HP, `shooting it hurts it (${Math.round(nest.hp)} left)`);
+  ok(broods > 0, `and it sends out broods (${broods} so far)`);
+  ok(firstBrood && firstBrood.every(t => t === cellOf(26, 25)), 'which go straight for the Zapper shooting at it');
+  ok(f.zapped > 0, `the Zapper turns on them and kills them (${f.zapped})`);
+  const cash = f.cash;
+  nest.hp = 5; nest.anger = 0;
+  z.buf.push({ id: 900, ty: AMMO, cp: 0 });
+  f.mites.length = 0;
+  run(f, 3);
+  ok(!f.nests.length && f.cash - cash === NEST_BOUNTY, 'and a dead nest pays out $2,000');
 }
 
 console.log('\nThe Zapper draws power while it recharges');

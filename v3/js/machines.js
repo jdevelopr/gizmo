@@ -1378,10 +1378,16 @@ export const unlockerOf = kind => TECH.find(t => (t.unlocks || []).includes(kind
 /** Every node has five ranks. Each costs more than the last. */
 export const TECH_RANKS = 5;
 export const RANK_COST = [1, 2, 3.5, 5.5, 8];
+/**
+ * Every node's price is its listed cost times this. The tree's own numbers stay
+ * readable as relative prices; this is the one knob that sets how long research
+ * takes overall.
+ */
+export const TECH_COST_SCALE = 10;
 /** What the next rank of a node costs, or 0 if it is maxed. */
 export const rankCost = (t, done = []) => {
   const r = rankOf(done, t.id);
-  return r >= TECH_RANKS ? 0 : Math.round(t.cost * RANK_COST[r]);
+  return r >= TECH_RANKS ? 0 : Math.round(t.cost * TECH_COST_SCALE * RANK_COST[r]);
 };
 export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 

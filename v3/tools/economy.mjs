@@ -12,7 +12,7 @@
  */
 import {
   WORLD, CLAIM_START, CLAIM_STEP, TYPES, KINDS, MUT_PRICE, MUT_CYCLE, RECIPES,
-  TECH, GEN_OUTPUT, GEN_REACH, UNPOWERED, LEVEL_SPEED, LEVEL_DRAW,
+  TECH, TECH_COST_SCALE, GEN_OUTPUT, GEN_REACH, UNPOWERED, LEVEL_SPEED, LEVEL_DRAW,
   cellOf, cx, cy, money, num, expandCost, buyCost, upgradeCost, price,
   fuelEnergy, drawOf, cycleTime, label, LADDERED, EXPAND_PER_SLOT, EXPAND_STEP,
 } from '../js/machines.js';
@@ -118,7 +118,7 @@ console.log('\nRESEARCH\n');
 console.log('  ' + pad('NODE', 16) + rpad('SCIENCE', 9) + '  NEEDS');
 rule(60);
 for (const t of TECH) {
-  console.log('  ' + pad(t.name, 16) + rpad(num(t.cost), 9) + '  ' + (t.needs.join(', ') || '—'));
+  console.log('  ' + pad(t.name, 16) + rpad(num(t.cost * TECH_COST_SCALE), 9) + '  ' + (t.needs.join(', ') || '—'));
 }
 
 /* ------------------------------------------------------------ real builds --- */

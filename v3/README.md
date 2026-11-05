@@ -479,7 +479,7 @@ unlocks drawn on its card.
 |---|---|
 | **Production** | Warehousing, Express Belts (belts 33% faster), Assembly, Overclocking, Market Savvy (contracts pay 60% over market), Assembly II, Replication, Assembly III, Trifurcation |
 | **Power** | Gridwork, Combustion, Prospecting, High Voltage, Efficient Motors (25% less draw) |
-| **Defence** | **Pest Control** (unlocks Armory and Zapper, 120 science), Focusing, Capacitors (43% faster recharge), Arc Discharge, Plating, Overcharge (+25% damage), Beacon Shielding (2x damage per lost gizmo) |
+| **Defence** | **Pest Control** (unlocks Armory and Zapper, 1,200 science), Focusing, Capacitors (43% faster recharge), Arc Discharge, Plating, Overcharge (+25% damage), Beacon Shielding (2x damage per lost gizmo) |
 | **Terrain** | **Surveying** (reveals mountain seams), **Bridging** (unlocks Bridge), **Deep Mining** (unlocks Mountain Drill), Long Spans (+3 bridge reach), Hardened Bits (drills 40% faster), Dampers (half the Beetles) |
 
 The Armory, Zapper, Mountain Drill and Bridge are no longer on sale from the start. Pest
@@ -511,7 +511,8 @@ research.
 ### Five ranks of research, five levels of machine
 
 **Every research node has five ranks.** Rank I does what its card says; each rank after
-it costs more (1x, 2x, 3.5x, 5.5x, 8x the base) and adds half as much again, so rank V
+it costs more (1x, 2x, 3.5x, 5.5x, 8x the base). Every base price is multiplied by
+`TECH_COST_SCALE` (10) in `machines.js`, the one knob for how long research takes and adds half as much again, so rank V
 is three times rank I. Reductions — Express Belts, Efficient Motors, Capacitors —
 compound instead, so they never reach zero. Nodes that unlock machines make those
 machines 10% faster for every rank after the first; Surveying's later ranks speed

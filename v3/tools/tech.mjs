@@ -9,7 +9,7 @@ import {
   drawOf, travelTime, cycleTime, BRIDGE_SPAN, TREMOR_COST, BEACON_LOSS, CONTRACT_PREMIUM,
   TECH_RANKS, ROMAN, rankOf, rankCost, zapRange, zapChain, genOutput, genReach, energyOf, yieldBonus,
   maxHp, MAX_LEVEL, LEVEL_SPEED, LEVEL_DRAW, GEN_OUTPUT, GEN_REACH, ZAP_RANGE, ZAP_DAMAGE, ZAP_COOL,
-  levelCap, upgradeCost,
+  levelCap, upgradeCost, TECH_COST_SCALE,
 } from '../js/machines.js';
 import { createFactory, research, build, rebuild, applyAction } from '../js/sim.js';
 import { plainWorld } from '../js/world.js';
@@ -47,7 +47,8 @@ console.log('\nDefence and Terrain have to be researched');
     const t = unlockerOf(k);
     ok(!!t && catalogue([t.id, ...(t.needs || [])]).some(c => c.kind === k), `${t?.name} unlocks it`);
   }
-  ok(techById('defense').cost <= 150, 'Pest Control is cheap: the first swarm is only minutes away');
+  ok(TECH.every(t => rankCost(techById('defense'), []) <= rankCost(t, [])), 'Pest Control is the cheapest node in the tree');
+  ok(rankCost(techById('gridwork'), []) === techById('gridwork').cost * TECH_COST_SCALE, 'every price is scaled by TECH_COST_SCALE');
   ok(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse'].every(k => unlockedBy([]).has(k)),
     'everything a factory needs to start is still unlocked');
 }
@@ -80,7 +81,7 @@ console.log('\nFive ranks of everything');
     ok(research(f, 'gridwork').ok, `Gridwork rank ${ROMAN[k + 1]} can be researched`);
   }
   ok(!research(f, 'gridwork').ok, 'and there is no rank VI');
-  ok(costs.every((c, k) => !k || c > costs[k - 1]), `each rank costs more than the last (${costs.join(', ')})`);
+  ok(costs[0] === 1800 && costs.every((c, k) => !k || c > costs[k - 1]), `each rank costs more than the last (${costs.join(', ')})`);
   ok(rankOf(f.done, 'gridwork') === 5, 'five ranks are counted');
 
   const r1 = TECH.map(t => t.id);

@@ -23,6 +23,8 @@ import {
   SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE,
 } from './machines.js';
 import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
+import { upgradeQuote, scrapQuote, repairQuote } from './blueprint.js';
+import { HIST_STEP } from './game.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
 import {
   kindCounts, countKind, diagnose, machineLoad, speedOf, reachesPayout,
@@ -563,7 +565,16 @@ export class Hud {
     }
     const f = g.f;
     const d = health(f);
-    let head = null, body = null;
+    let head = null, body = null, target = -1;
+    const first = pred => f.cells.find(i => f.grid[i] && pred(f.grid[i])) ?? -1;
+    const miteCell = inside => {
+      for (const mt of f.mites || []) {
+        const x = Math.floor(mt.x), y = Math.floor(mt.y);
+        const own = x >= claimMin(f.claim) && x <= claimMax(f.claim) && y >= claimMin(f.claim) && y <= claimMax(f.claim);
+        if (!inside || own) return cellOf(Math.max(0, Math.min(WORLD - 1, x)), Math.max(0, Math.min(WORLD - 1, y)));
+      }
+      return -1;
+    };
 
     if (!d.depots) {
       head = 'NO DEPOT'; body = 'Nothing on this map buys anything. Build a Market Depot and aim a belt into it.';
@@ -571,20 +582,24 @@ export class Hud {
       head = 'NO EXTRACTOR'; body = 'Nothing is coming out of the ground. Put an Extractor on an ore patch.';
     } else if (!reachOk(f)) {
       head = 'NOTHING REACHES A DEPOT';
+      target = first(m => m.kind === 'ext');
       body = 'Follow the belts from an Extractor — somewhere they point at your fence, at rock, or at each other.';
     } else if (d.jams.length) {
       const j = d.jams[0];
+      target = j.cell;
       head = d.jams.length > 1 ? `${d.jams.length} LINES STOPPED FOR GOOD` : 'LINE STOPPED FOR GOOD';
       body = `A belt is trying to push ${j.why}. That will never clear on its own — `
         + 'move the machine, or put a Sorter in front of it to send that type elsewhere.';
     } else if (mitesInside(f) > 0) {
       const n = mitesInside(f);
+      target = miteCell(true);
       head = n > 1 ? `${n} MITES IN THE FACTORY` : 'A MITE IN THE FACTORY';
       body = (f.cells.some(i => f.grid[i]?.kind === 'zap')
         ? 'Check your Zappers have Ammo and power, and that they reach the line being eaten.'
         : 'They are chewing your machines. Build a Zapper (Z) near them and belt Ammo into it from an Armory (B).');
     } else if (d.broken) {
       const all = damaged(f);
+      target = first(m => broken(m));
       head = `${d.broken} MACHINE${d.broken > 1 ? 'S' : ''} BROKEN`;
       body = `Chewed through, and doing nothing until repaired. Click one and press H, or `
         + `Shift H repairs everything for ${money(all.cost)}.`;
@@ -593,23 +608,28 @@ export class Hud {
       body = `Every machine is running at ${Math.round(UNPOWERED * 100)}%. Build a Generator touching your line and feed it ore.`;
     } else if (d.dryGens) {
       head = 'OUT OF FUEL';
+      target = first(m => m.kind === 'gen' && m.fuel <= 0 && !m.buf.length);
       body = `${d.dryGens} generator${d.dryGens > 1 ? 's have' : ' has'} nothing to burn. Route ore into ${d.dryGens > 1 ? 'them' : 'it'}.`;
     } else if (d.worst < 0.9) {
       head = 'BROWNOUT';
+      target = first(m => m.kind === 'gen' && m.net >= 0 && f.nets[m.net]?.sat < 0.9);
       body = `A grid is at ${Math.round(d.worst * 100)}% and running at ${Math.round(powerMult(d.worst) * 100)}% speed. Add a generator anywhere on it.`;
     } else if (d.unpowered > 2) {
       head = `${d.unpowered} MACHINES OFF GRID`;
+      target = first(m => m.net < 0 && drawOf(m) > 0 && !m.off && !PLUMBING.has(m.kind));
       body = 'Power only travels through touching machines. One conveyor across the gap will do it.';
     } else if (d.waiting) {
       // Named before the jams *behind* it are counted: a machine short of an
       // ingredient is the cause, and the six backed up behind it are the symptom.
       const what = d.waitingFor != null ? TYPES[d.waitingFor].name.toUpperCase() : 'AN INGREDIENT';
+      target = d.waitingAt;
       head = d.waiting > 1 ? `${d.waiting} MACHINES WAITING — ONE WANTS ${what}` : `WAITING FOR ${what}`;
       body = `Something has half of what it needs and none of the other half. It is `
         + `showing the colour on the map; click it to see which queue is empty. A two-input `
         + `machine takes both halves off one belt happily — what it cannot do is invent the half you are not sending.`;
     } else if ((f.mites?.length || 0) > 0) {
       head = `${f.mites.length} MITE${f.mites.length > 1 ? 'S' : ''} ON THE WAY`;
+      target = miteCell(false);
       body = 'A swarm is crossing the wilds toward your fence. Zappers with Ammo stop them; '
         + 'whatever gets through will chew your belts first.';
     }
@@ -622,14 +642,19 @@ export class Hud {
      * whoever is looking at that part of the map.
      */
 
-    const key = head + '|' + body;
+    // The alert remembers where its problem is, so clicking it can take you there.
+    // Rounded to a ring of slots so a swarm walking along does not rebuild it.
+    this.target = target;
+    const key = head + '|' + body + '|' + (target >= 0 ? 1 : 0);
     if (this.last.alert === key) return;
     this.last.alert = key;
     if (!head) { this.alert.hidden = true; return; }
     this.alert.hidden = false;
+    this.alert.classList.toggle('go', target >= 0);
     this.alert.innerHTML = '';
     this.alert.appendChild(el('b', null, head));
     this.alert.appendChild(document.createTextNode(body));
+    if (target >= 0) this.alert.appendChild(el('span', 'go-hint', 'CLICK TO LOOK  ·  TAB FOR THE NEXT PROBLEM'));
   }
 
   paintToasts(g) {
@@ -672,6 +697,34 @@ export function health(f) {
   if (diagCache.rev === rev && diagCache.f === f) return diagCache.d;
   diagCache = { rev, f, d: diagnose(f) };
   return diagCache.d;
+}
+
+/**
+ * Every slot on the map worth going to look at, worst first: lines stopped for
+ * good, broken machines, mites inside the fence, dry generators, machines waiting
+ * on half a recipe, starved and backed-up machines, and anything off the grid.
+ * Tab walks through it.
+ */
+export function problems(f) {
+  const out = [];
+  const seen = new Set();
+  const add = i => { if (i >= 0 && !seen.has(i)) { seen.add(i); out.push(i); } };
+  for (const j of health(f).jams) add(j.cell);
+  for (const i of f.cells) if (f.grid[i] && broken(f.grid[i])) add(i);
+  for (const mt of f.mites || []) {
+    const x = Math.floor(mt.x), y = Math.floor(mt.y);
+    if (x >= claimMin(f.claim) && x <= claimMax(f.claim) && y >= claimMin(f.claim) && y <= claimMax(f.claim)) add(cellOf(x, y));
+  }
+  for (const i of f.cells) { const m = f.grid[i]; if (m?.kind === 'gen' && !m.off && m.fuel <= 0 && !m.buf.length) add(i); }
+  for (const i of f.cells) { const m = f.grid[i]; if (m && !m.off && m.waitT > STALL_BADGE && m.buf.length && !PASSIVE.has(m.kind)) add(i); }
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (m && !m.off && m.waitT > STALL_BADGE && !m.buf.length && !PASSIVE.has(m.kind) && !PLUMBING.has(m.kind) && intake(m) > 0) add(i);
+  }
+  for (const i of f.cells) { const m = f.grid[i]; if (m && !m.off && m.blockT > STALL_BADGE && !PLUMBING.has(m.kind)) add(i); }
+  for (const i of f.cells) { const m = f.grid[i]; if (m && !m.off && m.kind === 'zap' && m.charge <= 0 && !m.buf.length) add(i); }
+  for (const i of f.cells) { const m = f.grid[i]; if (m && !m.off && m.net < 0 && drawOf(m) > 0 && !PLUMBING.has(m.kind)) add(i); }
+  return out;
 }
 
 /* ------------------------------------------------------------------ panel --- */
@@ -723,7 +776,10 @@ export class Panel {
     let key;
     if (this.tab === 'info') {
       const m = S.selected >= 0 ? f.grid[S.selected] : null;
-      key = `info|${S.selected}|${m ? m.kind + m.dir + m.level + m.mut + m.mir + '|' + repairCost(m, f.done) : 'x'}` +
+      const multi = S.bp ? `bp|${S.bp.parts.length}|${S.bp.held ? 1 : 0}|${S.bpCost ?? 0}`
+        : S.area?.length ? `area|${S.area.length}|${S.area.filter(i => f.grid[i]).length}|${Math.round(f.cash / 25)}`
+          + `|${repairQuote(f, S.area).cost}` : '';
+      key = `info|${multi}|${S.selected}|${m ? m.kind + m.dir + m.level + m.mut + m.mir + '|' + repairCost(m, f.done) : 'x'}` +
         `|${S.tool ? S.tool.kind + S.tool.mut : ''}|${Math.round(f.cash / 10)}` +
         `|${m || S.selected < 0 ? '' : looseTypes(f, S.selected).length}`;
     } else if (this.tab === 'tech') {
@@ -757,6 +813,8 @@ export class Panel {
 
   info(host, g, S) {
     const f = g.f;
+    if (S.bp) return this.bpInfo(host, g, S);
+    if (S.area?.length) return this.areaInfo(host, g, S);
     if (S.selected < 0) {
       if (S.tool) return this.toolInfo(host, g, S.tool);
       host.appendChild(el('div', 'blank',
@@ -768,6 +826,57 @@ export class Panel {
     const m = f.grid[S.selected];
     if (!m) { this.groundInfo(host, g, S.selected); return; }
     this.machineInfo(host, g, S, m);
+  }
+
+  /** A box of machines, and everything you can do to all of them at once. */
+  areaInfo(host, g, S) {
+    const f = g.f;
+    const cells = S.area.filter(i => f.grid[i]);
+    host.appendChild(el('h3', null, `${cells.length} MACHINES SELECTED`));
+    const kinds = {};
+    for (const i of cells) { const n = label(f.grid[i]); kinds[n] = (kinds[n] || 0) + 1; }
+    const rows = el('div', 'rows');
+    for (const [n, c] of Object.entries(kinds).sort((a, b) => b[1] - a[1]).slice(0, 8)) addRow(rows, n, `x${c}`);
+    host.appendChild(rows);
+
+    const acts = el('div', 'acts');
+    const add = (text, fn, full, off) => {
+      const b = el('button', full ? 'full' : null, text);
+      b.disabled = !!off;
+      b.onclick = fn;
+      acts.appendChild(b);
+    };
+    add('COPY <span class="k">Ctrl C</span>', () => this.act('areaCopy'));
+    add('MOVE <span class="k">M</span>', () => this.act('areaMove'));
+    const rq = repairQuote(f, cells);
+    if (rq.n) add(`REPAIR ${rq.n}  ${money(rq.cost)} <span class="k">H</span>`, () => this.act('areaRepair'), true, f.cash < 1);
+    const uq = upgradeQuote(f, cells);
+    add(uq.n ? `UPGRADE ${uq.n}  ${money(uq.cost)} <span class="k">U</span>` : 'NOTHING TO UPGRADE',
+      () => this.act('areaUpgrade'), true, !uq.n || f.cash < 1);
+    const allOff = cells.every(i => f.grid[i].off);
+    add(allOff ? 'SWITCH ALL ON <span class="k">O</span>' : 'SWITCH ALL OFF <span class="k">O</span>', () => this.act('areaToggle'), true);
+    add(`SCRAP ALL  +${money(scrapQuote(f, cells))} <span class="k">X</span>`, () => this.act('areaScrap'), true);
+    host.appendChild(acts);
+    host.appendChild(el('div', 'blank',
+      'Shift-drag draws a new box. A copy is a blueprint: it stays in your hand so you can '
+      + 'stamp it down as many times as you can afford. <b style="color:#8b96b8">Esc</b> clears the selection.'));
+  }
+
+  /** A blueprint in your hand. */
+  bpInfo(host, g, S) {
+    const bp = S.bp;
+    host.appendChild(el('h3', null, bp.held ? `MOVING ${bp.held.length} MACHINES` : `BLUEPRINT  ·  ${bp.parts.length} MACHINES`));
+    host.appendChild(el('div', 'sub', `${bp.w} x ${bp.h}`));
+    const rows = el('div', 'rows');
+    if (!bp.held) addRow(rows, 'Stamping it here costs', money(S.bpCost ?? 0), g.f.cash >= (S.bpCost ?? 0) ? 'good' : 'bad');
+    addRow(rows, 'Fits here', S.bpFit ?? '—');
+    host.appendChild(rows);
+    host.appendChild(el('div', 'blank', bp.held
+      ? 'Click where it goes — it keeps every level, setting and scratch. Anything already standing '
+        + 'there goes to the crate. <b style="color:#8b96b8">R</b> turns it, <b style="color:#8b96b8">Esc</b> puts everything back where it was.'
+      : 'Click to stamp it down; it stays in your hand for the next one. Red slots are skipped. '
+        + '<b style="color:#8b96b8">R</b> turns it, <b style="color:#8b96b8">Esc</b> lets go, '
+        + '<b style="color:#8b96b8">Ctrl V</b> picks the last copy up again.'));
   }
 
   /** What is in your hand, before you have spent anything on it. */
@@ -1297,6 +1406,43 @@ export class Panel {
     addRow(bug, 'Damaged', num(d.hurt || 0), d.hurt ? 'warn' : 'good');
     host.appendChild(bug);
 
+    // The last ten minutes, as a picture.
+    const h = g.hist;
+    if (h && h.income.length > 1) {
+      host.appendChild(el('div', 'sub', `INCOME, LAST ${Math.round(h.income.length * HIST_STEP / 60)} MIN`));
+      host.appendChild(sparkline(h.income, '#a7f070', v => `${money(v)}/s`));
+      if (h.sci.some(v => v > 0.01)) {
+        host.appendChild(el('div', 'sub', 'SCIENCE'));
+        host.appendChild(sparkline(h.sci, '#b8bcff', v => `${num(v, 1)}/s`));
+      }
+      if (h.noise.some(v => v > 0.01)) {
+        host.appendChild(el('div', 'sub', 'NOISE'));
+        host.appendChild(sparkline(h.noise, '#ff6f9a', v => v.toFixed(1)));
+      }
+    }
+
+    // What actually pays, as bars in each gizmo's own colour.
+    const pays = TYPES.map((ty, i) => ({ ty, i, v: g.rate[i] * ty.value })).filter(p => p.v > 0.01)
+      .sort((a, b) => b.v - a.v);
+    if (pays.length) {
+      host.appendChild(el('div', 'sub', 'WHAT PAYS'));
+      const tot = pays.reduce((a, p) => a + p.v, 0);
+      const box = el('div', 'pays');
+      for (const p of pays.slice(0, 8)) {
+        const row = el('div', 'pay');
+        row.appendChild(el('span', 'pay-n', p.ty.name));
+        const bar = el('div', 'pay-bar');
+        const fill = el('i');
+        fill.style.width = (p.v / pays[0].v * 100) + '%';
+        fill.style.background = p.ty.color;
+        bar.appendChild(fill);
+        row.appendChild(bar);
+        row.appendChild(el('b', null, `${Math.round(p.v / tot * 100)}%`));
+        box.appendChild(row);
+      }
+      host.appendChild(box);
+    }
+
     host.appendChild(el('div', 'sub', 'SHIPPING, PER SECOND'));
     const ship = el('div', 'rows');
     let any = false;
@@ -1308,6 +1454,34 @@ export class Panel {
     if (!any) addRow(ship, 'Nothing yet', '—');
     host.appendChild(ship);
   }
+}
+
+/**
+ * A small line graph of one series, filled underneath, with its latest value and
+ * its peak written in the corners.
+ */
+function sparkline(data, color, fmt) {
+  const W = 268, H = 64;
+  const c = document.createElement('canvas');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  c.width = W * dpr; c.height = H * dpr;
+  c.style.cssText = `width:${W}px;height:${H}px;display:block;margin:2px 0 8px;background:#0c0e18;border:2px solid #242a3f`;
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const max = Math.max(1e-6, ...data);
+  const x = k => 4 + k / Math.max(1, data.length - 1) * (W - 8);
+  const y = v => H - 6 - v / max * (H - 22);
+  ctx.beginPath();
+  data.forEach((v, k) => (k ? ctx.lineTo(x(k), y(v)) : ctx.moveTo(x(k), y(v))));
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+  ctx.lineTo(x(data.length - 1), H - 6); ctx.lineTo(x(0), H - 6); ctx.closePath();
+  ctx.globalAlpha = 0.15; ctx.fillStyle = color; ctx.fill(); ctx.globalAlpha = 1;
+  ctx.font = '700 10px Silkscreen, ui-monospace, monospace';
+  ctx.fillStyle = '#8b96b8'; ctx.textBaseline = 'top';
+  ctx.fillText(`peak ${fmt(max)}`, 6, 4);
+  ctx.textAlign = 'right'; ctx.fillStyle = color;
+  ctx.fillText(fmt(data[data.length - 1]), W - 6, 4);
+  return c;
 }
 
 function addRow(host, k, v, cls = '') {
@@ -1597,6 +1771,11 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <tr><td>M</td><td class="k">Pick a machine up and move it, for free</td></tr>
 <tr><td>O</td><td class="k">Switch a machine off, or back on</td></tr>
 <tr><td>Z / B</td><td class="k">Pick up a Zapper / an Armory to build</td></tr>
+<tr><td>Shift drag</td><td class="k">Select every machine in a box</td></tr>
+<tr><td>Ctrl C / Ctrl V</td><td class="k">Copy the selection as a blueprint / pick the last blueprint up again. Click stamps it; R turns it</td></tr>
+<tr><td>M · U · O · H · X</td><td class="k">With a box selected: move it, upgrade it, switch it off, repair it, scrap it</td></tr>
+<tr><td>Tab</td><td class="k">Jump to the next problem on the map · clicking the warning box does the same</td></tr>
+<tr><td>T</td><td class="k">Hide or show the helper boxes — warnings, key hints, pop-ups and the walkthrough. Each one can be switched separately in the menu</td></tr>
 <tr><td>H / Shift H</td><td class="k">Repair the machine under the cursor / repair everything</td></tr>
 <tr><td>Build on top</td><td class="k">Replaces it; the old one goes to the crate, free to put back</td></tr>
 <tr><td>X / Delete</td><td class="k">Scrap a machine for half of what it cost — or, on a bare slot, sweep up whatever is lying there</td></tr>

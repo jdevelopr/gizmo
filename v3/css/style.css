@@ -508,3 +508,32 @@ h3 {
   #app { grid-template-columns: 168px 1fr; }
   #panel { display: none; }
 }
+
+/* --- quality of life: clickable alert, sound button, stats bars --- */
+#alert.go { pointer-events: auto; cursor: pointer; }
+#alert.go:hover { border-color: var(--gold); }
+#alert .go-hint { display: block; margin-top: 5px; font-size: 9px; color: #c9a27a; letter-spacing: 0.08em; }
+.snd { padding: 4px 6px; flex: 0 0 auto; display: flex; align-items: center; color: var(--text); }
+.snd .cross { display: none; }
+.snd.muted { color: var(--dim); }
+.snd.muted .wave { display: none; }
+.snd.muted .cross { display: inline; }
+.vol-row { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--dim); margin: 6px 0; }
+.vol-row input { flex: 1; accent-color: var(--gold); }
+.pays { margin: 2px 0 10px; }
+.pay { display: grid; grid-template-columns: 64px 1fr 34px; gap: 6px; align-items: center; font-size: 10px; margin: 3px 0; }
+.pay-n { color: var(--dim); overflow: hidden; white-space: nowrap; }
+.pay-bar { height: 8px; background: #0c0e18; border: 1px solid #242a3f; }
+.pay-bar i { display: block; height: 100%; }
+.pay b { text-align: right; color: var(--text); }
+
+/* --- hiding the helper boxes (menu, or T) --- */
+body.hide-alert #alert,
+body.hide-hint #hint,
+body.hide-toasts #toasts,
+body.hide-tut #tutorial { display: none !important; }
+.show-box { border: 2px solid var(--line); padding: 8px 10px; margin: 8px 0; text-align: left; }
+.show-head { font-size: 11px; color: var(--dim); margin-bottom: 6px; letter-spacing: 0.08em; }
+.show-head span { float: right; color: var(--dimmer); }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text); margin: 5px 0; cursor: pointer; }
+.chk input { accent-color: var(--gold); width: 14px; height: 14px; margin: 0; }

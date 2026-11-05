@@ -694,6 +694,12 @@ export class View {
     this.t = 0;
     this.showPower = false;
     this.beams = [];
+    this.parts = [];          // particles: sparks, coins, dust
+    this.shakeT = 0;          // seconds of screen shake left
+    this.shakeA = 0;          // and how hard
+    this.off = [0, 0];        // the shake offset, applied while drawing only
+    this.pings = [];          // rings that say "here" when the camera jumps somewhere
+    this.flash = null;        // a whole-screen pulse: { color, life }
     this.lastDt = 0;
     this.stats = { drawn: 0, gizmos: 0 };
   }
@@ -721,7 +727,82 @@ export class View {
   /** World cell coordinates (floats) to CSS pixels inside the canvas. */
   toScreen(wx, wy) {
     const z = this.cam.zoom;
-    return [(wx - this.cam.x) * z + this.w / 2, (wy - this.cam.y) * z + this.h / 2];
+    return [(wx - this.cam.x) * z + this.w / 2 + this.off[0], (wy - this.cam.y) * z + this.h / 2 + this.off[1]];
+  }
+
+  /* ----------------------------------------------------------------- juice --- */
+
+  /** A spray of particles at a world position. */
+  burst(wx, wy, color, n = 8, speed = 2.5, life = 0.6, size = 3) {
+    for (let k = 0; k < n && this.parts.length < 400; k++) {
+      const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random() * 0.8);
+      this.parts.push({
+        x: wx, y: wy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - speed * 0.4,
+        life: life * (0.6 + Math.random() * 0.6), max: life, color, size,
+      });
+    }
+  }
+
+  /** A few coins hopping out of a Depot. */
+  coins(wx, wy, n = 3) {
+    for (let k = 0; k < n && this.parts.length < 400; k++) {
+      this.parts.push({
+        x: wx + (Math.random() - 0.5) * 0.3, y: wy, vx: (Math.random() - 0.5) * 1.6, vy: -2.6 - Math.random(),
+        life: 0.7, max: 0.7, color: '#ffcd75', size: 4, grav: 7,
+      });
+    }
+  }
+
+  shake(amount, secs = 0.25) {
+    this.shakeA = Math.max(this.shakeA * (this.shakeT > 0 ? 1 : 0), amount);
+    this.shakeT = Math.max(this.shakeT, secs);
+  }
+
+  /** Expanding rings on a slot, for "look here". */
+  ping(cell, color = '#ffcd75') { this.pings.push({ cell, life: 1, color }); }
+
+  pulse(color) { this.flash = { color, life: 1 }; }
+
+  /** Move and draw every particle. Called inside draw(), after the machines. */
+  drawJuice(ctx, z) {
+    const dt = this.lastDt;
+    for (let k = this.parts.length - 1; k >= 0; k--) {
+      const p = this.parts[k];
+      p.life -= dt;
+      if (p.life <= 0) { this.parts.splice(k, 1); continue; }
+      p.vy += (p.grav ?? 4) * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      const [sx, sy] = this.toScreen(p.x, p.y);
+      const w = Math.max(1, Math.round(p.size * z / 32 * (0.5 + p.life / p.max * 0.5)));
+      ctx.globalAlpha = Math.min(1, p.life / p.max * 1.5);
+      px(ctx, sx - w / 2, sy - w / 2, w, w, p.color);
+    }
+    ctx.globalAlpha = 1;
+    for (let k = this.pings.length - 1; k >= 0; k--) {
+      const pg = this.pings[k];
+      pg.life -= dt * 0.7;
+      if (pg.life <= 0) { this.pings.splice(k, 1); continue; }
+      const [sx, sy] = this.toScreen(cx(pg.cell) + 0.5, cy(pg.cell) + 0.5);
+      for (const ph of [0, 0.33]) {
+        const r = ((1 - pg.life + ph) % 1) * z * 2.2 + z * 0.4;
+        ctx.globalAlpha = pg.life * 0.9;
+        ctx.strokeStyle = pg.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    if (this.flash) {
+      this.flash.life -= dt * 2.2;
+      if (this.flash.life <= 0) this.flash = null;
+      else {
+        ctx.globalAlpha = this.flash.life * 0.18;
+        px(ctx, 0, 0, this.w, this.h, this.flash.color);
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   toWorld(sx, sy) {
@@ -799,6 +880,11 @@ export class View {
     const z = this.cam.zoom;
     this.t += Math.max(0, ui.dt || 0);
     this.lastDt = Math.max(0, ui.dt || 0);
+    if (this.shakeT > 0) {
+      this.shakeT -= this.lastDt;
+      const a = this.shakeA * Math.max(0, this.shakeT) * 4;
+      this.off = [Math.round((Math.random() - 0.5) * a), Math.round((Math.random() - 0.5) * a)];
+    } else this.off = [0, 0];
     ctx.clearRect(0, 0, this.w, this.h);
     px(ctx, 0, 0, this.w, this.h, INK);
 
@@ -844,6 +930,9 @@ export class View {
         this.outline(ctx, c, z, '#ff3b30', 2);
       }
     }
+    if (ui.area?.length) for (const c of ui.area) this.outline(ctx, c, z, '#7fe8ff', 1);
+    if (ui.box) this.drawBox(ctx, ui.box, z);
+    if (ui.bpPlan) this.drawBlueprint(ctx, ui.bpPlan, z);
     if (ui.dragPath?.length) this.drawDragPath(ctx, f, ui, z);
     else if (ui.ghost) this.drawGhost(ctx, f, ui, z);
     if (ui.selected != null && ui.selected >= 0) this.outline(ctx, ui.selected, z, GOLD, 2);
@@ -851,7 +940,43 @@ export class View {
       this.outline(ctx, ui.hover, z, '#8ea2c8', 1);
     }
 
+    this.drawJuice(ctx, z);
     this.drawText(f, ui);
+    this.off = [0, 0];
+  }
+
+  /** The rubber band while you shift-drag a selection. */
+  drawBox(ctx, box, z) {
+    const x0 = Math.min(cx(box.a), cx(box.b)), x1 = Math.max(cx(box.a), cx(box.b));
+    const y0 = Math.min(cy(box.a), cy(box.b)), y1 = Math.max(cy(box.a), cy(box.b));
+    const [sx, sy] = this.toScreen(x0, y0);
+    const w = (x1 - x0 + 1) * z, h = (y1 - y0 + 1) * z;
+    ctx.globalAlpha = 0.12;
+    px(ctx, sx, sy, w, h, '#7fe8ff');
+    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.strokeStyle = '#7fe8ff';
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx + 1, sy + 1, w - 2, h - 2);
+    ctx.restore();
+  }
+
+  /** A blueprint in your hand: every machine it would place, green, amber or red. */
+  drawBlueprint(ctx, pl, z) {
+    const frame = Math.floor(this.t * 24);
+    for (const st of pl.steps) {
+      if (st.cell < 0) continue;
+      const tint = !st.ok ? '#ff5d4a' : st.mode === 'new' ? '#7fe8a0' : '#ffcd75';
+      this.fillCell(ctx, st.cell, z, tint, st.ok ? 0.18 : 0.3);
+      if (z >= 16) {
+        const [sx, sy] = this.toScreen(cx(st.cell), cy(st.cell));
+        ctx.globalAlpha = 0.6;
+        ctx.drawImage(bodyTile({ kind: st.p.kind, dir: st.p.dir, mut: st.p.mut, mir: st.p.mir, level: 1, link: 0 }, frame),
+          Math.round(sx), Math.round(sy), z, z);
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   paintGroundIfStale(f) {

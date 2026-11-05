@@ -89,6 +89,7 @@ function baseGame(f) {
     _bank: 0,
     _sci: 0,
     _units: new Float64Array(TYPES.length),
+    hist: { income: [], sci: [], noise: [], at: 0 },   // the last ten minutes, for the graph
   };
 }
 
@@ -117,6 +118,7 @@ export function stepGame(g, realDt) {
   // The averages are per *factory* second, not per wall second, so "$4.20/s"
   // means the same thing at 1x and at 3x. Nothing is smoothed while paused.
   if (dt > 0) smooth(g, dt);
+  sample(g);
   return drainFx(g.f);
 }
 
@@ -141,6 +143,23 @@ function smooth(g, dt) {
   }
 }
 
+/**
+ * One point on the STATS graph every five factory seconds, a hundred and twenty of
+ * them: the last ten minutes of income, science and noise. Kept in memory only —
+ * a graph that survived a reload would mostly be showing you the reload.
+ */
+export const HIST_STEP = 5;
+export const HIST_LEN = 120;
+function sample(g) {
+  const h = g.hist;
+  if (g.f.t < h.at) return;
+  h.at = g.f.t + HIST_STEP;
+  h.income.push(g.income);
+  h.sci.push(g.sciRate);
+  h.noise.push(g.f.noise || 0);
+  for (const k of ['income', 'sci', 'noise']) if (h[k].length > HIST_LEN) h[k].shift();
+}
+
 /* --------------------------------------------------------------- contracts --- */
 
 /**
@@ -163,6 +182,7 @@ function tickContracts(g, dt) {
       g.f.earned += c.pay;
       g.contracts.splice(i, 1);
       toast(g, `Contract filled — ${money(c.pay)}`, '#a7f070');
+      g.f.fx.push({ k: 'contract', v: c.pay });
       logEvent(g, `Shipped ${c.need} ${TYPES[c.ty].name}: ${money(c.pay)}`);
     } else if (c.left <= 0) {
       g.contracts.splice(i, 1);

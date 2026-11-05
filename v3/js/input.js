@@ -132,6 +132,7 @@ export class Input {
     }
 
     if (e.button === 2) {                       // right: put down, or take out
+      if (S.bp) { this.act('bpDrop'); return; }
       if (S.tool || S.hand >= 0) { this.clearHand(); return; }
       if (cell >= 0) {
         S.drag = { from: cell, mode: 'scrap', path: [], axis: null };
@@ -141,6 +142,19 @@ export class Input {
     }
 
     if (e.button !== 0) return;
+
+    // A blueprint in hand: stamp it (or, for a lifted one, set it down).
+    if (S.bp) {
+      if (cell >= 0) this.act('bpPlace', cell);
+      return;
+    }
+
+    // Shift-drag with nothing in hand draws a selection box.
+    if (e.shiftKey && !S.tool && S.hand < 0) {
+      if (cell < 0) return;
+      S.drag = { mode: 'box', a: cell, b: cell, path: [] };
+      return;
+    }
 
     if (S.hand >= 0) {                          // dropping a machine being moved
       if (cell >= 0) this.act('drop', { from: S.hand, to: cell });
@@ -208,6 +222,7 @@ export class Input {
     S.hover = (this.onWorld(e) || S.drag) ? cell : -1;
 
     if (S.drag?.mode === 'build') { this.retracePath(cell); return; }
+    if (S.drag?.mode === 'box') { if (cell >= 0) S.drag.b = cell; return; }
     if (S.drag?.mode === 'scrap' && cell >= 0 && cell !== S.drag.last) {
       S.drag.last = cell;
       this.act('scrap', cell);
@@ -225,6 +240,12 @@ export class Input {
         S.selected = p.pending;
         this.act('select', p.pending);
       }
+    }
+    if (S.drag?.mode === 'box') {
+      const { a, b } = S.drag;
+      S.drag = null;
+      this.act('areaSelect', { a, b });
+      return;
     }
     if (S.drag?.mode === 'build') {
       const path = S.drag.path;
@@ -315,9 +336,32 @@ export class Input {
     if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']
       .includes(k.toLowerCase())) { e.preventDefault(); return; }
 
+    const low = k.toLowerCase();
+
+    // Copy and paste come before everything, so Ctrl C never buys a ring of land.
+    if (e.ctrlKey || e.metaKey) {
+      if (low === 'c' && S.area?.length) { e.preventDefault(); this.act('areaCopy'); }
+      else if (low === 'v') { e.preventDefault(); this.act('paste'); }
+      return;
+    }
+    if (k === 'Tab') { e.preventDefault(); this.act('nextProblem'); return; }
+
+    // A blueprint in hand: turn it, or let go of it.
+    if (S.bp) {
+      if (low === 'r') { this.act('bpRotate'); return; }
+      if (low === 'escape') { this.act('bpDrop'); return; }
+    }
+
+    // A box selected: the single-machine verbs act on all of it.
+    if (S.area?.length && !S.tool && !S.bp) {
+      const verb = { m: 'areaMove', u: 'areaUpgrade', o: 'areaToggle', h: 'areaRepair',
+        x: 'areaScrap', delete: 'areaScrap', backspace: 'areaScrap', escape: 'areaClear' }[low];
+      if (verb) { e.preventDefault(); this.act(verb); return; }
+    }
+
     if (HOTKEYS[k]) { this.act('tool', { ...HOTKEYS[k] }); return; }
 
-    switch (k.toLowerCase()) {
+    switch (low) {
       case 'r':
         if (S.tool) this.act('rotTool', e.shiftKey ? -1 : 1);
         else if (this.target() >= 0) this.act('rot', this.target(), e.shiftKey);
@@ -328,6 +372,7 @@ export class Input {
         break;
       case 'o': this.act('off', this.target()); break;
       case 'z': this.act('tool', { kind: 'zap' }); break;
+      case 't': this.act('toggleHelp'); break;
       case 'b': this.act('tool', { kind: 'arm' }); break;
       case 'h':
         if (e.shiftKey) this.act('repairAll');

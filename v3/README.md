@@ -441,6 +441,40 @@ Three research nodes sit behind it: **Focusing** (+1.5 reach), **Arc Discharge**
 Mites are saved with the world, unlike gizmos in flight: reloading must not be a way
 to make a swarm halfway through your belts vanish.
 
+### Quality of life
+
+**Boxes and blueprints.** Shift-drag draws a box round any number of machines. The
+panel then offers every single-machine verb for the lot — move, upgrade, repair,
+switch off, scrap — and `Ctrl C` turns the box into a **blueprint** that stays in
+your hand so you can stamp it down as many times as you can afford (`R` turns it,
+`Ctrl V` picks the last one up again). A paste is priced before you click, ladders
+included, and stops at the first thing you cannot pay for rather than leaving holes.
+Moving a box lifts the machines themselves — levels, settings and damage — and
+`Esc` puts every one back.
+
+**Finding the problem.** The warning box in the corner is clickable and takes the
+camera to whatever it is talking about, with a ring on the slot. `Tab` walks through
+every problem on the map, worst first: lines stopped for good, broken machines, mites
+inside the fence, dry generators, half-fed recipes, starved and backed-up machines,
+empty Zappers and anything off the grid.
+
+**Sound.** Every sound is synthesised in `js/sound.js` — no audio files — and
+throttled per sound so a big factory hums rather than roars. Sells, zaps and builds
+only play when they are on screen; swarms, breakages and research always do. Mute is
+the speaker in the HUD, volume is in the menu, and both are remembered.
+
+**Juice.** Sparks when a mite dies, coins hopping out of a Depot on a rich sale,
+dust when something is built, a shake when a nest goes up, and a coloured pulse
+across the screen for a swarm, a contract, a ring of land or a finished research.
+
+**Hiding the helpers.** The warning box, the key hints along the bottom, the pop-up
+messages and the walkthrough card can each be switched off in the menu, or all at
+once with `T`. The choice is remembered, and `Tab` still finds problems with the
+warning box hidden.
+
+**The graph.** STATS draws the last ten minutes of income, science and noise, and a
+**WHAT PAYS** bar for each gizmo by the share of income it brings in.
+
 ---
 
 ## What survived untouched
@@ -490,6 +524,11 @@ differently because they want opposite fixes.
 | `O` | switch a machine off, or back on |
 | `Z` / `B` | pick up a Zapper / an Armory to build |
 | `H` / `Shift H` | repair the machine under the cursor / repair everything |
+| `Shift` drag | select every machine in a box |
+| `Ctrl C` / `Ctrl V` | copy the box as a blueprint / pick the last blueprint up again |
+| `M` `U` `O` `H` `X` | with a box selected: move, upgrade, switch off, repair or scrap all of it |
+| `Tab` | jump to the next problem — clicking the warning box does the same |
+| `T` | hide or show the helper boxes; each can be switched on its own in the menu |
 | click a machine | its recipe as a picture, what is inside it, and what it is short of |
 | build on top | replaces what is there; the old one goes to the crate, free to put back |
 | `X` / `Delete` | scrap a machine for half of what it cost — or, on a bare slot, sweep up what is lying there |
@@ -558,6 +597,8 @@ js/machines.js      every number in the game lives here
 js/world.js         the map: ore patches, terrain, and the guaranteed opening
 js/power.js         the grid — who is on which, and how much they get
 js/bugs.js          nests, noise, swarms, mites chewing, Zappers firing, repair
+js/blueprint.js     box selection, copy and paste, moving many machines, bulk verbs
+js/sound.js         every sound, synthesised with Web Audio
 js/sim.js           the factory simulation, inherited from GIZMO 2 and made real-time
 js/render.js        the camera renderer: one ground canvas, cached machine tiles
 js/ui.js            the build bar, the HUD, the four panel tabs, the minimap, the manual
@@ -584,6 +625,7 @@ node tools/world.mjs 500  # is every generated world playable?
 node tools/feeds.mjs      # can one belt feed a machine that needs two things?
 node tools/economy.mjs    # the cost tables, and what real builds earn
 node tools/bugs.mjs       # mites chew, broken stops, repair, Armory, Zapper
+node tools/blueprint.mjs  # select, copy, paste, rotate, move and bulk verbs
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

@@ -14,6 +14,11 @@ import {
   expandCost, buyCost, label, PASSIVE, zapRange,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
+import { sfx, unlock, soundOn, setSound, volume, setVolume } from './sound.js';
+import {
+  areaCells, capture, rotateBp, plan, paste, lift, drop, putBack,
+  upgradeAll, scrapAll, repairArea, toggleArea,
+} from './blueprint.js';
 import { View, ZOOMS, DEFAULT_ZOOM } from './render.js';
 import {
   build, buildCheck, moveMachine, scrapMachine, applyAction, research,
@@ -25,7 +30,7 @@ import {
   createGame, stepGame, saveGame, loadGame, hasSave, clearSave,
   ageToasts, toast, endTutorial, SPEEDS,
 } from './game.js';
-import { Palette, Crate, Hud, Panel, Tutorial, drawMinimap, howtoHtml, health } from './ui.js';
+import { Palette, Crate, Hud, Panel, Tutorial, drawMinimap, howtoHtml, health, problems } from './ui.js';
 import { Input, makeState } from './input.js';
 
 const $ = id => document.getElementById(id);
@@ -115,6 +120,21 @@ function wireChrome() {
   for (const b of document.querySelectorAll('.speeds button')) {
     b.onclick = () => act('setSpeed', +b.dataset.speed);
   }
+  // Sound: the button in the HUD mutes, the slider in the menu sets the level, and
+  // the first click or key press anywhere is what a browser needs before it will
+  // play anything at all.
+  const paintSound = () => $('btn-sound').classList.toggle('muted', !soundOn());
+  paintSound();
+  $('btn-sound').onclick = () => { unlock(); setSound(!soundOn()); paintSound(); sfx('click'); };
+  $('m-volume').value = Math.round(volume() * 100);
+  $('m-volume').oninput = e => { unlock(); setVolume(e.target.value / 100); sfx('click'); };
+  for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, unlock, { passive: true });
+  $('alert').onclick = () => { if (hud.target >= 0) act('focus', hud.target); };
+  for (const k of SHOW_KEYS) {
+    $('show-' + k).checked = show[k];
+    $('show-' + k).onchange = e => { show[k] = e.target.checked; applyShow(); sfx('click'); };
+  }
+  applyShow();
   $('z-in').onclick = () => act('zoom', 1);
   $('z-out').onclick = () => act('zoom', -1);
   $('mini').onclick = e => {
@@ -125,6 +145,27 @@ function wireChrome() {
     view.cam.y = y + 0.5;
     view.clampCam();
   };
+}
+
+/**
+ * Which helper boxes are on screen. Somebody who has learnt the game does not need
+ * the bottom line telling them which key turns a belt, and a warning box they have
+ * already read can be in the way of the corner of the map they are building in. All
+ * four can be switched off in the menu, or together with T, and the choice is kept.
+ * Tab still walks the problem list with the warning box hidden.
+ */
+const SHOW_KEY = 'gizmo3.show.v1';
+const SHOW_KEYS = ['alert', 'hint', 'toasts', 'tut'];
+const show = { alert: true, hint: true, toasts: true, tut: true };
+try { Object.assign(show, JSON.parse(localStorage.getItem(SHOW_KEY) || '{}')); } catch (e) { /* defaults */ }
+
+function applyShow() {
+  for (const k of SHOW_KEYS) {
+    document.body.classList.toggle('hide-' + k, !show[k]);
+    const box = $('show-' + k);
+    if (box) box.checked = show[k];
+  }
+  try { localStorage.setItem(SHOW_KEY, JSON.stringify(show)); } catch (e) { /* private window */ }
 }
 
 function resume() {
@@ -149,7 +190,11 @@ function frame(now) {
   input.panTick(dt);
 
   updateGhost();
+  updateBlueprint();
   view.draw(g.f, {
+    area: S.area,
+    box: S.drag?.mode === 'box' ? S.drag : null,
+    bpPlan: S.bpPlan,
     dt,
     jams: jamCells(g),
     hover: S.hover,
@@ -160,7 +205,8 @@ function frame(now) {
     range: S.range,
   });
 
-  hud.update(g, tutorial.update(g));
+  // With the walkthrough card hidden, the warning box gets its corner back.
+  hud.update(g, tutorial.update(g) && show.tut);
   updateZoom();
   palette.price(g);
   crate.update(g, S);
@@ -191,7 +237,55 @@ function jamCells(g) {
 
 /** Turn the simulation's effect queue into things you can see. */
 function playFx(fx) {
+  const b = view.bounds();
+  const seen = (x, y) => x >= b.x0 - 1 && x <= b.x1 + 1 && y >= b.y0 - 1 && y <= b.y1 + 1;
+  const near = c => c != null && c >= 0 && seen(cx(c), cy(c));
   for (const e of fx) {
+    // Sound and sparks first; the floats and toasts below are unchanged.
+    switch (e.k) {
+      case 'sell':
+        if (near(e.cell)) {
+          sfx('sell', e.v / 20);
+          if (e.v >= 12 && Math.random() < 0.5) view.coins(cx(e.cell) + 0.5, cy(e.cell) + 0.3, e.v >= 100 ? 4 : 2);
+        }
+        break;
+      case 'sci': if (near(e.cell)) sfx('sci'); break;
+      case 'zap':
+        if (near(e.cell)) {
+          sfx('zap');
+          const [ex, ey] = e.path[e.path.length - 1];
+          view.burst(ex, ey, '#e0d4ff', 4, 2, 0.25, 2);
+          if (e.path.length > 2) view.shake(1.5, 0.12);
+        }
+        break;
+      case 'kill':
+        if (seen(e.x, e.y)) { sfx('kill'); view.burst(e.x, e.y, '#ff6f9a', 10, 3, 0.5, 3); view.burst(e.x, e.y, '#ffd0e0', 4, 1.5, 0.35, 2); }
+        break;
+      case 'broke':
+        sfx('broke');
+        if (near(e.cell)) { view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#ff4f6a', 12, 3, 0.6, 3); view.shake(3, 0.2); }
+        break;
+      case 'build':
+        if (near(e.cell)) { sfx('build'); view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.8, '#8b96b8', 5, 1.2, 0.4, 3); }
+        break;
+      case 'up': sfx('up'); if (near(e.cell)) view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#ffcd75', 10, 2.5, 0.5, 3); break;
+      case 'scrap': sfx('scrap'); if (near(e.cell)) view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#6b6146', 8, 2, 0.5, 3); break;
+      case 'repair': sfx('repair'); if (near(e.cell)) view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#a7f070', 6, 1.6, 0.45, 2); break;
+      case 'rot': sfx('rot'); break;
+      case 'move': sfx('move'); break;
+      case 'swarm': sfx('swarm'); view.pulse('#ff3b5c'); break;
+      case 'stir': sfx('stir'); break;
+      case 'nest':
+        sfx('nest');
+        view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#ff4f7a', 30, 4, 0.9, 4);
+        view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#ffcd75', 12, 3, 0.8, 3);
+        view.shake(6, 0.4);
+        break;
+      case 'tech': sfx('tech'); view.pulse('#8f6cff'); break;
+      case 'grow': sfx('grow'); view.pulse('#a7f070'); break;
+      case 'contract': sfx('contract'); view.pulse('#ffcd75'); break;
+      default: break;
+    }
     if (e.k === 'sell' && e.v >= 3) view.float(`+$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#a7f070');
     else if (e.k === 'sci' && e.v >= 3) view.float(`+${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#b8bcff');
     else if (e.k === 'scrap') view.float(`+$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#ffcd75');
@@ -241,6 +335,25 @@ function place(spec, cell, dir, mir) {
   return build(g.f, spec, cell, { dir, mir });
 }
 
+/** Where the blueprint in your hand would land, and what it would cost. */
+function updateBlueprint() {
+  S.bpPlan = null;
+  if (!S.bp || S.hover < 0) return;
+  const p = plan(g.f, S.bp, S.hover);
+  S.bpPlan = p;
+  S.bpCost = p.cost;
+  S.bpFit = `${p.ok} of ${p.total}`;
+}
+
+/** Let go of a blueprint; a lifted one puts everything back where it was. */
+function dropBlueprint() {
+  if (S.bp?.held) putBack(g.f, S.bp);
+  S.bp = null;
+  S.bpPlan = null;
+  $('stage').classList.remove('build');
+  panel.key = '';
+}
+
 /** Where the thing in your hand would land, and whether it may. */
 function updateGhost() {
   S.ghost = null;
@@ -287,7 +400,13 @@ function updateZoom() {
 function updateHint() {
   const n = $('hint');
   let txt;
-  if (S.hand >= 0) txt = 'Click where it goes. <b>Esc</b> to leave it where it was.';
+  if (S.bp) {
+    txt = S.bp.held
+      ? `<b>MOVING ${S.bp.held.length}</b>  ·  click where it goes  ·  <b>R</b> turn  <b>Esc</b> put it all back`
+      : `<b>BLUEPRINT</b> ${money(S.bpCost || 0)}  ·  click to stamp  ·  <b>R</b> turn  <b>Esc</b> let go`;
+  } else if (S.area?.length) {
+    txt = `<b>${S.area.length} SELECTED</b>  ·  <b>Ctrl C</b> copy  <b>M</b> move  <b>U</b> upgrade  <b>H</b> repair  <b>O</b> off  <b>X</b> scrap  <b>Esc</b> clear`;
+  } else if (S.hand >= 0) txt = 'Click where it goes. <b>Esc</b> to leave it where it was.';
   else if (S.tool) {
     const cost = buyCost(S.tool, countKind(g.f, S.tool.kind));
     const drag = S.tool.kind === 'pipe' || S.tool.kind === 'store';
@@ -297,7 +416,7 @@ function updateHint() {
   } else if (S.selected >= 0 && g.f.grid[S.selected]) {
     txt = '<b>R</b> turn  <b>M</b> move  <b>X</b> scrap  <b>H</b> repair  <b>Q</b> copy to hand  ·  drag to pan  ·  <b>V</b> power  <b>?</b> controls';
   } else {
-    txt = '<b>drag</b> to move the map  ·  <b>1</b>–<b>0</b> build  ·  <b>Z</b> zapper  <b>B</b> armory  ·  <b>Q</b> copy  <b>V</b> power  <b>C</b> buy land  <b>?</b> controls';
+    txt = '<b>drag</b> to move the map  ·  <b>Shift drag</b> select  ·  <b>1</b>–<b>0</b> build  <b>Z</b> zapper  <b>B</b> armory  ·  <b>Tab</b> next problem  <b>?</b> controls';
   }
   if (n.dataset.txt !== txt) { n.dataset.txt = txt; n.innerHTML = txt; }
 }
@@ -314,6 +433,8 @@ function act(name, payload, extra) {
     /* --- what is in your hand --- */
     case 'tool': {
       S.hand = -1;
+      if (S.bp) dropBlueprint();
+      S.area = null;
       if (!payload) {
         S.tool = null;
         palette.select(null);
@@ -371,7 +492,7 @@ function act(name, payload, extra) {
 
     case 'build': {
       const r = place(payload.spec, payload.cell, payload.spec.dir, payload.spec.mir);
-      if (!r.ok) toast(g, r.msg, '#ff8a6a');
+      if (!r.ok) { toast(g, r.msg, '#ff8a6a'); sfx('error'); }
       else if (r.crated) toast(g, `${label(r.crated).toUpperCase()} to the crate`, '#a8dcff');
       return r;
     }
@@ -443,7 +564,7 @@ function act(name, payload, extra) {
     }
     case 'up': {
       const r = applyAction(f, { a: 'up', i: payload });
-      if (!r.ok) toast(g, r.msg, '#ff8a6a');
+      if (!r.ok) { toast(g, r.msg, '#ff8a6a'); sfx('error'); }
       return r;
     }
     case 'stash': {
@@ -504,6 +625,155 @@ function act(name, payload, extra) {
       if (!r.ok) toast(g, r.msg, '#ff8a6a');
       else { palette.key = ''; palette.build(g); panel.key = ''; }
       return r;
+    }
+
+    /* --- many machines at once --- */
+    case 'areaSelect': {
+      const cells = areaCells(f, payload.a, payload.b);
+      S.area = cells.length ? cells : null;
+      S.selected = -1;
+      panel.show('info');
+      panel.key = '';
+      if (cells.length) sfx('click');
+      return;
+    }
+    case 'areaClear':
+      S.area = null;
+      panel.key = '';
+      return;
+    case 'areaCopy': {
+      if (!S.area?.length) return;
+      const bp = capture(f, S.area);
+      if (!bp) return;
+      S.clip = bp;
+      S.area = null;
+      S.tool = null;
+      palette.select(null);
+      S.bp = bp;
+      $('stage').classList.add('build');
+      toast(g, `Copied ${bp.parts.length} machines — click to stamp`, '#7fe8ff');
+      sfx('click');
+      panel.key = '';
+      return;
+    }
+    case 'paste': {
+      if (!S.clip) { toast(g, 'Nothing copied yet — shift-drag a box, then Ctrl C', '#ff8a6a'); return; }
+      if (S.bp?.held) return;
+      S.tool = null; S.hand = -1; S.area = null;
+      palette.select(null);
+      S.bp = S.clip;
+      $('stage').classList.add('build');
+      panel.key = '';
+      return;
+    }
+    case 'areaMove': {
+      if (!S.area?.length) return;
+      const bp = lift(f, S.area);
+      if (!bp) return;
+      S.area = null;
+      S.tool = null;
+      palette.select(null);
+      S.bp = bp;
+      $('stage').classList.add('build');
+      sfx('move');
+      panel.key = '';
+      return;
+    }
+    case 'bpRotate':
+      if (S.bp) { S.bp = rotateBp(S.bp); if (!S.bp.held) S.clip = S.bp; sfx('rot'); }
+      return;
+    case 'bpDrop':
+      dropBlueprint();
+      return;
+    case 'bpPlace': {
+      if (!S.bp || payload < 0) return;
+      if (S.bp.held) {
+        const r = drop(f, S.bp, payload);
+        S.bp = null;
+        S.bpPlan = null;
+        $('stage').classList.remove('build');
+        toast(g, r.home ? `${r.moved} moved — ${r.home} could not stand there and went back`
+          : `${r.moved} moved`, r.home ? '#ffcd75' : '#7fe8ff');
+        panel.key = '';
+        return r;
+      }
+      const r = paste(f, S.bp, payload);
+      if (r.placed) toast(g, `${r.placed} built — ${money(r.spent)}` + (r.skipped ? `  ·  ${r.skipped} skipped` : ''), '#7fe8ff');
+      if (r.broke) { toast(g, 'Ran out of money partway', '#ff8a6a'); sfx('error'); }
+      else if (!r.placed) { toast(g, 'Nothing fits there', '#ff8a6a'); sfx('error'); }
+      return r;
+    }
+    case 'areaRepair': {
+      if (!S.area?.length) return;
+      const r = repairArea(f, S.area);
+      toast(g, r.n ? `${r.n} repaired — ${money(r.spent)}` : 'Nothing repaired', r.n ? '#ffcd75' : '#ff8a6a');
+      panel.key = '';
+      return r;
+    }
+    case 'areaUpgrade': {
+      if (!S.area?.length) return;
+      const r = upgradeAll(f, S.area);
+      toast(g, r.n ? `${r.n} upgraded — ${money(r.spent)}` + (r.left ? `  ·  ${r.left} more when you can afford them` : '')
+        : 'Nothing upgraded', r.n ? '#ffcd75' : '#ff8a6a');
+      if (!r.n) sfx('error');
+      panel.key = '';
+      return r;
+    }
+    case 'areaToggle': {
+      if (!S.area?.length) return;
+      const r = toggleArea(f, S.area);
+      toast(g, `${r.n} switched ${r.off ? 'off' : 'on'}`, '#8b96b8');
+      sfx('click');
+      panel.key = '';
+      return r;
+    }
+    case 'areaScrap': {
+      if (!S.area?.length) return;
+      const r = scrapAll(f, S.area);
+      for (const i of S.area) sweepGround(f, i);
+      toast(g, `${r.n} scrapped — +${money(r.got)}`, '#ffcd75');
+      S.area = null;
+      panel.key = '';
+      return r;
+    }
+
+    /* --- helper boxes --- */
+    case 'toggleHelp': {
+      // Any shown: hide them all. All hidden: bring them all back.
+      const anyOn = SHOW_KEYS.some(k => show[k]);
+      for (const k of SHOW_KEYS) show[k] = !anyOn;
+      applyShow();
+      sfx('click');
+      // Said once, at the top of the screen, whichever way it went — even with
+      // pop-ups switched off, because otherwise the key would seem to do nothing.
+      $('help-note')?.remove();
+      const n = document.createElement('div');
+      n.id = 'help-note';
+      n.className = 'toast';
+      n.textContent = anyOn ? 'Helper boxes hidden — T brings them back' : 'Helper boxes shown';
+      n.style.cssText = 'position:absolute;top:calc(var(--hud) + 10px);left:50%;transform:translateX(-50%);color:#8b96b8;z-index:30;pointer-events:none';
+      $('stage').appendChild(n);
+      setTimeout(() => n.remove(), 1800);
+      return;
+    }
+
+    /* --- finding things --- */
+    case 'focus': {
+      if (payload == null || payload < 0) return;
+      view.centreOn(payload);
+      if (view.cam.zoom < 32) view.cam.zoom = 32;
+      view.ping(payload);
+      S.area = null;
+      if (f.grid[payload]) { S.selected = payload; panel.show('info'); }
+      sfx('click');
+      return;
+    }
+    case 'nextProblem': {
+      const list = problems(f);
+      if (!list.length) { toast(g, 'Nothing wrong anywhere. Enjoy it.', '#a7f070'); return; }
+      S.probAt = ((S.probAt ?? -1) + 1) % list.length;
+      toast(g, `Problem ${S.probAt + 1} of ${list.length}`, '#8b96b8');
+      return act('focus', list[S.probAt]);
     }
 
     /* --- the camera --- */

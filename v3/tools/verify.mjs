@@ -136,9 +136,9 @@ console.log('\nWHAT MACHINES WILL AND WILL NOT ACCEPT');
   const f2 = bench();
   put(f2, 'fuse', 20, 20, { dir: 0 });
   put(f2, 'pipe', 19, 20, { dir: 0 });
-  put(f2, 'pipe', 21, 20, { dir: 2 });
+  put(f2, 'pipe', 22, 20, { dir: 2 });            // the Fuser is 1x2: 20 and 21
   feed(f2, 19, 20, 0, 2);
-  feed(f2, 21, 20, 8, 2);
+  feed(f2, 22, 20, 8, 2);
   run(f2, 8);
   const held = f2.grid[cellOf(20, 20)];
   const pair = [...held.work];
@@ -272,17 +272,19 @@ console.log('\nONE MOUTH, ON ONE SIDE');
 {
   // Two lines cannot both be shovelled into one Depot.
   const f = bench();
-  ore(f, 20, 24); ore(f, 20, 26);
-  put(f, 'ext', 20, 24, { dir: 0 }); put(f, 'ext', 20, 26, { dir: 0 });
-  belt(f, 21, 22, 24); belt(f, 21, 22, 26);
+  // The Depot is 2x2 (23-24, 25-26): one arm comes down onto its top, the other
+  // up into its solid bottom.
+  ore(f, 20, 24); ore(f, 20, 27);
+  put(f, 'ext', 20, 24, { dir: 0 }); put(f, 'ext', 20, 27, { dir: 0 });
+  belt(f, 21, 22, 24); belt(f, 21, 22, 27);
   put(f, 'pipe', 23, 24, { dir: 1 });
-  put(f, 'pipe', 23, 26, { dir: 3 });
+  put(f, 'pipe', 23, 27, { dir: 3 });
   put(f, 'depot', 23, 25, { dir: 3 });
   const dep = f.grid[cellOf(23, 25)];
   dep.aimed = 1;
   run(f, 60);
   ok(f.earned > 0, 'a Depot fed from one side sells');
-  ok(f.grid[cellOf(23, 26)].blocked === 1,
+  ok(f.grid[cellOf(23, 27)].blocked === 1,
     'while the arm at its solid side backs up rather than sneaking in');
 }
 {
@@ -422,14 +424,14 @@ console.log('\nBUILDING OVER THINGS');
 
   // Putting it back is free.
   const cash = f.cash;
-  const r3 = placeFromCrate(f, crateKey(belt), cellOf(21, 20), { dir: 0 });
+  const r3 = placeFromCrate(f, crateKey(belt), cellOf(23, 20), { dir: 0 });
   ok(r3.ok && f.cash === cash, 'putting a crated machine back costs nothing');
-  ok(f.grid[cellOf(21, 20)] === belt, 'and it is the same machine, not a new one');
+  ok(f.grid[cellOf(23, 20)] === belt, 'and it is the same machine, not a new one');
   ok(f.crate.length === 0, 'and the crate empties');
 
   // Stashing by hand, and selling out of the crate.
-  ok(stashMachine(f, cellOf(21, 20)).ok, 'a machine can be put away by hand');
-  ok(f.crate.length === 1 && !f.grid[cellOf(21, 20)], 'which takes it off the map');
+  ok(stashMachine(f, cellOf(23, 20)).ok, 'a machine can be put away by hand');
+  ok(f.crate.length === 1 && !f.grid[cellOf(23, 20)], 'which takes it off the map');
   const paid = f.cash;
   const r4 = scrapFromCrate(f, crateKey(belt));
   ok(r4.ok && f.cash > paid, 'and sold out of the crate for its scrap value');

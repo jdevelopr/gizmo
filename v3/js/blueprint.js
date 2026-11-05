@@ -13,29 +13,41 @@
 
 import {
   cellOf, cx, cy, inWorld, claimed, OPEN, buyCost, upgradeCost, levelCap, scrapValue,
-  repairCost, maxHp, CRATE_CAP,
+  repairCost, maxHp, CRATE_CAP, footprint, sizeKind,
 } from './machines.js';
-import { build, buildCheck, replaceMode, countKind, rebuild, toCrate, scrapMachine } from './sim.js';
+import { build, buildCheck, replaceMode, countKind, rebuild, toCrate, scrapMachine, occupy, vacate } from './sim.js';
 import { nestAt } from './bugs.js';
 
 /** Every occupied slot inside the box between two corners. */
 export function areaCells(f, a, b) {
   const x0 = Math.min(cx(a), cx(b)), x1 = Math.max(cx(a), cx(b));
   const y0 = Math.min(cy(a), cy(b)), y1 = Math.max(cy(a), cy(b));
-  const out = [];
+  // One entry per machine — its anchor — for every machine any part of which is in the box.
+  const out = new Set();
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const i = cellOf(x, y);
-    if (f.grid[i]) out.push(i);
+    const m = f.grid[cellOf(x, y)];
+    if (m) out.add(m.at ?? cellOf(x, y));
   }
-  return out;
+  return [...out];
 }
+
+/** The box round every slot these machines cover. */
+function bounds(f, anchors) {
+  const all = anchors.flatMap(i => f.grid[i]?.cells || [i]);
+  return {
+    x0: Math.min(...all.map(cx)), y0: Math.min(...all.map(cy)),
+    x1: Math.max(...all.map(cx)), y1: Math.max(...all.map(cy)),
+  };
+}
+
+/** Unique machine anchors among these slots. */
+const anchorsIn = (f, cells) => [...new Set(cells.filter(i => f.grid[i]).map(i => f.grid[i].at ?? i))];
 
 /** The machines in `cells`, as offsets from their top-left corner. */
 export function capture(f, cells) {
-  const ms = cells.filter(i => f.grid[i]);
+  const ms = anchorsIn(f, cells);
   if (!ms.length) return null;
-  const x0 = Math.min(...ms.map(cx)), y0 = Math.min(...ms.map(cy));
-  const x1 = Math.max(...ms.map(cx)), y1 = Math.max(...ms.map(cy));
+  const { x0, y0, x1, y1 } = bounds(f, ms);
   return {
     w: x1 - x0 + 1, h: y1 - y0 + 1,
     parts: ms.map(i => {
@@ -49,7 +61,11 @@ export function capture(f, cells) {
 export function rotateBp(bp) {
   if (!bp) return bp;
   const h = bp.h;
-  const turn = p => ({ ...p, dx: h - 1 - p.dy, dy: p.dx, dir: ((p.dir | 0) + 1) % 4 });
+  // A 2x2's anchor is its top-left slot, which after a quarter turn is a different
+  // corner: shift it one back so the building lands on the same four slots.
+  const turn = p => ({
+    ...p, dx: h - 1 - p.dy - (sizeKind(p.kind) === 'big' ? 1 : 0), dy: p.dx, dir: ((p.dir | 0) + 1) % 4,
+  });
   return { ...bp, w: bp.h, h: bp.w, parts: bp.parts.map(turn), held: bp.held && bp.held.map(turn) };
 }
 
@@ -72,8 +88,8 @@ export function plan(f, bp, at) {
   for (const p of bp.held || bp.parts) {
     const cell = landing(bp, p, at);
     if (cell < 0) { steps.push({ cell, ok: false, p }); continue; }
-    const check = buildCheck(f, p, cell);
-    const mode = replaceMode(f, p, cell);
+    const check = buildCheck(f, p, cell, p.dir);
+    const mode = replaceMode(f, p, cell, p.dir);
     let c = 0;
     if (!bp.held && mode !== 'reaim') {
       c = buyCost(p, countKind(f, p.kind) + (extra[p.kind] || 0));
@@ -117,11 +133,11 @@ export function paste(f, bp, at) {
 export function lift(f, cells) {
   const bp = capture(f, cells);
   if (!bp) return null;
-  const ms = cells.filter(i => f.grid[i]);
-  const x0 = Math.min(...ms.map(cx)), y0 = Math.min(...ms.map(cy));
+  const ms = anchorsIn(f, cells);
+  const { x0, y0 } = bounds(f, ms);
   bp.held = ms.map(i => {
     const m = f.grid[i];
-    f.grid[i] = null;
+    vacate(f, m);
     m.buf.length = 0; m.work = []; m.out = null; m.t = 0; m.blocked = 0;
     return { dx: cx(i) - x0, dy: cy(i) - y0, kind: m.kind, dir: m.dir | 0, mut: m.mut, mir: m.mir | 0, m, from: i };
   });
@@ -131,8 +147,12 @@ export function lift(f, cells) {
 
 /** Can a lifted machine stand on this slot? */
 function fits(f, m, cell) {
-  if (cell < 0 || !claimed(cell, f.claim) || f.terrain[cell] !== OPEN) return false;
-  if (nestAt(f, cell)) return false;
+  if (cell < 0) return false;
+  const cells = footprint(m.kind, cell, m.dir);
+  if (!cells) return false;
+  for (const c of cells) {
+    if (!claimed(c, f.claim) || f.terrain[c] !== OPEN || nestAt(f, c)) return false;
+  }
   if (m.kind === 'ext' && f.patch[cell] < 0) return false;
   return true;
 }
@@ -150,8 +170,11 @@ export function drop(f, bp, at) {
     const m = p.m;
     m.dir = p.dir;
     if (fits(f, m, cell)) {
-      if (f.grid[cell]) toCrate(f, f.grid[cell]);
-      f.grid[cell] = m;
+      for (const c of footprint(m.kind, cell, m.dir)) {
+        const u = f.grid[c];
+        if (u && u !== m) { vacate(f, u); toCrate(f, u); }
+      }
+      occupy(f, m, cell);
       if (m.kind === 'ext') { m.mut = f.patch[cell]; m.rich = f.rich[cell] || 1; }
       moved++;
     } else {
@@ -172,8 +195,10 @@ export function putBack(f, bp) {
 
 function sendHome(f, p) {
   const m = p.m;
-  if (!f.grid[p.from]) {
-    f.grid[p.from] = m;
+  m.dir = p.m.dir;
+  const home = footprint(m.kind, p.from, m.dir);
+  if (home && home.every(c => !f.grid[c])) {
+    occupy(f, m, p.from);
     if (m.kind === 'ext') { m.mut = f.patch[p.from]; m.rich = f.rich[p.from] || 1; }
   } else if (f.crate.length < CRATE_CAP) toCrate(f, m);
   else f.crate.push(m);

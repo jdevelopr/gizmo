@@ -45,8 +45,8 @@ console.log('\nREACH');
 {
   const f = bench();
   const y = 20;
-  // A generator, then a straight line of belts running away from it.
-  put(f, 'gen', 10, y);
+  // A 2x2 generator on 9-10, then a straight line of belts running away from it.
+  put(f, 'gen', 9, y);
   for (let x = 11; x < 11 + 20; x++) put(f, 'pipe', x, y, { dir: 0 });
   solveTopology(f);
   const reach = GEN_REACH[0];
@@ -54,15 +54,15 @@ console.log('\nREACH');
   ok(at(reach).net >= 0, `a machine exactly ${reach} hops away is powered`);
   ok(at(reach + 1).net < 0, `a machine ${reach + 1} hops away is not`,
     `net was ${at(reach + 1).net}`);
-  ok(reachFrom(f, cellOf(10, y), { level: 1 }).size === reach + 1,
-    'the build preview counts the same slots the solver does');
+  ok(reachFrom(f, cellOf(9, y), { level: 1 }).size === reach + 4,
+    'the build preview counts the same slots the solver does (its own four, and the line)');
 }
 
 console.log('\nRESEARCH MOVES THE REACH');
 {
   const f = bench();
   const y = 20;
-  put(f, 'gen', 10, y);
+  put(f, 'gen', 9, y);
   for (let x = 11; x < 11 + 24; x++) put(f, 'pipe', x, y, { dir: 0 });
   f.done = ['gridwork'];
   f.dirty = true;
@@ -76,7 +76,7 @@ console.log('\nGAPS AND MERGES');
 {
   const f = bench();
   // Two blocks of belt with one empty slot between them, a generator in each.
-  put(f, 'gen', 10, 10);
+  put(f, 'gen', 9, 10);                       // 2x2: 9-10
   for (let x = 11; x <= 14; x++) put(f, 'pipe', x, 10);
   put(f, 'gen', 20, 10);
   for (let x = 16; x <= 19; x++) put(f, 'pipe', x, 10);
@@ -95,9 +95,9 @@ console.log('\nSUPPLY, DEMAND AND THE BROWNOUT');
   const f = bench();
   // One generator, and a solid block of mutators around it asking for more than
   // it makes. Fifteen at 8 kW is 120 against a 90 kW generator.
-  put(f, 'gen', 20, 20);
+  put(f, 'gen', 18, 20);                      // 2x2: 18-19, 20-21
   for (let y = 19; y <= 21; y++) {
-    for (let x = 21; x <= 25; x++) put(f, 'mut', x, y, { mut: 1 });
+    for (let x = 20; x <= 28; x += 2) put(f, 'mut', x, y, { mut: 1 });   // 1x2s, east
   }
   solveTopology(f);
   // Fill every mutator's mouth so they all count as asking for power.
@@ -105,7 +105,7 @@ console.log('\nSUPPLY, DEMAND AND THE BROWNOUT');
     const m = f.grid[i];
     if (m && m.kind === 'mut') m.buf.push({ id: 1, ty: 0, cp: 0 });
   }
-  f.grid[cellOf(20, 20)].buf.push({ id: 2, ty: 0, cp: 0 });
+  f.grid[cellOf(18, 20)].buf.push({ id: 2, ty: 0, cp: 0 });
   for (let i = 0; i < 200; i++) balancePower(f, 1 / 30);
   const net = f.nets[0];
   ok(net.demand > net.supply, 'demand can exceed supply',
@@ -153,9 +153,9 @@ console.log('\nNOTHING SWITCHES OFF');
 console.log('\nFUEL');
 {
   const f = bench();
-  put(f, 'gen', 20, 20);
+  put(f, 'gen', 19, 20);                      // 2x2: 19-20
   for (let x = 21; x <= 26; x++) put(f, 'pipe', x, 20);
-  const gen = f.grid[cellOf(20, 20)];
+  const gen = f.grid[cellOf(19, 20)];
   gen.buf.push({ id: 1, ty: 0, cp: 0 });
   // Make the belts ask for power, so the generator has a load to answer.
   for (let x = 21; x <= 26; x++) f.grid[cellOf(x, 20)].buf.push({ id: 2, ty: 0, cp: 0 });
@@ -181,10 +181,10 @@ console.log('\nFUEL');
 console.log('\nRUNNING DRY');
 {
   const f = bench();
-  put(f, 'gen', 20, 20);
+  put(f, 'gen', 19, 20);
   for (let x = 21; x <= 26; x++) put(f, 'pipe', x, 20);
   for (let x = 21; x <= 26; x++) f.grid[cellOf(x, 20)].buf.push({ id: 2, ty: 0, cp: 0 });
-  const gen = f.grid[cellOf(20, 20)];
+  const gen = f.grid[cellOf(19, 20)];
   gen.buf.push({ id: 1, ty: 0, cp: 0 });
   run(f, 120);
   ok(gen.fuel <= 0 && !gen.buf.length, 'a generator with nothing coming in runs out');

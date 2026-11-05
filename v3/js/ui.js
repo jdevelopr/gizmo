@@ -10,7 +10,7 @@
  */
 
 import {
-  TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START,
+  TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
   levelCap, techById, techOpen, unlockedBy, expandCost, money, num, clock,
   cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS,
@@ -1370,6 +1370,9 @@ export class Panel {
   specRows(g, spec) {
     const f = g.f;
     const rows = el('div', 'rows');
+    const sz = sizeKind(spec.kind);
+    if (sz === 'big') addRow(rows, 'Size', '2 x 2 slots');
+    else if (sz === 'long') addRow(rows, 'Size', '1 x 2 — fed at the back, out the front');
     if (spec.kind === 'gen') {
       addRow(rows, 'Output', `${GEN_OUTPUT[0]} kW at level 1`);
       addRow(rows, 'Reach', `${genReach({ level: 1 }, f.done)} machines`);
@@ -1804,8 +1807,8 @@ export function howtoHtml(f) {
 
   return `
 <h3>The idea</h3>
-<p>You own a <b>three-slot square</b> in the middle of a eighty-slot world, and
-nothing else. All nine of those slots are Slag. Put an <b>Extractor</b> on one, a
+<p>You own a <b>five-slot square</b> in the middle of an eighty-slot world, and
+nothing else. All twenty-five of those slots are Slag. Put an <b>Extractor</b> on one, a
 <b>Market Depot</b> a couple of slots away, and a <b>Conveyor</b> between them, and
 that is a factory: ore out of the ground, along a belt, into money. Everything after
 it is making that line longer, wider and worth more — and the first thing it needs
@@ -1885,12 +1888,20 @@ Cord, Frame — comes out of Sap patches and is worth almost nothing on its own.
 one of each, and is where the money is. Fusers climb inside a family and never
 across one.</p>
 
+<h3>Big machines</h3>
+<p><b>Generators</b>, <b>Market Depots</b>, <b>Research Labs</b> and <b>Zappers</b>
+are two slots by two. <b>Armories</b>, <b>Fusers</b> and <b>Mutators</b> are one by
+two, laid along the flow: they are fed at the back slot and put out from the front
+one, and turning one with <b>R</b> swings it round its back slot — so it needs room
+to turn. The ghost shows the whole footprint before you build.</p>
+
 <h3>Depots and Labs have one mouth</h3>
 <p>Every other machine takes from any side. A <b>Market Depot</b> and a <b>Research
-Lab</b> have a single opening, on the side the arrow points into, and are solid on
-the other three — so a Depot is where a line <i>ends</i> rather than a wall four
-lines can be shovelled into from every angle. Two things to sell means two Depots,
-or a Balancer merging the arms before they arrive.</p>
+Lab</b> have a single opening, the whole side the arrow points into — both of its
+slots, so two belts can feed it side by side — and are solid on the other three.
+A Depot is where a line <i>ends</i> rather than a wall four lines can be shovelled
+into from every angle. More to sell means a second Depot, or a Balancer merging the
+arms before they arrive.</p>
 <p>The mouth aims itself at whatever is feeding it, so laying a belt at a Depot
 usually just works. It only ever turns while nothing is coming in, so it can never
 break a line that is running, and it stops turning itself for good the moment you

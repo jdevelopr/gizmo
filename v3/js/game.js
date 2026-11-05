@@ -27,10 +27,11 @@ import {
 import { generateWorld } from './world.js';
 import { spawnMite, addMissingNests } from './bugs.js';
 import {
-  createFactory, starterKit, stepFactory, rebuild, drainFx, diagnose, reachesPayout,
+  createFactory, starterKit, stepFactory, rebuild, drainFx, diagnose, reachesPayout, occupy,
 } from './sim.js';
 
-const SAVE_KEY = 'gizmo3.save.v2';   // v2: the 80x80 world. A 56x56 save cannot be read.
+// v2: the 80x80 world. v3: machines bigger than one slot. Older saves cannot be read.
+const SAVE_KEY = 'gizmo3.save.v3';
 /** Creature kinds by the number a save stores them as. Append only. */
 const BUG_KINDS = ['mite', 'skitter', 'beetle'];
 /** Set once the first game has been walked through, or the walk was skipped. */
@@ -444,7 +445,7 @@ export function deserialise(data) {
       const id = f.mtn[i];
       if (id >= 0) { f.mtn[i] = -1; const mt = f.mountains[id]; mt.cells = mt.cells.filter(c => c !== i); }
     }
-    f.grid[i] = m;
+    occupy(f, m, i);
   }
   for (const [kind, dir, level, mut, mir, off, hp] of data.crate || []) {
     if (!kind) continue;
@@ -503,7 +504,7 @@ export function loadGame() {
 
 /** A save from the 56x56 world, which this version cannot load. */
 export function hasOldSave() {
-  try { return !!localStorage.getItem('gizmo3.save.v1'); } catch (e) { return false; }
+  try { return !!(localStorage.getItem('gizmo3.save.v1') || localStorage.getItem('gizmo3.save.v2')); } catch (e) { return false; }
 }
 
 export function hasSave() {

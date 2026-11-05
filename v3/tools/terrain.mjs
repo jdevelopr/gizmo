@@ -117,10 +117,10 @@ console.log('\nBridges');
   g.claim = WORLD; g.mapRev++;
   for (let y = 0; y < WORLD; y++) g.terrain[cellOf(30, y)] = VALLEY;
   rebuild(g);
-  put(g, 'gen', 27, 30); put(g, 'pipe', 28, 30); put(g, 'bridge', 29, 30); put(g, 'bridge', 31, 30);
+  put(g, 'gen', 26, 30); put(g, 'pipe', 28, 30); put(g, 'bridge', 29, 30); put(g, 'bridge', 31, 30);
   g.patch[cellOf(32, 30)] = 0; put(g, 'ext', 32, 30);
   rebuild(g);
-  ok(at(g, 32, 30).net >= 0 && at(g, 32, 30).net === at(g, 27, 30).net, 'power crosses a Bridge to the far bank');
+  ok(at(g, 32, 30).net >= 0 && at(g, 32, 30).net === at(g, 26, 30).net, 'power crosses a Bridge to the far bank');
 
   const h = bench();
   put(h, 'bridge', 10, 10); put(h, 'bridge', 12, 10); put(h, 'bridge', 14, 10); put(h, 'bridge', 16, 10);

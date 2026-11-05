@@ -60,9 +60,9 @@ function mixedFuser() {
   belt(f, 21, 22, 19); belt(f, 21, 22, 21);
   put(f, 'pipe', 23, 19, { dir: 1 }); put(f, 'pipe', 23, 21, { dir: 3 });
   put(f, 'pipe', 23, 20, { dir: 0 });
-  put(f, 'fuse', 24, 20, { dir: 0 });
-  belt(f, 25, 26, 20);
-  put(f, 'depot', 27, 20);
+  put(f, 'fuse', 24, 20, { dir: 0 });          // 1x2: 24 and 25
+  belt(f, 26, 27, 20);
+  put(f, 'depot', 28, 20);                      // 2x2
   return spin(f, 90);
 }
 
@@ -73,13 +73,13 @@ function mixedAssembler() {
   ore(f, 18, 19, 0); ore(f, 18, 21, 8);
   put(f, 'ext', 18, 19, { dir: 0 }); put(f, 'ext', 18, 21, { dir: 0 });
   belt(f, 19, 20, 19); belt(f, 19, 20, 21);
-  put(f, 'mut', 21, 19, { dir: 0, mut: 2 });
+  put(f, 'mut', 21, 19, { dir: 0, mut: 2 });     // 1x2: 21 and 22
   put(f, 'fuse', 21, 21, { dir: 0 });
-  put(f, 'pipe', 22, 19, { dir: 1 }); put(f, 'pipe', 22, 21, { dir: 3 });
-  put(f, 'pipe', 22, 20, { dir: 0 });
-  put(f, 'asm', 23, 20, { dir: 0, mut: 0 });
-  belt(f, 24, 25, 20);
-  put(f, 'depot', 26, 20);
+  put(f, 'pipe', 23, 19, { dir: 1 }); put(f, 'pipe', 23, 21, { dir: 3 });
+  put(f, 'pipe', 23, 20, { dir: 0 });
+  put(f, 'asm', 24, 20, { dir: 0, mut: 0 });
+  belt(f, 25, 26, 20);
+  put(f, 'depot', 27, 20);
   return spin(f, 120);
 }
 
@@ -92,11 +92,11 @@ function splitAssembler() {
   belt(f, 19, 20, 19); belt(f, 19, 20, 21);
   put(f, 'mut', 21, 19, { dir: 0, mut: 2 });
   put(f, 'fuse', 21, 21, { dir: 0 });
-  belt(f, 22, 22, 19); belt(f, 22, 22, 21);
-  put(f, 'pipe', 23, 19, { dir: 1 }); put(f, 'pipe', 23, 21, { dir: 3 });
-  put(f, 'asm', 23, 20, { dir: 0, mut: 0 });
-  belt(f, 24, 25, 20);
-  put(f, 'depot', 26, 20);
+  belt(f, 23, 23, 19); belt(f, 23, 23, 21);
+  put(f, 'pipe', 24, 19, { dir: 1 }); put(f, 'pipe', 24, 21, { dir: 3 });
+  put(f, 'asm', 24, 20, { dir: 0, mut: 0 });
+  belt(f, 25, 26, 20);
+  put(f, 'depot', 27, 20);
   return spin(f, 120);
 }
 
@@ -157,9 +157,9 @@ console.log('\nA LINE THAT HAS STOPPED FOR GOOD SAYS SO');
   ore(f, 20, 20);
   put(f, 'ext', 20, 20, { dir: 0 });
   put(f, 'pipe', 21, 20, { dir: 0 });
-  put(f, 'mut', 22, 20, { dir: 0, mut: 1 });        // Copper
-  put(f, 'pipe', 23, 20, { dir: 0 });
-  put(f, 'asm', 24, 20, { dir: 0, mut: 0 });        // wants Cord and Amber
+  put(f, 'mut', 22, 20, { dir: 0, mut: 1 });        // Copper, 1x2: 22 and 23
+  put(f, 'pipe', 24, 20, { dir: 0 });
+  put(f, 'asm', 25, 20, { dir: 0, mut: 0 });        // wants Cord and Amber
   spin(f, 60);
   const d = diagnose(f);
   ok(d.jams.length > 0, 'feeding an Assembler something that is not an ingredient is reported');

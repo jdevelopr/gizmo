@@ -30,7 +30,7 @@ import {
   skitterShare, nestSpec,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
-  CHARGED, CHARGED_MULT, shotsOf, TREMOR_COST, tremorCost, DIRS, BEACON_SIZE, BEACON_NOISE, BEACON_DRAW,
+  CHARGED, CHARGED_MULT, shotsOf, centreOf, TREMOR_COST, tremorCost, DIRS, BEACON_SIZE, BEACON_NOISE, BEACON_DRAW,
   BEACON_ASSAULT_SIZE, BEACON_ASSAULT_BEETLES,
 } from './machines.js';
 import { beaconHot, beaconCentre, hitBeacon, assaultDue } from './beacon.js';
@@ -334,7 +334,8 @@ function pickTarget(f, mt) {
     // A Skitter eats conveyors and nothing else.
     if (beltsOnly && m.kind !== 'pipe' && m.kind !== 'store') continue;
     if (gensOnly && m.kind !== 'gen') continue;
-    const d = Math.hypot(cx(i) + 0.5 - mt.x, cy(i) + 0.5 - mt.y);
+    const [mx, my] = centreOf(m, i);
+    const d = Math.hypot(mx - mt.x, my - mt.y);
     const s = PLUMBING.has(m.kind) ? d * 0.7 : d;
     if (s < score) { score = s; best = i; }
   }
@@ -372,8 +373,9 @@ function stepMites(f, dt) {
       m = mt.tgt >= 0 ? f.grid[mt.tgt] : null;
       if (!m) mt.st = 'walk';
     }
-    const tx = m ? cx(mt.tgt) + 0.5 + mt.ox : c;
-    const ty = m ? cy(mt.tgt) + 0.5 + mt.oy : c;
+    const [mx, my] = m ? centreOf(m, m.at ?? mt.tgt) : [c, c];
+    const tx = m ? mx + mt.ox : c;
+    const ty = m ? my + mt.oy : c;
     const dx = tx - mt.x, dy = ty - mt.y;
     const d = Math.hypot(dx, dy);
     if (m && d < 0.12) {
@@ -435,7 +437,8 @@ function stepZappers(f, dt) {
     const shot = zapDamage(m, f.done) * (hot ? CHARGED_MULT : 1);
     const spend = () => { if (hot) m.hot--; else m.charge--; };
 
-    const x = cx(i) + 0.5, y = cy(i) + 0.5;
+    // A 2x2 Zapper fires from its middle.
+    const [x, y] = centreOf(m, i);
     const r = zapRange(m, f.done);
     const first = nearestMite(f, x, y, r);
     if (first) {

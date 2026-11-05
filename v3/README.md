@@ -227,8 +227,8 @@ faces is not a building, it is a wall that any number of arms can be shovelled i
 from any angle, and it made "where does this line finish" a question with no
 content.
 
-So a Depot and a Lab have a single opening, on the side the arrow points into, and
-are solid on the other three. Selling two things means two Depots, or a Balancer
+So a Depot and a Lab have a single opening, the whole side the arrow points into —
+both slots of it, since they are two by two — and are solid on the other three. Selling two things means two Depots, or a Balancer
 merging the arms before they arrive — a routing problem where there used to be none.
 A belt aimed at a solid side visibly fails to join up, and because that is a stall
 that will never clear on its own, the corner names it and says which way the mouth
@@ -293,6 +293,26 @@ it survives a reload mid-lesson, and it is one line in the menu to see again.
 Once it has run once, this browser never sees it again unless it is asked for. Every
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
+
+### Some machines are bigger than one slot
+
+Generators, Market Depots, Research Labs and Zappers are **two by two**. Armories,
+Fusers and Mutators are **one by two**, laid along the flow: they are fed at the
+back slot and put out from the front one, and turning one with R swings it round
+its back slot, so it needs room to turn. Nothing else about them changed — same
+prices, same rates, same reach — they simply take room, which makes laying a line
+out a question of space as well as of order.
+
+Under the hood a machine is one object, and every slot it covers points at it.
+`f.cells` lists each machine once, by its anchor (the top-left slot of a 2x2, the
+back slot of a 1x2), and the machine remembers `at`, `cells` and `front`. Anything
+that asks "what is next to this machine" walks its perimeter rather than its four
+neighbours, so a 2x2 Generator powers whatever touches any of its eight edges, a
+Depot is fed through either slot of its mouth, and a Zapper fires from its middle.
+The build ghost shows the whole footprint, and a 1x2 picks the facing it lands
+with before it is checked, because its footprint depends on it. The opening claim
+is five slots across so the first line still fits. Saves from before this change
+cannot be loaded.
 
 ### The claim is centred, and it starts at three
 
@@ -789,6 +809,7 @@ node tools/aim.mjs        # belts aim themselves sensibly
 node tools/terrain.mjs    # mountains, drills, valleys, bridges, beetles
 node tools/beacon.mjs     # the Launch Beacon: placing, feeding, damage, assaults, winning
 node tools/tech.mjs       # the research tree: shape, unlocks and every bonus
+node tools/sizes.mjs      # 2x2 and 1x2 machines: footprints, turning, flow, power, zapping
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

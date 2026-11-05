@@ -12,6 +12,7 @@
 import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
   expandCost, buyCost, label, PASSIVE, zapRange, unlockedBy, unlockerOf,
+  sizeKind, footprint,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
 import { repairBeacon, progress as beaconProgress } from './beacon.js';
@@ -65,8 +66,8 @@ function showTitle() {
   // map, so it cannot be carried over. Say so rather than silently showing nothing.
   if (!has && hasOldSave()) {
     $('save-note').hidden = false;
-    $('save-note').textContent = 'The world is bigger now — 80 x 80 — so your old 56 x 56 world cannot be '
-      + 'loaded. Start a new one.';
+    $('save-note').textContent = 'This version changed the world — it is bigger, and some machines now '
+      + 'cover more than one slot — so an older save cannot be loaded. Start a new world.';
   }
 }
 
@@ -456,19 +457,24 @@ function updateGhost() {
   S.reach = null;
   // A Zapper's reach is shown while you hold one, and while one is selected.
   const sel = S.selected >= 0 ? g.f.grid[S.selected] : null;
-  S.range = sel?.kind === 'zap' ? { cell: S.selected, r: zapRange(sel, g.f.done) } : null;
+  S.range = sel?.kind === 'zap' ? { cell: sel.at ?? S.selected, r: zapRange(sel, g.f.done) } : null;
   if (S.hand >= 0) {
     if (S.hover >= 0) {
       const m = g.f.grid[S.hand];
-      const ok = m && !g.f.grid[S.hover]
-        && buildCheck(g.f, { kind: m.kind }, S.hover).ok;
-      S.ghost = { cell: S.hover, spec: m, ok };
+      // The whole footprint has to be clear (of anything but the machine itself).
+      const cells = m && footprint(m.kind, S.hover, m.dir);
+      const ok = !!cells && cells.every(c => !g.f.grid[c] || g.f.grid[c] === m)
+        && buildCheck(g.f, { kind: m.kind, dir: m.dir }, S.hover, m.dir).ok;
+      S.ghost = { cell: S.hover, spec: m, cells: cells || [S.hover], ok };
     }
     return;
   }
   if (!S.tool || S.hover < 0 || S.drag) return;
+  // A 1x2 machine's footprint depends on which way it faces, so that is settled
+  // first and everything after it is asked about that same footprint.
+  const long = sizeKind(S.tool.kind) === 'long';
   const check = buildCheck(g.f, S.tool, S.hover);
-  const mode = replaceMode(g.f, S.tool, S.hover);
+  const mode = replaceMode(g.f, S.tool, S.hover, long ? check.dir : null);
   // A machine out of the crate is already paid for, and re-aiming one you already
   // own costs nothing either, so neither is ever blocked by an empty wallet.
   const free = !!S.tool.crate || mode === 'reaim';
@@ -476,14 +482,17 @@ function updateGhost() {
   // Show the way it will actually face: unless you have turned it yourself, a
   // machine aims itself when it lands, and the ghost should say where.
   let spec = S.tool;
-  if (!S.tool.dirSet && mode === 'new' && check.ok) {
+  if (long) {
+    if (check.dir != null) spec = { ...S.tool, dir: check.dir };
+  } else if (!S.tool.dirSet && mode === 'new' && check.ok) {
     const probe = { kind: S.tool.kind, dir: S.tool.dir, mir: S.tool.mir, mut: S.tool.mut, level: 1, buf: [], work: [] };
     g.f.grid[S.hover] = probe;
     const d = smartDir(g.f, S.hover);
     g.f.grid[S.hover] = null;
     if (d != null) spec = { ...S.tool, dir: d };
   }
-  S.ghost = { cell: S.hover, spec, mode, ok: check.ok && g.f.cash >= cost };
+  const cells = check.cells || footprint(spec.kind, S.hover, spec.dir) || [S.hover];
+  S.ghost = { cell: S.hover, spec, cells, mode, ok: check.ok && g.f.cash >= cost };
   if (S.tool.kind === 'gen') S.reach = reachFrom(g.f, S.hover, { level: 1 });
   if (S.tool.kind === 'zap') S.range = { cell: S.hover, r: zapRange({ level: S.tool.level || 1 }, g.f.done) };
 }

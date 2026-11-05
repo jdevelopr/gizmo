@@ -30,7 +30,7 @@
 import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
   cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON,
-  BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP, surveyed,
+  BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP, surveyed, sizeKind, footprint,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
   ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
 } from './machines.js';
@@ -556,6 +556,39 @@ function drawBody(ctx, m, frame) {
     default:
       chevron(ctx, cxp, cyp, d, trim, 8);
   }
+}
+
+/* ----------------------------------------------------------------- hopper --- */
+
+/**
+ * The back half of a 1x2 machine: a casing in the machine's own colours with an
+ * intake funnel, and a chevron pointing forward into the front half — so a Mutator
+ * reads as one machine two slots long, with the way it flows written on it.
+ */
+function drawHopper(ctx, m, sx, sy, z, detail) {
+  const k = KINDS[m.kind] || KINDS.pipe;
+  const body = tintOf(m) || k.body;
+  if (!detail) { px(ctx, sx, sy, z, z, shade(body, 0.85)); return; }
+  const s = z / CELL;
+  const d = m.dir | 0;
+  const P = (x, y, w, h, c) => px(ctx, sx + x * s, sy + y * s, w * s, h * s, c);
+  P(1, 1, CELL - 2, CELL - 2, '#0c0e18');
+  P(3, 3, CELL - 6, CELL - 6, shade(body, 0.9));
+  P(3, 3, CELL - 6, 2, shade(body, 1.5));
+  // the funnel: a dark mouth with a lip, in the middle
+  P(9, 9, 14, 14, '#05070d');
+  P(11, 11, 10, 10, shade(k.trim, 0.55));
+  P(13, 13, 6, 6, '#05070d');
+  // the join into the front half: the casing runs on, unbroken, on that side
+  const [dx, dy] = DIRS[d];
+  if (dx > 0) P(CELL - 3, 3, 3, CELL - 6, shade(body, 0.9));
+  if (dx < 0) P(0, 3, 3, CELL - 6, shade(body, 0.9));
+  if (dy > 0) P(3, CELL - 3, CELL - 6, 3, shade(body, 0.9));
+  if (dy < 0) P(3, 0, CELL - 6, 3, shade(body, 0.9));
+  // a chevron pointing into the front half
+  const cxp = CELL / 2 + dx * 9, cyp = CELL / 2 + dy * 9;
+  P(cxp - 2, cyp - 2, 4, 4, k.lit);
+  P(cxp - 2 - dx * 3, cyp - 2 - dy * 3, 4, 4, shade(k.lit, 0.7));
 }
 
 /* ------------------------------------------------------------------ mites --- */
@@ -1090,11 +1123,23 @@ export class View {
     const frame = Math.floor(this.t * 24);
     for (const i of f.cells) {
       const x = cx(i), y = cy(i);
-      if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
+      if (x < b.x0 - 1 || x > b.x1 + 1 || y < b.y0 - 1 || y > b.y1 + 1) continue;
       const m = f.grid[i];
       if (!m) continue;
       const [sx, sy] = this.toScreen(x, y);
-      this.drawMachine(ctx, m, Math.round(sx), Math.round(sy), z, detail, frame, f);
+      const sz = sizeKind(m.kind);
+      if (sz === 'big') {
+        // A 2x2 is its ordinary art at twice the size: pixel art scales up clean.
+        this.drawMachine(ctx, m, Math.round(sx), Math.round(sy), z * 2, detail, frame, f);
+      } else if (sz === 'long') {
+        // A 1x2: an intake hopper on its back slot, and the machine on its front.
+        drawHopper(ctx, m, Math.round(sx), Math.round(sy), z, detail);
+        const fr = m.front ?? i;
+        const [fx, fy] = this.toScreen(cx(fr), cy(fr));
+        this.drawMachine(ctx, m, Math.round(fx), Math.round(fy), z, detail, frame, f);
+      } else {
+        this.drawMachine(ctx, m, Math.round(sx), Math.round(sy), z, detail, frame, f);
+      }
       this.stats.drawn++;
     }
 
@@ -1124,9 +1169,11 @@ export class View {
     if (ui.bpPlan) this.drawBlueprint(ctx, ui.bpPlan, z);
     if (ui.dragPath?.length) this.drawDragPath(ctx, f, ui, z);
     else if (ui.ghost) this.drawGhost(ctx, f, ui, z);
-    if (ui.selected != null && ui.selected >= 0) this.outline(ctx, ui.selected, z, GOLD, 2);
-    if (ui.hover != null && ui.hover >= 0 && ui.hover !== ui.selected) {
-      this.outline(ctx, ui.hover, z, '#8ea2c8', 1);
+    // Selection and hover outline the whole machine, however many slots it covers.
+    if (ui.selected != null && ui.selected >= 0) this.outlineAt(ctx, f, ui.selected, z, GOLD, 2);
+    if (ui.hover != null && ui.hover >= 0 && ui.hover !== ui.selected
+      && !(f.grid[ui.hover] && f.grid[ui.hover] === f.grid[ui.selected])) {
+      this.outlineAt(ctx, f, ui.hover, z, '#8ea2c8', 1);
     }
 
     this.drawJuice(ctx, z);
@@ -1540,8 +1587,10 @@ export class View {
   }
 
   /** A Zapper's reach, while you are holding one or have one selected. */
-  drawRange(ctx, cell, r, z) {
-    const [sx, sy] = this.toScreen(cx(cell) + 0.5, cy(cell) + 0.5);
+  drawRange(ctx, cell, r, z, kind = 'zap') {
+    // A Zapper is two by two and fires from its middle, so that is where the ring goes.
+    const big = sizeKind(kind) === 'big';
+    const [sx, sy] = this.toScreen(cx(cell) + (big ? 1 : 0.5), cy(cell) + (big ? 1 : 0.5));
     ctx.save();
     ctx.globalAlpha = 0.1;
     ctx.fillStyle = '#8f6cff';
@@ -1614,15 +1663,42 @@ export class View {
     // crated, and a refusal. The middle one is drawn amber so that building over
     // something never looks like building on nothing.
     const tint = !ghost.ok ? '#ff5d4a' : ghost.mode === 'new' ? '#7fe8a0' : '#ffcd75';
-    this.fillCell(ctx, ghost.cell, z, tint, ghost.ok ? 0.22 : 0.3);
-    this.outline(ctx, ghost.cell, z, tint, 2);
+    const cells = ghost.cells || (ghost.spec && footprint(ghost.spec.kind, ghost.cell, ghost.spec.dir)) || [ghost.cell];
+    for (const c of cells) this.fillCell(ctx, c, z, tint, ghost.ok ? 0.22 : 0.3);
+    this.outlineCells(ctx, cells, z, tint, 2);
     if (z >= 24 && ghost.spec) {
       ctx.globalAlpha = 0.65;
+      const sz = sizeKind(ghost.spec.kind);
       const [sx, sy] = this.toScreen(cx(ghost.cell), cy(ghost.cell));
-      ctx.drawImage(bodyTile(ghost.spec, Math.floor(this.t * 24)),
-        Math.round(sx), Math.round(sy), z, z);
+      const tile = bodyTile(ghost.spec, Math.floor(this.t * 24));
+      if (sz === 'big') ctx.drawImage(tile, Math.round(sx), Math.round(sy), z * 2, z * 2);
+      else if (sz === 'long' && cells.length > 1) {
+        drawHopper(ctx, ghost.spec, Math.round(sx), Math.round(sy), z, true);
+        const [fx, fy] = this.toScreen(cx(cells[1]), cy(cells[1]));
+        ctx.drawImage(tile, Math.round(fx), Math.round(fy), z, z);
+      } else ctx.drawImage(tile, Math.round(sx), Math.round(sy), z, z);
       ctx.globalAlpha = 1;
     }
+  }
+
+  /** One outline round a whole set of slots: the box that holds them all. */
+  outlineCells(ctx, cells, z, color, weight = 2) {
+    const xs = cells.map(cx), ys = cells.map(cy);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys);
+    const w = Math.max(...xs) - x0 + 1, h = Math.max(...ys) - y0 + 1;
+    const [sx, sy] = this.toScreen(x0, y0);
+    const t = Math.max(1, Math.round(weight * z / 32) + 1);
+    const W = w * z, H = h * z;
+    px(ctx, sx - t, sy - t, W + t * 2, t, color);
+    px(ctx, sx - t, sy + H, W + t * 2, t, color);
+    px(ctx, sx - t, sy, t, H, color);
+    px(ctx, sx + W, sy, t, H, color);
+  }
+
+  /** Outline whatever stands on this slot — all of it — or the bare slot. */
+  outlineAt(ctx, f, cell, z, color, weight) {
+    const m = f.grid[cell];
+    this.outlineCells(ctx, m?.cells || [cell], z, color, weight);
   }
 
   /** A dragged run of belts, before you let go of the mouse. */
@@ -1666,14 +1742,16 @@ export class View {
       if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
       const m = f.grid[i];
       if (!m) continue;
-      const [sx, sy] = this.toScreen(x, y);
       let col;
       if (m.kind === 'gen') col = m.fuel > 0 ? '#ffd36a' : '#7a2c22';
       else if (m.net < 0) col = '#141c3a';
       else if (m.sat >= 0.95) col = '#2f7a4a';
       else if (m.sat >= 0.7) col = '#8a7a24';
       else col = '#8a2f24';
-      px(ctx, sx, sy, z, z, col);
+      for (const c of m.cells || [i]) {
+        const [sx, sy] = this.toScreen(cx(c), cy(c));
+        px(ctx, sx, sy, z, z, col);
+      }
     }
     ctx.globalAlpha = 1;
     for (const i of f.cells) {
@@ -1681,7 +1759,7 @@ export class View {
       if (!m || m.kind !== 'gen') continue;
       const x = cx(i), y = cy(i);
       if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
-      this.outline(ctx, i, z, m.fuel > 0 ? '#ffd36a' : '#ff5d4a', 2);
+      this.outlineCells(ctx, m.cells || [i], z, m.fuel > 0 ? '#ffd36a' : '#ff5d4a', 2);
     }
   }
 
@@ -1736,7 +1814,7 @@ export class View {
         if (!m || (m.kind !== 'depot' && m.kind !== 'lab')) continue;
         const x = cx(i), y = cy(i);
         if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
-        const [sx, sy] = this.toScreen(x + 0.5, y);
+        const [sx, sy] = this.toScreen(x + (sizeKind(m.kind) === 'big' ? 1 : 0.5), y);
         tc.fillStyle = '#0b0d16';
         tc.fillText(m.kind === 'depot' ? 'DEPOT' : 'LAB', sx + 1, sy - 6);
         tc.fillStyle = m.kind === 'depot' ? '#a7f070' : '#b8bcff';

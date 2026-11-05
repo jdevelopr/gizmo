@@ -38,7 +38,7 @@ import {
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap, rankOf, rankCost, TECH_RANKS, ROMAN,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
-  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, bridgeSpan,
+  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, footprint, frontOf, sizeKind, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, bridgeSpan,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { initBugs, stepBugs, nestAt } from './bugs.js';
@@ -119,9 +119,67 @@ function placeRaw(f, spec, i) {
   const m = makeMachine(spec, f.nid++);
   if (spec.hp == null) m.hp = maxHp(m, f.done);
   if (spec.kind === 'ext') { m.mut = f.patch[i]; m.rich = f.rich[i] || 1; }
-  f.grid[i] = m;
+  occupy(f, m, i);
+  return m;
+}
+
+/**
+ * Stand a machine on its anchor slot and every other slot it covers. A machine is
+ * one object however many slots it covers: each of them points at it.
+ */
+export function occupy(f, m, at) {
+  const cells = footprint(m.kind, at, m.dir) || [at];
+  m.at = at;
+  m.cells = cells;
+  m.front = frontOf(m.kind, at, m.dir);
+  for (const c of cells) f.grid[c] = m;
   f.dirty = true;
   return m;
+}
+
+/** Take a machine off every slot it covers. */
+export function vacate(f, m) {
+  for (const c of m?.cells || [m?.at]) if (c != null && f.grid[c] === m) f.grid[c] = null;
+  f.dirty = true;
+}
+
+/** The anchor slot of whatever stands on slot `i`, or `i` itself if nothing does. */
+export const anchorOf = (f, i) => f.grid[i]?.at ?? i;
+
+/** Every distinct machine standing on any of these slots. */
+function occupants(f, cells) {
+  const out = new Set();
+  for (const c of cells) if (f.grid[c]) out.add(f.grid[c]);
+  return [...out];
+}
+
+/** Can a 1x2 machine at its anchor swing round to face `dir`? */
+function turnFits(f, m, dir) {
+  const cells = footprint(m.kind, m.at, dir);
+  return !!cells && cells.every(c => slotOk(f, c) && (!f.grid[c] || f.grid[c] === m));
+}
+
+/**
+ * Which way a 1x2 machine set down at `i` should face. Its front slot has to be
+ * free ground it may stand on, so of the four ways it could go, the one the usual
+ * aiming rules like best is used if it fits, and otherwise the first that does.
+ */
+export function placementDir(f, spec, i, forced = null) {
+  if (sizeKind(spec.kind) !== 'long') return forced;
+  if (forced != null) return forced;
+  const fits = d => { const c = footprint(spec.kind, i, d); return !!c && c.every(x => slotOk(f, x)); };
+  const probe = { kind: spec.kind, dir: spec.dir ?? 0, mir: spec.mir | 0, mut: spec.mut, level: 1, buf: [], work: [], at: i };
+  const was = f.grid[i];
+  f.grid[i] = probe;
+  const want = smartDir(f, i);
+  f.grid[i] = was;
+  for (const d of [want ?? 0, 0, 1, 2, 3]) if (d != null && fits(d)) return d;
+  return want ?? 0;
+}
+
+/** Can anything at all stand on this slot — owned, open, no nest? */
+function slotOk(f, c) {
+  return claimed(c, f.claim) && f.terrain[c] === OPEN && !nestAt(f, c);
 }
 
 /** Is this slot owned, clear of rock, and therefore part of the running world? */
@@ -130,8 +188,12 @@ export const openAt = (f, x, y) =>
 
 /** Rebuild everything derived from the map. Cheap, and only on a real change. */
 export function rebuild(f) {
+  // One entry per machine — its anchor — however many slots it covers.
   const cells = [];
-  for (let i = 0; i < f.grid.length; i++) if (f.grid[i]) cells.push(i);
+  for (let i = 0; i < f.grid.length; i++) {
+    const m = f.grid[i];
+    if (m && (m.at ?? i) === i) { if (m.at == null) occupy(f, m, i); cells.push(i); }
+  }
   f.cells = cells;
   pairBridges(f);
   solveTopology(f);
@@ -275,19 +337,38 @@ function aimMouths(f) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m || !ONE_MOUTH.has(m.kind) || m.aimed) continue;
-    const x = cx(i), y = cy(i);
     let feeder = -1;
-    for (let d = 0; d < 4; d++) {
-      const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
-      if (!openAt(f, nx, ny)) continue;
-      const n = f.grid[cellOf(nx, ny)];
-      if (!n || !exitDirs(n).includes(faceHit(d))) continue;
+    for (const [d, n] of perimeter(f, m)) {
+      if (!exitDirs(n.m).includes(faceHit(d)) || frontCell(f, n.m, n.c) !== n.c) continue;
       if (d === (m.dir | 0)) { feeder = -2; break; }    // already fed: leave it be
       if (feeder < 0) feeder = d;
     }
     if (feeder >= 0) m.dir = feeder;
   }
 }
+
+/**
+ * Every machine touching the outside of `m`, with the side of `m` it touches:
+ * [side, { c: its slot, m: it }]. A 2x2 has eight slots round it, a 1x2 six.
+ */
+export function perimeter(f, m) {
+  const out = [];
+  const mine = new Set(m.cells || [m.at]);
+  for (const c of mine) {
+    for (let d = 0; d < 4; d++) {
+      const nx = cx(c) + DIRS[d][0], ny = cy(c) + DIRS[d][1];
+      if (!openAt(f, nx, ny)) continue;
+      const nc = cellOf(nx, ny);
+      if (mine.has(nc)) continue;
+      const n = f.grid[nc];
+      if (n && n !== m) out.push([d, { c: nc, m: n }]);
+    }
+  }
+  return out;
+}
+
+/** The slot a machine's output leaves from, given the slot it is found on. */
+export const frontCell = (f, m, i) => (m?.front ?? i);
 
 /** How many of one kind are standing on the map, for the price ladders. */
 export function countKind(f, kind) {
@@ -339,6 +420,13 @@ const slotCap = (f, i) => (f.grid[i] ? capacity(f.grid[i]) : EMPTY_HOLD);
  */
 function slotLoad(f, i) {
   const m = f.grid[i];
+  if (m && m.cells && m.cells.length > 1) {
+    // A big machine is one machine: everything in the air toward any part of it
+    // counts against the one capacity.
+    let n = machineLoad(m);
+    for (const c of m.cells) n += f.load[c] || 0;
+    return n;
+  }
   return (f.load[i] || 0) + (m ? machineLoad(m) : 0);
 }
 
@@ -387,7 +475,7 @@ export function stepFactory(f, dt) {
     const sp = speedOf(m, f.done);
     if (jobActive(m)) {
       m.t -= dt * sp;
-      if (m.t <= 0) release(f, m, i, sp);
+      if (m.t <= 0) release(f, m, m.front ?? i, sp);
     }
     if (!jobActive(m)) startJob(f, m, i);
     // A saturated line blocks for a fraction of a second on almost every cycle;
@@ -670,12 +758,9 @@ export function smartDir(f, i) {
   // slot, and failing that at whatever is standing next to it.
   if (ONE_MOUTH.has(m.kind)) {
     let best = m.dir, score = -1;
-    for (let d = 0; d < 4; d++) {
-      const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
-      if (!openAt(f, nx, ny)) continue;
-      const n = f.grid[cellOf(nx, ny)];
-      if (!n) continue;
-      const s2 = exitDirs(n).includes(faceHit(d)) ? 2 : 1;
+    const probe = m.cells ? m : { ...m, cells: footprint(m.kind, i, m.dir) || [i] };
+    for (const [d, n] of perimeter(f, probe)) {
+      const s2 = exitDirs(n.m).includes(faceHit(d)) && frontCell(f, n.m, n.c) === n.c ? 2 : 1;
       if (s2 > score) { score = s2; best = d; }
     }
     return best;
@@ -765,11 +850,9 @@ export function adoptFeeders(f, i) {
   const m = f.grid[i];
   if (!m) return 0;
   let n = 0;
-  for (let d = 0; d < 4; d++) {
-    const nx = cx(i) + DIRS[d][0], ny = cy(i) + DIRS[d][1];
-    if (!openAt(f, nx, ny)) continue;
-    const j = cellOf(nx, ny);
-    const b = f.grid[j];
+  for (const [d, nb] of perimeter(f, m)) {
+    const j = nb.c;
+    const b = nb.m;
     if (!b || !BELTISH.has(b.kind) || b.handAim || !deadEnd(f, j)) continue;
     const toMe = (d + 2) % 4;                       // the direction from b to here
     if (!acceptsFrom(m, faceHit(toMe))) continue;   // it could not get in that way
@@ -837,25 +920,31 @@ const no = msg => ({ ok: false, msg });
  * from `build` so the cursor can say the same thing before you spend the money —
  * a build ghost that turns red and tells you it needs ore is worth ten tooltips.
  */
-export function buildCheck(f, spec, i) {
+export function buildCheck(f, spec, i, dir = null) {
   if (!Number.isInteger(i) || i < 0 || i >= f.grid.length) return no('Off the map');
-  if (!claimed(i, f.claim)) return no('You do not own this land');
-  if (f.terrain[i] === RUBBLE) return no(`Rubble — clear it for $${RUBBLE_COST}`);
-  if (f.terrain[i] === MOUNTAIN) return no('A mountain — go round it, or drill it from beside');
-  if (f.terrain[i] === VALLEY) return no('A valley — cross it with a pair of Bridges');
-  if (f.terrain[i] === BEACON) return no('The Launch Beacon — feed it through the mouth on each side');
-  if (f.terrain[i] !== OPEN) return no('Bedrock will not move');
+  const d = dir ?? placementDir(f, spec, i, spec.dir ?? null) ?? spec.dir ?? 0;
+  const cells = footprint(spec.kind, i, d);
+  if (!cells) return no('It does not fit — it would hang off the edge of the world');
+  const big = cells.length > 1;
+  for (const c of cells) {
+    if (!claimed(c, f.claim)) return no(big ? 'It does not fit — part of it is off your land' : 'You do not own this land');
+    if (f.terrain[c] === RUBBLE) return no(big ? 'It does not fit — rubble in the way' : `Rubble — clear it for $${RUBBLE_COST}`);
+    if (f.terrain[c] === MOUNTAIN) return no(big ? 'It does not fit — a mountain is in the way' : 'A mountain — go round it, or drill it from beside');
+    if (f.terrain[c] === VALLEY) return no(big ? 'It does not fit — a valley is in the way' : 'A valley — cross it with a pair of Bridges');
+    if (f.terrain[c] === BEACON) return no('The Launch Beacon — feed it through the mouth on each side');
+    if (f.terrain[c] !== OPEN) return no(big ? 'It does not fit — bedrock in the way' : 'Bedrock will not move');
+    if (nestAt(f, c)) return no('A nest — zap it out first');
+  }
   if (spec.kind === 'ext' && f.patch[i] < 0) return no('An Extractor has to stand on ore');
   if (spec.kind === 'drill' && !nextToMountain(f, i)) return no('A Mountain Drill has to stand beside a mountain with ore left in it');
-  if (nestAt(f, i)) return no('A nest — zap it out first');
   // Building over the top of something is allowed, and is the normal way to change
   // your mind about a slot. Whatever was there goes in the crate — unless the crate
   // is full, which is the one thing that can stop it.
-  const here = f.grid[i];
-  if (here && here.kind !== spec.kind && f.crate.length >= CRATE_CAP) {
+  const here = occupants(f, cells).filter(m => !(m.kind === spec.kind && m.at === i));
+  if (here.length && f.crate.length + here.length > CRATE_CAP) {
     return no('Crate is full — place or scrap something from it first');
   }
-  return yes();
+  return yes(null, { dir: d, cells });
 }
 
 /** Is there a mountain with ore left in it on any side of this slot? */
@@ -881,10 +970,13 @@ export function nextToMountain(f, i) {
  *   'replace' — something else is there. It goes to the crate, still yours, and the
  *               new machine is bought and put down in its place.
  */
-export function replaceMode(f, spec, i) {
-  const here = f.grid[i];
-  if (!here) return 'new';
-  return here.kind === spec.kind ? 'reaim' : 'replace';
+export function replaceMode(f, spec, i, dir = null) {
+  const d = dir ?? spec.dir ?? 0;
+  const cells = footprint(spec.kind, i, d) || [i];
+  const here = occupants(f, cells);
+  if (!here.length) return 'new';
+  if (here.length === 1 && here[0].kind === spec.kind && here[0].at === i) return 'reaim';
+  return 'replace';
 }
 
 /**
@@ -897,10 +989,16 @@ export function replaceMode(f, spec, i) {
  * @param {object} opt { free: skip payment, dir: force a facing }
  */
 export function build(f, spec, i, opt = {}) {
-  const check = buildCheck(f, spec, i);
-  if (!check.ok) return check;
+  // Same kind already anchored here: this is a re-aim, and is checked as one below.
+  const same = !!f.grid[i] && f.grid[i].kind === spec.kind && f.grid[i].at === i;
+  const long = sizeKind(spec.kind) === 'long';
+  const dir0 = long ? placementDir(f, spec, i, opt.dir ?? (same ? f.grid[i].dir : null)) : opt.dir;
+  if (!same) {
+    const check = buildCheck(f, spec, i, dir0);
+    if (!check.ok) return check;
+  }
 
-  const mode = replaceMode(f, spec, i);
+  const mode = same ? 'reaim' : replaceMode(f, spec, i, dir0);
 
   // Same kind, same slot: turn it, retune it, and charge nothing. A machine you
   // already own does not have to be bought again to be pointed somewhere else.
@@ -910,7 +1008,9 @@ export function build(f, spec, i, opt = {}) {
     const mir = opt.mir != null ? (opt.mir ? 1 : 0) : m.mir;
     const mut = (spec.mut != null && spec.kind !== 'ext') ? spec.mut : m.mut;
     if (m.dir === dir && m.mir === mir && m.mut === mut) return yes(null, { cost: 0, machine: m, mode });
+    if (dir !== m.dir && long && !turnFits(f, m, dir)) return no('No room to turn it that way');
     m.dir = dir; m.mir = mir; m.mut = mut;
+    if (long) { vacate(f, m); occupy(f, m, i); rebuild(f); }
     m.flash = 1;
     f.fx.push({ k: 'rot', cell: i });
     return yes(null, { cost: 0, machine: m, mode });
@@ -922,19 +1022,21 @@ export function build(f, spec, i, opt = {}) {
   // Whatever was standing here is put away rather than destroyed.
   let crated = null;
   if (mode === 'replace') {
-    crated = f.grid[i];
-    toCrate(f, crated);
-    f.grid[i] = null;
+    for (const old of occupants(f, footprint(spec.kind, i, dir0 ?? 0) || [i])) {
+      crated = crated || old;
+      vacate(f, old);
+      toCrate(f, old);
+    }
   }
 
   f.cash -= cost;
   f.spent += cost;
-  const m = placeRaw(f, spec, i);
+  const m = placeRaw(f, { ...spec, dir: dir0 ?? spec.dir ?? 0 }, i);
   // Anything left pointing at nothing next door turns to feed the newcomer first,
   // so the newcomer's own facing is worked out with its feeders already in place.
   if (opt.dir == null || opt.adopt) adoptFeeders(f, i);
-  if (opt.dir != null) m.dir = opt.dir;
-  else autoFace(f, i);
+  if (opt.dir != null && !long) m.dir = opt.dir;
+  else if (!long) autoFace(f, i);
   if (opt.hand) m.handAim = 1;
   if (opt.mir != null) m.mir = opt.mir ? 1 : 0;
   rebuild(f);
@@ -979,28 +1081,23 @@ export function placeFromCrate(f, key, i, opt = {}) {
   const at = f.crate.findIndex(m => crateKey(m) === key);
   if (at < 0) return no('Nothing like that in the crate');
   const m = f.crate[at];
-  const check = buildCheck(f, m, i);
+  const long = sizeKind(m.kind) === 'long';
+  const dir0 = long ? placementDir(f, m, i, opt.dir ?? null) : (opt.dir ?? m.dir);
+  const check = buildCheck(f, m, i, dir0);
   if (!check.ok) return check;
 
-  const mode = replaceMode(f, m, i);
-  if (mode === 'replace') {
-    toCrate(f, f.grid[i]);
-    f.grid[i] = null;
-  } else if (mode === 'reaim') {
-    // Two of the same kind: swap them, so the one you were holding goes down and
-    // the one that was there is the one you are now holding.
-    toCrate(f, f.grid[i]);
-    f.grid[i] = null;
-  }
+  // Anything in the way — including another of the same kind — goes to the crate,
+  // so the one you were holding goes down and the one that was there is held.
+  for (const old of occupants(f, check.cells)) { vacate(f, old); toCrate(f, old); }
 
   f.crate.splice(at, 1);
-  f.grid[i] = m;
-  f.dirty = true;
+  m.dir = dir0 ?? m.dir;
+  occupy(f, m, i);
   if (m.kind === 'ext') { m.mut = f.patch[i]; m.rich = f.rich[i] || 1; }
   m.handAim = opt.hand ? 1 : 0;
   if (opt.dir == null || opt.adopt) adoptFeeders(f, i);
-  if (opt.dir != null) m.dir = opt.dir;
-  else autoFace(f, i);
+  if (opt.dir != null && !long) m.dir = opt.dir;
+  else if (!long) autoFace(f, i);
   if (opt.mir != null) m.mir = opt.mir ? 1 : 0;
   rebuild(f);
   f.fx.push({ k: 'build', cell: i, kind: m.kind });
@@ -1054,8 +1151,8 @@ export function stashMachine(f, i) {
   const m = f.grid[i];
   if (!m) return no('Nothing there');
   if (f.crate.length >= CRATE_CAP) return no('Crate is full');
+  vacate(f, m);
   toCrate(f, m);
-  f.grid[i] = null;
   rebuild(f);
   f.fx.push({ k: 'move', cell: i });
   return yes('To the crate');
@@ -1081,25 +1178,26 @@ export function scrapFromCrate(f, key) {
  * is fair, because you interrupted it.
  */
 export function moveMachine(f, from, to) {
-  if (from === to) return yes();
   const m = f.grid[from];
   if (!m) return no('Nothing there');
-  if (!claimed(to, f.claim)) return no('You do not own this land');
-  if (f.terrain[to] !== OPEN) return no('Something is in the way');
+  if ((m.at ?? from) === to) return yes();
+  const cells = footprint(m.kind, to, m.dir);
+  if (!cells) return no('It does not fit there');
+  for (const c of cells) {
+    if (!claimed(c, f.claim)) return no('You do not own this land');
+    if (f.terrain[c] !== OPEN) return no('Something is in the way');
+    if (nestAt(f, c)) return no('A nest — zap it out first');
+  }
   if (m.kind === 'ext' && f.patch[to] < 0) return no('An Extractor has to stand on ore');
   if (m.kind === 'drill' && !nextToMountain(f, to)) return no('A Mountain Drill has to stand beside a mountain');
-  if (nestAt(f, to)) return no('A nest — zap it out first');
-  if (f.grid[to]) {
-    // Dropping one machine on another puts the one underneath in the crate, the
-    // same as building over it does. Nothing on this map is ever destroyed by
-    // accident.
-    if (f.crate.length >= CRATE_CAP) return no('Crate is full');
-    toCrate(f, f.grid[to]);
-    f.grid[to] = null;
-  }
+  // Dropping one machine on others puts the ones underneath in the crate, the same
+  // as building over them does. Nothing on this map is ever destroyed by accident.
+  const under = occupants(f, cells).filter(x => x !== m);
+  if (under.length && f.crate.length + under.length > CRATE_CAP) return no('Crate is full');
+  for (const u of under) { vacate(f, u); toCrate(f, u); }
 
-  f.grid[from] = null;
-  f.grid[to] = m;
+  vacate(f, m);
+  occupy(f, m, to);
   m.buf.length = 0; m.work.length = 0; m.out = null; m.t = 0; m.blocked = 0;
   if (m.kind === 'ext') { m.mut = f.patch[to]; m.rich = f.rich[to] || 1; }
   rebuild(f);
@@ -1112,7 +1210,7 @@ export function scrapMachine(f, i) {
   if (!m) return no('Nothing there');
   const v = scrapValue(m);
   f.cash += v;
-  f.grid[i] = null;
+  vacate(f, m);
   rebuild(f);
   f.fx.push({ k: 'scrap', cell: i, v });
   return yes(`+$${v}`, { refund: v });
@@ -1131,7 +1229,16 @@ export function applyAction(f, a) {
   switch (a.a) {
     case 'rot': {
       if (!m) return no('Nothing there');
-      m.dir = (m.dir + (a.back ? 3 : 1)) % 4;
+      const nd = (m.dir + (a.back ? 3 : 1)) % 4;
+      // A 1x2 swings round its back slot, so the slot it swings into has to be free.
+      if (sizeKind(m.kind) === 'long') {
+        if (!turnFits(f, m, nd)) return no('No room to turn it that way');
+        vacate(f, m);
+        m.dir = nd;
+        occupy(f, m, m.at);
+        rebuild(f);
+      }
+      m.dir = nd;
       // A mouth you have turned yourself stops turning itself, and a belt you have
       // turned yourself is never re-aimed by one built beside it.
       if (ONE_MOUTH.has(m.kind)) m.aimed = 1;
@@ -1353,9 +1460,10 @@ export function jams(f) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m || m.off || broken(m) || !m.blocked || m.blockT <= STALL_BADGE) continue;
+    const at = m.front ?? i;
     for (const o of m.out || []) {
-      const nx = cx(i) + DIRS[o.dir][0], ny = cy(i) + DIRS[o.dir][1];
-      const bt = beaconMouth(f, i, o.dir);
+      const nx = cx(at) + DIRS[o.dir][0], ny = cy(at) + DIRS[o.dir][1];
+      const bt = beaconMouth(f, at, o.dir);
       if (bt >= 0 && o.ty !== bt) {
         out.push({ cell: i, ty: o.ty, into: i, kind: 'beacon',
           why: `${TYPES[o.ty].name} into the Beacon's ${TYPES[bt].name} mouth, which takes nothing else` });
@@ -1404,7 +1512,7 @@ export function reachesPayout(f) {
       if (!m) continue;
       if (m.kind === 'depot') return true;
       for (const d of exitDirs(m)) {
-        const to = landingOf(f, at, m, d);
+        const to = landingOf(f, m.front ?? at, m, d);
         if (to >= 0) queue.push(to);
       }
     }

@@ -41,7 +41,7 @@
 
 import {
   DIRS, cellOf, cx, cy, inWorld,
-  drawOf, intake, genOutput, genReach, energyOf, powerMult, KINDS, broken,
+  drawOf, intake, genOutput, genReach, energyOf, powerMult, KINDS, broken, footprint,
 } from './machines.js';
 
 /**
@@ -70,11 +70,9 @@ export function solveTopology(f) {
   f.netOf.fill(-1);
 
   const gens = [];
-  for (let i = 0; i < n; i++) {
-    const m = g[i];
-    if (m) m.net = -1;
-    if (m && m.kind === 'gen') gens.push(i);
-  }
+  for (let i = 0; i < n; i++) if (g[i]) g[i].net = -1;
+  // One entry per generator, however many slots it covers.
+  for (const i of f.cells || []) if (g[i]?.kind === 'gen') gens.push(i);
 
   // Union-find over generators. Two generators that both reach the same machine
   // are pooled: they share that machine's load whether they were meant to or not,
@@ -97,7 +95,8 @@ export function solveTopology(f) {
     const home = gens[k];
     const reach = genReach(g[home], f.done);
     let head = 0, tail = 0;
-    queue[tail] = home; dist[home] = 0; seen[home] = k; tail++;
+    // Power starts from every slot a 2x2 Generator covers, not just its corner.
+    for (const c of g[home].cells || [home]) { queue[tail] = c; dist[c] = 0; seen[c] = k; tail++; }
     while (head < tail) {
       const at = queue[head++];
       served[k].push(at);
@@ -204,7 +203,7 @@ export function balancePower(f, dt) {
 
   // 2. What every grid is being asked for.
   for (const net of nets) net.demand = 0;
-  for (let i = 0; i < g.length; i++) {
+  for (const i of f.cells || []) {
     const m = g[i];
     if (!m || m.net < 0) continue;
     if (busy(m)) nets[m.net].demand += drawOf(m, f.done);
@@ -256,9 +255,11 @@ export const speedOf = m => powerMult(m.net >= 0 ? m.sat : 0);
 export function reachFrom(f, at, spec = { level: 1 }) {
   const g = f.grid;
   const reach = genReach(spec, f.done);
-  const out = new Set([at]);
-  const dist = new Map([[at, 0]]);
-  const queue = [at];
+  // A Generator is 2x2: its power starts from all four of its slots.
+  const start = footprint('gen', at, 0) || [at];
+  const out = new Set(start);
+  const dist = new Map(start.map(c => [c, 0]));
+  const queue = start.slice();
   while (queue.length) {
     const cur = queue.shift();
     const d = dist.get(cur);
@@ -290,7 +291,7 @@ export function powerSummary(f) {
     if (net.demand > 0) worst = Math.min(worst, net.sat);
     for (const gi of net.gens) if (f.grid[gi] && f.grid[gi].fuel <= 0) dry++;
   }
-  for (let i = 0; i < f.grid.length; i++) {
+  for (const i of f.cells || []) {
     const m = f.grid[i];
     if (m && m.net < 0 && !KINDS[m.kind].passive && KINDS[m.kind].draw > 0) unpowered++;
   }

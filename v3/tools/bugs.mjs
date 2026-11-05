@@ -12,7 +12,7 @@
 import {
   WORLD, cellOf, AMMO, MAX_HP, AMMO_CHARGES, broken, maxHp, repairCost, SWARM_GRACE,
   SWARM_COST, catalogue, wants, NEST_HP, NEST_BOUNTY, nestBrood, nestAnger,
-  MITE, SKITTER, ZAP_DAMAGE, NESTS, SKITTER_FROM,
+  MITE, SKITTER, ZAP_DAMAGE, NESTS, SKITTER_FROM, NEST_POP_MIN, claimMin, claimMax,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild, diagnose, applyAction } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
@@ -289,6 +289,35 @@ console.log('\nSkitter nests');
   zz.buf.push({ id: 999, ty: AMMO, cp: 0 });
   run(s, 3);
   ok(s.cash - cash === 10000, 'and pays $10,000 when it dies');
+}
+
+console.log('\nNew nests');
+{
+  const f = createFactory({ world: generateWorld(4242), cash: 1e6 });
+  const cap = f.nestCap;
+  ok(cap === f.nests.length && cap > 20, `a world's nest limit is what it started with (${cap})`);
+  for (let i = 0; i < 30 * 30; i++) stepFactory(f, 1 / 30);
+  ok(f.nests.length === cap, 'at the limit, no new nests appear');
+  const gone = f.nests.splice(0, 3);
+  const t0 = f.t;
+  let first = null;
+  for (let i = 0; i < 30 * 800 && f.nests.length < cap; i++) {
+    stepFactory(f, 1 / 30);
+    if (first == null && f.nests.length > cap - 3) first = f.t - t0;
+  }
+  ok(f.nests.length === cap, `below the limit, new nests dig in until it is reached again (${f.nests.length} of ${cap})`);
+  ok(first != null && first >= NEST_POP_MIN, `not instantly (the first came after ${Math.round(first)}s)`);
+  const lo = claimMin(f.claim) - 5, hi = claimMax(f.claim) + 5;
+  const fresh = f.nests.slice(-3);
+  ok(fresh.every(n => {
+    const x = n.cell % WORLD, y = Math.floor(n.cell / WORLD);
+    return !(x >= lo && x <= hi && y >= lo && y <= hi) && f.terrain[n.cell] === 0 && f.patch[n.cell] < 0;
+  }), 'out in the wilds, clear of the fence, on open ground');
+  const sk = f.nests.filter(n => n.kind === 'skitter').length;
+  ok(sk === Math.round(cap * f.nestMix), `and the world keeps its mix of Skitter nests (${sk})`);
+  for (let i = 0; i < 30 * 400; i++) stepFactory(f, 1 / 30);
+  ok(f.nests.length === cap, 'and never goes over the limit');
+  void gone;
 }
 
 console.log('\nThe Zapper draws power while it recharges');

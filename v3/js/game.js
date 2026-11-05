@@ -373,8 +373,7 @@ export function serialise(g) {
       waves: f.waves || 0,
       zapped: f.zapped || 0,
       chewed: f.chewed || 0,
-      regrow: (f.regrow || []).map(r => (typeof r === 'number' ? [Math.round(r), 0]
-        : [Math.round(r.t), r.kind === 'skitter' ? 1 : 0])),
+      nextNest: Math.round(f.nextNest ?? -1),
     },
   };
 }
@@ -429,7 +428,7 @@ export function deserialise(data) {
     f.waves = b.waves || 0;
     f.zapped = b.zapped || 0;
     f.chewed = b.chewed || 0;
-    f.regrow = (b.regrow || []).map(r => (Array.isArray(r) ? { t: r[0], kind: r[1] ? 'skitter' : 'mite' } : { t: r, kind: 'mite' }));
+    f.nextNest = Number.isFinite(b.nextNest) ? b.nextNest : -1;
   }
   rebuild(f);
 

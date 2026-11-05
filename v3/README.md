@@ -444,7 +444,9 @@ points, and as it takes damage broods of mites come out and go straight for the 
 doing the shooting — three every 90 damage at full health, rising steadily to nine
 every 25 damage as it nears death, so the last stretch is the hardest. A Zapper always shoots mites before
 nests, so it turns on the brood and then goes back to the nest. A dead nest pays
-$2,000, and another digs in somewhere far off ten minutes later.
+$2,000. Every world has a nest limit — however many nests it started with — and
+whenever it is below that, a new nest digs in at a random spot out in the wilds after
+a random wait of one to four minutes, of whichever kind the world is shortest of.
 
 **The Armory** (`B`) presses one Scrap and one Copper into one Ammo. The natural
 build is a Balancer on a Slag line with its branch through a Copper Mutator, merged

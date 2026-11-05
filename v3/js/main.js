@@ -279,6 +279,10 @@ function playFx(fx) {
       case 'rot': sfx('rot'); break;
       case 'move': sfx('move'); break;
       case 'swarm': sfx('swarm'); view.pulse('#ff3b5c'); break;
+      case 'newNest':
+        toast(g, `A new ${e.kind === 'skitter' ? 'Skitter' : 'Mite'} nest has dug in to the ${compass(e.cell)}`, e.kind === 'skitter' ? '#9dff3c' : '#ff6f9a');
+        sfx('stir');
+        break;
       case 'brood':
         if (near(e.cell)) { sfx('stir'); view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#8a2346', 10, 2, 0.5, 3); }
         break;

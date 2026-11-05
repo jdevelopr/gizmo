@@ -418,8 +418,14 @@ export const nestAnger = n => Math.round(NEST_ANGER - (NEST_ANGER - NEST_ANGER_M
 
 /** How many mites are in that brood. */
 export const nestBrood = n => Math.round(NEST_BROOD + (NEST_BROOD_MAX - NEST_BROOD) * rageOf(n));
-/** Seconds before a destroyed nest is replaced by a new one, somewhere far off. */
-export const NEST_REGROW = 600;
+/**
+ * New nests. Every world has a nest limit — however many nests it started with —
+ * and whenever there are fewer than that, a new one digs in somewhere out in the
+ * wilds after a random wait between these two numbers of seconds. Clearing the
+ * nests near you buys a quiet spell, never a permanent one.
+ */
+export const NEST_POP_MIN = 60;
+export const NEST_POP_MAX = 240;
 
 /** Hit points, by kind. Belts are flimsy on purpose: they are what mites eat first. */
 export const MAX_HP = {

@@ -26,7 +26,7 @@
 import {
   WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN,
   rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, SWARM_COST,
-  SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_REGROW, CREATURES, SKITTER,
+  SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_POP_MIN, NEST_POP_MAX, CREATURES, SKITTER,
   skitterShare, nestSpec,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
@@ -122,7 +122,8 @@ export function initBugs(f) {
   f.waves = 0;          // swarms sent so far
   f.zapped = 0;         // mites killed, lifetime
   f.chewed = 0;         // machines broken, lifetime
-  f.regrow = [];        // factory times at which a lost nest comes back
+  f.nextNest = -1;      // factory time at which the next new nest digs in, -1 = not due
+  setNestLimit(f);
   f.stirred = 0;        // the "they are stirring" warning has gone out for this swarm
   f.mid = 1;
 }
@@ -156,7 +157,7 @@ export function swarmEta(f) {
 export function stepBugs(f, dt) {
   if (!f.mites) initBugs(f);
   f.noise = noiseOf(f);
-  regrowNests(f);
+  popNests(f);
 
   if (f.t >= SWARM_GRACE && f.nests.some(n => n.hp > 0)) {
     f.swarm += f.noise * dt;
@@ -390,33 +391,56 @@ function killNest(f, nest) {
   const pay = nestSpec(nest).bounty;
   f.cash += pay;
   f.earned += pay;
-  f.regrow.push({ t: f.t + NEST_REGROW, kind: nest.kind || 'mite' });
   f.fx.push({ k: 'nest', cell: nest.cell, v: pay, kind: nest.kind || 'mite' });
   f.nests = f.nests.filter(n => n.hp > 0);
 }
 
 /**
- * A destroyed nest is replaced, eventually, by a new one well outside the fence —
- * so clearing the nests near you buys a long quiet spell rather than a permanent
- * one, and the next one is further away.
+ * The world's nest limit: how many nests its seed made, and of which kinds. It is
+ * worked out from the seed rather than saved, so it is always right for the world.
  */
-function regrowNests(f) {
-  const next = f.regrow[0];
-  if (next == null) return;
-  const at = typeof next === 'number' ? next : next.t;
-  if (at > f.t) return;
-  const kind = (typeof next === 'number' ? 'mite' : next.kind) || 'mite';
-  f.regrow.shift();
+export function setNestLimit(f) {
+  const all = placeNests(f.world);
+  f.nestCap = all.length;
+  f.nestMix = all.length ? all.filter(n => n.kind === 'skitter').length / all.length : 0;
+}
+
+/** Seconds until the next nest, at random. */
+const popWait = () => NEST_POP_MIN + Math.random() * (NEST_POP_MAX - NEST_POP_MIN);
+
+/**
+ * Whenever there are fewer nests than the world's limit, a new one digs in at a
+ * random moment, somewhere random out beyond the fence — at least five slots clear
+ * of it, on open ground, and never crowding another nest. It is whichever kind the
+ * world is shortest of, so a world keeps its mix of Mite and Skitter nests.
+ */
+export function popNests(f) {
+  if (f.nestCap == null) setNestLimit(f);
+  if (f.nests.length >= f.nestCap) { f.nextNest = -1; return; }
+  if (f.nextNest < 0) { f.nextNest = f.t + popWait(); return; }
+  if (f.t < f.nextNest) return;
+  const cell = wildSlot(f);
+  if (cell < 0) { f.nextNest = f.t + 30; return; }       // nowhere right now; look again soon
+  const sk = f.nests.filter(n => n.kind === 'skitter').length;
+  const wantSk = Math.round(f.nestCap * f.nestMix);
+  const kind = sk < wantSk ? 'skitter' : 'mite';
+  f.nests.push({ cell, hp: NESTS_HP(kind), kind, anger: 0 });
+  f.fx.push({ k: 'newNest', cell, kind });
+  f.nextNest = f.nests.length < f.nestCap ? f.t + popWait() : -1;
+}
+
+/** A random open slot in the wilds where a nest could dig in, or -1. */
+function wildSlot(f) {
   const lo = claimMin(f.claim) - 5, hi = claimMax(f.claim) + 5;
-  for (let guard = 0; guard < 300; guard++) {
+  for (let guard = 0; guard < 400; guard++) {
     const x = Math.floor(Math.random() * WORLD), y = Math.floor(Math.random() * WORLD);
     if (x >= lo && x <= hi && y >= lo && y <= hi) continue;
     const i = cellOf(x, y);
     if (f.terrain[i] !== OPEN || f.patch[i] >= 0 || f.grid[i]) continue;
     if (f.nests.some(n => Math.max(Math.abs(cx(n.cell) - x), Math.abs(cy(n.cell) - y)) < NEST_GAP)) continue;
-    f.nests.push({ cell: i, hp: NESTS_HP(kind), kind });
-    return;
+    return i;
   }
+  return -1;
 }
 
 /* ----------------------------------------------------------------- repair --- */

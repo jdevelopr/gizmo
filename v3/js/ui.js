@@ -928,7 +928,7 @@ export class Panel {
         + 'to shoot at will chip away at a nest in its reach, but it is a siege: thousands '
         + `of shots, and every few it takes a brood comes out — ${sk ? 'Skitters go for the belts feeding the Zapper' : 'Mites go for the Zapper itself'}. Park `
         + 'two or three Zappers together, keep the Ammo coming, and it pays well. Another '
-        + 'nest digs in somewhere far off, eventually.'));
+        + 'nest digs in somewhere in the wilds a few minutes later.'));
       return;
     }
     host.appendChild(el('h3', null,
@@ -1411,6 +1411,8 @@ export class Panel {
     addRow(bug, 'Skitters alive', num(skAlive), skAlive ? 'warn' : 'good');
     addRow(bug, 'Mite nests', num((f.nests || []).filter(n => n.kind !== 'skitter').length));
     addRow(bug, 'Skitter nests', num((f.nests || []).filter(n => n.kind === 'skitter').length));
+    addRow(bug, 'Nest limit', `${num(f.nests?.length || 0)} of ${num(f.nestCap || 0)}`);
+    if ((f.nextNest ?? -1) >= 0) addRow(bug, 'Next new nest', `in about ${clock(f.nextNest - f.t)}`, 'warn');
     addRow(bug, 'Mites zapped', num(f.zapped || 0));
     addRow(bug, 'Machines chewed through', num(f.chewed || 0), f.chewed ? 'warn' : '');
     addRow(bug, 'Broken right now', num(d.broken || 0), d.broken ? 'bad' : 'good');

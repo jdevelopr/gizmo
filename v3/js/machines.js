@@ -81,7 +81,7 @@ export const TYPES = [
   { name: 'Turbine', color: '#ff6fae', glow: '#ffc4de', value: 132, fam: PRODUCT, tier: 1 },
   { name: 'Reactor', color: '#c8a2ff', glow: '#e8dcff', value: 430, fam: PRODUCT, tier: 2 },
   // --- munition: from an Armory, and only worth anything to a Zapper ---
-  { name: 'Ammo',    color: '#e8f04a', glow: '#fbffb8', value: 3,   fam: MUNITION, tier: 0 },
+  { name: 'Ammo',    color: '#e8f04a', glow: '#fbffb8', value: 1,   fam: MUNITION, tier: 0 },
 ];
 export const MAX_TYPE = TYPES.length - 1;
 
@@ -376,6 +376,24 @@ export const NEST_HP = 12000;
 export const NEST_BOUNTY = 2000;
 export const NEST_ANGER = 90;
 export const NEST_BROOD = 3;
+
+/**
+ * A nest gets more desperate the closer it is to dying. At full health a brood is
+ * NEST_BROOD mites every NEST_ANGER damage; as its health runs down the broods get
+ * bigger and come more often, until at the very end it is NEST_BROOD_MAX mites every
+ * NEST_ANGER_MIN damage. The last tenth of a nest is the hardest part of the siege.
+ */
+export const NEST_BROOD_MAX = 9;
+export const NEST_ANGER_MIN = 25;
+
+/** How hurt a nest is, 0 (untouched) to 1 (about to die). */
+const rageOf = n => 1 - Math.max(0, Math.min(1, n.hp / NEST_HP));
+
+/** Damage it takes before the next brood comes out. */
+export const nestAnger = n => Math.round(NEST_ANGER - (NEST_ANGER - NEST_ANGER_MIN) * rageOf(n));
+
+/** How many mites are in that brood. */
+export const nestBrood = n => Math.round(NEST_BROOD + (NEST_BROOD_MAX - NEST_BROOD) * rageOf(n));
 /** Seconds before a destroyed nest is replaced by a new one, somewhere far off. */
 export const NEST_REGROW = 600;
 

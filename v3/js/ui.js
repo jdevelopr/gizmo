@@ -20,7 +20,8 @@ import {
   upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE, PLUMBING,
   ONE_MOUTH, acceptsFrom, faceHit, ARMORY, AMMO, AMMO_CHARGES, broken, maxHp,
   repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
-  SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE,
+  SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, nestAnger, nestBrood, NEST_BROOD,
+  NEST_BROOD_MAX, NEST_ANGER, NEST_ANGER_MIN,
 } from './machines.js';
 import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
 import { upgradeQuote, scrapQuote, repairQuote } from './blueprint.js';
@@ -915,6 +916,7 @@ export class Panel {
       const r = el('div', 'rows');
       addRow(r, 'Health', `${Math.ceil(nest.hp)} of ${NEST_HP}`, 'bad');
       addRow(r, 'Destroying it pays', money(NEST_BOUNTY), 'good');
+      addRow(r, 'When shot', `${nestBrood(nest)} mites every ${nestAnger(nest)} damage`, 'warn');
       host.appendChild(r);
       host.appendChild(el('p', 'body',
         'Swarms come out of here when your factory gets loud. A Zapper with nothing else '
@@ -1708,7 +1710,9 @@ ${AMMO_CHARGES} shots. It draws power while it recharges between shots, so a swa
 spike on its grid, and a browned-out Zapper fires slowly. With nothing moving in
 reach, it will chip away at a nest instead. A nest has ${num(NEST_HP)} hit points and it
 fights back: every few shots a brood of mites comes out and goes for the Zapper doing the
-shooting, and a Zapper always deals with mites before it goes back to the nest. Bring
+shooting, and a Zapper always deals with mites before it goes back to the nest. The more
+hurt a nest is, the harder it fights — from ${NEST_BROOD} mites every ${NEST_ANGER} damage at
+full health to ${NEST_BROOD_MAX} every ${NEST_ANGER_MIN} at the end. Bring
 several Zappers and plenty of Ammo — a dead nest pays ${money(NEST_BOUNTY)}.</p>
 <p>Ammo comes from an <b>Armory</b> (<b>B</b>): one Scrap and one Copper make one Ammo.
 The easy build is a Balancer on a Slag line with its branch through a Copper Mutator,

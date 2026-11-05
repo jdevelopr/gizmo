@@ -424,8 +424,9 @@ two things from the factory it guards: **Ammo**, six shots each, belted in like
 anything else, and **power**, which it draws while it recharges between shots — so a
 swarm is a spike on its grid, and a browned-out Zapper fires slowly. With nothing
 moving in reach it chips at a nest instead. That is a siege: a nest has 12,000 hit
-points, and every 90 points of damage it takes a brood of three mites comes out and
-goes straight for the Zapper doing the shooting. A Zapper always shoots mites before
+points, and as it takes damage broods of mites come out and go straight for the Zapper
+doing the shooting — three every 90 damage at full health, rising steadily to nine
+every 25 damage as it nears death, so the last stretch is the hardest. A Zapper always shoots mites before
 nests, so it turns on the brood and then goes back to the nest. A dead nest pays
 $2,000, and another digs in somewhere far off ten minutes later.
 

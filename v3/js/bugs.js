@@ -27,7 +27,7 @@ import {
   WORLD, cellOf, cx, cy, inWorld, inClaim, claimMin, claimMax, OPEN,
   rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, SWARM_COST,
   SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_HP, NEST_BOUNTY, NEST_REGROW,
-  NEST_ANGER, NEST_BROOD,
+  nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
 } from './machines.js';
 
@@ -302,8 +302,9 @@ function stepZappers(f, dt) {
       if (nest.hp <= 0) { killNest(f, nest); continue; }
       // It fights back: every so much damage, a brood comes out for the Zapper.
       nest.anger = (nest.anger || 0) + dmg;
-      while (nest.anger >= NEST_ANGER) {
-        nest.anger -= NEST_ANGER;
+      // The more hurt it is, the less it takes to set one off, and the bigger it is.
+      while (nest.anger >= nestAnger(nest)) {
+        nest.anger -= nestAnger(nest);
         brood(f, nest, i);
       }
     }
@@ -318,7 +319,8 @@ function stepZappers(f, dt) {
 function brood(f, nest, zapper) {
   const hp = Math.min(MITE.hpMax, MITE.hp + f.waves * MITE.hpPerWave);
   let n = 0;
-  for (let k = 0; k < NEST_BROOD; k++) {
+  const size = nestBrood(nest);
+  for (let k = 0; k < size; k++) {
     const mt = spawnMite(f, cx(nest.cell) + 0.5, cy(nest.cell) + 0.5, hp);
     if (!mt) break;
     mt.tgt = zapper;

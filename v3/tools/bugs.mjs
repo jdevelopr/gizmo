@@ -11,7 +11,7 @@
  */
 import {
   WORLD, cellOf, AMMO, MAX_HP, AMMO_CHARGES, broken, maxHp, repairCost, SWARM_GRACE,
-  SWARM_COST, catalogue, wants, NEST_HP, NEST_BOUNTY,
+  SWARM_COST, catalogue, wants, NEST_HP, NEST_BOUNTY, nestBrood, nestAnger,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild, diagnose, applyAction } from '../js/sim.js';
 import { plainWorld, generateWorld } from '../js/world.js';
@@ -201,6 +201,11 @@ console.log('\nBesieging a nest');
   ok(broods > 0, `and it sends out broods (${broods} so far)`);
   ok(firstBrood && firstBrood.every(t => t === cellOf(26, 25)), 'which go straight for the Zapper shooting at it');
   ok(f.zapped > 0, `the Zapper turns on them and kills them (${f.zapped})`);
+  const fresh = { hp: NEST_HP }, dying = { hp: NEST_HP * 0.05 };
+  ok(nestBrood(dying) > nestBrood(fresh), `a dying nest sends bigger broods (${nestBrood(fresh)} → ${nestBrood(dying)})`);
+  ok(nestAnger(dying) < nestAnger(fresh), `and sends them sooner (every ${nestAnger(fresh)} → ${nestAnger(dying)} damage)`);
+  const half = { hp: NEST_HP / 2 };
+  ok(nestBrood(half) > nestBrood(fresh) && nestBrood(half) < nestBrood(dying), 'climbing steadily on the way down');
   const cash = f.cash;
   nest.hp = 5; nest.anger = 0;
   z.buf.push({ id: 900, ty: AMMO, cp: 0 });

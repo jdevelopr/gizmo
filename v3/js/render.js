@@ -167,7 +167,7 @@ export function bodyTile(m, rawFrame = 0) {
 }
 
 /** Reset the cache. Only needed if the palette itself changes. */
-export function clearTiles() { tiles.clear(); }
+export function clearTiles() { tiles.clear(); longTiles?.clear(); }
 
 /**
  * The one mouth a Depot or a Lab has, cut into the side `dir` points at.
@@ -558,37 +558,121 @@ function drawBody(ctx, m, frame) {
   }
 }
 
-/* ----------------------------------------------------------------- hopper --- */
+/* ------------------------------------------------------------ long bodies --- */
 
 /**
- * The back half of a 1x2 machine: a casing in the machine's own colours with an
- * intake funnel, and a chevron pointing forward into the front half — so a Mutator
- * reads as one machine two slots long, with the way it flows written on it.
+ * A 1x2 machine — a Fuser or a Mutator — drawn as ONE casing two slots long,
+ * rather than a hopper tile glued to an ordinary tile. Its parts run along the
+ * flow: an intake mouth cut into the back edge, a funnel, a feed duct with stuff
+ * moving along it, the working chamber, and an output nozzle on the front edge.
+ *
+ * The casing and its lighting are drawn square to the screen, so the light always
+ * comes from the top left whichever way the machine faces; everything inside it is
+ * drawn in the machine's own frame with Q(), where `f` runs from the back edge (0)
+ * to the front edge (64) and `l` runs across it (0 to 32).
  */
-function drawHopper(ctx, m, sx, sy, z, detail) {
-  const k = KINDS[m.kind] || KINDS.pipe;
-  const body = tintOf(m) || k.body;
-  if (!detail) { px(ctx, sx, sy, z, z, shade(body, 0.85)); return; }
-  const s = z / CELL;
+const longTiles = new Map();
+
+export function longTile(m, rawFrame = 0) {
+  const fc = frameCount(m.kind);
+  const frame = ((Math.floor(rawFrame) % fc) + fc) % fc;
+  const key = `L|${tileKey(m, frame)}`;
+  let t = longTiles.get(key);
+  if (t) return t;
+  if (longTiles.size > 600) longTiles.clear();
   const d = m.dir | 0;
-  const P = (x, y, w, h, c) => px(ctx, sx + x * s, sy + y * s, w * s, h * s, c);
-  P(1, 1, CELL - 2, CELL - 2, '#0c0e18');
-  P(3, 3, CELL - 6, CELL - 6, shade(body, 0.9));
-  P(3, 3, CELL - 6, 2, shade(body, 1.5));
-  // the funnel: a dark mouth with a lip, in the middle
-  P(9, 9, 14, 14, '#05070d');
-  P(11, 11, 10, 10, shade(k.trim, 0.55));
-  P(13, 13, 6, 6, '#05070d');
-  // the join into the front half: the casing runs on, unbroken, on that side
-  const [dx, dy] = DIRS[d];
-  if (dx > 0) P(CELL - 3, 3, 3, CELL - 6, shade(body, 0.9));
-  if (dx < 0) P(0, 3, 3, CELL - 6, shade(body, 0.9));
-  if (dy > 0) P(3, CELL - 3, CELL - 6, 3, shade(body, 0.9));
-  if (dy < 0) P(3, 0, CELL - 6, 3, shade(body, 0.9));
-  // a chevron pointing into the front half
-  const cxp = CELL / 2 + dx * 9, cyp = CELL / 2 + dy * 9;
-  P(cxp - 2, cyp - 2, 4, 4, k.lit);
-  P(cxp - 2 - dx * 3, cyp - 2 - dy * 3, 4, 4, shade(k.lit, 0.7));
+  const W = d % 2 === 0 ? CELL * 2 : CELL, H = d % 2 === 0 ? CELL : CELL * 2;
+  t = makeCanvas(W, H);
+  drawLongBody(t.getContext('2d'), m, frame, W, H);
+  longTiles.set(key, t);
+  return t;
+}
+
+function drawLongBody(ctx, m, frame, W, H) {
+  const k = KINDS[m.kind] || KINDS.pipe;
+  const body = k.body, trim = k.trim, lit = k.lit;
+  const d = m.dir | 0;
+  const lvl = m.level || 1;
+  const L = CELL * 2, B = CELL;
+  // A rect in the machine's own frame: f forward from the back edge, l across.
+  const Q = (f, l, fw, lw, c) => {
+    if (d === 0) px(ctx, f, l, fw, lw, c);
+    else if (d === 1) px(ctx, B - l - lw, f, lw, fw, c);
+    else if (d === 2) px(ctx, L - f - fw, B - l - lw, fw, lw, c);
+    else px(ctx, l, L - f - fw, lw, fw, c);
+  };
+
+  // --- the casing: one outline round both slots, lit from the top left
+  px(ctx, 1, 1, W - 2, H - 2, '#0c0e18');
+  px(ctx, 3, 3, W - 6, H - 6, body);
+  px(ctx, 3, 3, W - 6, 2, shade(body, 1.6));
+  px(ctx, 3, 3, 2, H - 6, shade(body, 1.28));
+  px(ctx, 3, H - 7, W - 6, 4, shade(body, 0.6));
+  px(ctx, W - 5, 3, 2, H - 6, shade(body, 0.74));
+  const bolt = shade(body, 1.75);
+  for (const [bx, by] of [[5, 5], [W - 7, 5], [5, H - 7], [W - 7, H - 7]]) px(ctx, bx, by, 2, 2, bolt);
+  // a panel seam where the two modules are bolted together
+  Q(31, 6, 1, 20, shade(body, 0.5));
+  Q(32, 6, 1, 20, shade(body, 1.35));
+
+  // --- the intake: a slot in the back edge with a bright lip either side
+  Q(1, 9, 4, 14, '#05070d');
+  Q(1, 8, 5, 1, lit);
+  Q(1, 23, 5, 1, lit);
+
+  // --- the funnel: steps going down into the dark
+  const ty = m.kind === 'mut' ? (TYPES[m.mut ?? 1] || TYPES[1]) : null;
+  const inner = ty ? shade(ty.color, 0.45) : shade(trim, 0.45);
+  Q(7, 7, 18, 18, '#0e1526');
+  Q(8, 8, 16, 16, shade(trim, 0.75));
+  Q(10, 10, 12, 12, inner);
+  Q(12, 12, 8, 8, shade(inner, 0.6));
+  Q(14, 14, 4, 4, '#05070d');
+  Q(8, 8, 16, 1, shade(trim, 1.2));
+
+  // --- the feed duct, with something travelling along it
+  Q(25, 13, 12, 6, '#0e1526');
+  Q(25, 14, 12, 4, shade(trim, 0.6));
+  Q(26 + frame * 2, 15, 2, 2, ty ? ty.glow : lit);
+
+  // --- level studs, along the back module's side
+  for (let i = 0; i < lvl - 1; i++) Q(9 + i * 4, 27, 2, 2, lit);
+
+  // --- the chamber
+  if (m.kind === 'mut') {
+    // a transmutation coil: ribbed housing, and a core of what it is making that pulses
+    Q(36, 5, 22, 22, '#0e1526');
+    for (let i = 0; i < 4; i++) {
+      Q(37 + i * 6, 5, 3, 22, shade(trim, 0.85));
+      Q(37 + i * 6, 5, 3, 1, shade(trim, 1.3));
+    }
+    Q(40, 9, 14, 14, '#05070d');
+    Q(41, 10, 12, 12, shade(ty.color, 0.25));
+    const r = [6, 8, 10, 8][frame % 4];
+    Q(46 - r / 2, 15 - r / 2, r + 2, r + 2, shade(ty.color, 0.55));   // its glow
+    Q(47 - r / 2, 16 - r / 2, r, r, ty.color);
+    Q(47 - r / 2, 16 - r / 2, r, 2, ty.glow);
+    Q(46, 15, 2, 2, '#ffffff');
+  } else {
+    // a furnace: two clamps squeezing a crucible that glows
+    const glow = [0.75, 1, 0.85, 1.15][frame % 4];
+    const squeeze = [0, 1, 2, 1][frame % 4];
+    Q(36, 4, 22, 24, '#0e1526');
+    Q(38, 5 + squeeze, 18, 4, shade(trim, 1.15));
+    Q(38, 5 + squeeze, 18, 1, shade(trim, 1.5));
+    Q(38, 23 - squeeze, 18, 4, shade(trim, 0.8));
+    Q(40, 10, 14, 12, '#05070d');
+    Q(41, 11, 12, 10, shade('#c8431e', glow));
+    Q(43, 12, 8, 8, shade('#ff7a3c', glow));
+    Q(45, 14, 4, 4, shade('#ffd27a', glow));
+  }
+
+  // --- the output nozzle on the front edge, with an arrow out of it
+  Q(58, 10, 5, 12, shade(trim, 0.9));
+  Q(58, 10, 5, 1, shade(trim, 1.4));
+  Q(60, 12, 3, 8, '#05070d');
+  Q(60, 14, 2, 4, lit);
+  Q(62, 15, 1, 2, lit);
 }
 
 /* ------------------------------------------------------------------ mites --- */
@@ -1132,11 +1216,16 @@ export class View {
         // A 2x2 is its ordinary art at twice the size: pixel art scales up clean.
         this.drawMachine(ctx, m, Math.round(sx), Math.round(sy), z * 2, detail, frame, f);
       } else if (sz === 'long') {
-        // A 1x2: an intake hopper on its back slot, and the machine on its front.
-        drawHopper(ctx, m, Math.round(sx), Math.round(sy), z, detail);
+        // A 1x2: one casing across both slots; the status marks go on its front slot,
+        // and the washes (hurt, broken, off, unpowered) cover the back slot as well.
         const fr = m.front ?? i;
         const [fx, fy] = this.toScreen(cx(fr), cy(fr));
-        this.drawMachine(ctx, m, Math.round(fx), Math.round(fy), z, detail, frame, f);
+        const [bsx, bsy] = this.toScreen(Math.min(x, cx(fr)), Math.min(y, cy(fr)));
+        const box = { x: Math.round(bsx), y: Math.round(bsy), w: (cx(fr) === x ? 1 : 2) * z, h: (cy(fr) === y ? 1 : 2) * z };
+        if (detail) ctx.drawImage(longTile(m, frame), box.x, box.y, box.w, box.h);
+        else px(ctx, Math.round(sx), Math.round(sy), z, z, tintOf(m) || KINDS[m.kind].body);
+        this.drawMachine(ctx, m, Math.round(fx), Math.round(fy), z, detail, frame, f, true, box);
+        this.washSlot(ctx, m, Math.round(sx), Math.round(sy), z);
       } else {
         this.drawMachine(ctx, m, Math.round(sx), Math.round(sy), z, detail, frame, f);
       }
@@ -1224,8 +1313,23 @@ export class View {
 
   /* -------------------------------------------------------------- machines --- */
 
-  drawMachine(ctx, m, sx, sy, z, detail, frame, f) {
+  /** The status washes of a machine, laid over one more of its slots. */
+  washSlot(ctx, m, sx, sy, z) {
     const k = KINDS[m.kind];
+    const wash = (a, c) => { ctx.globalAlpha = a; px(ctx, sx, sy, z, z, c); ctx.globalAlpha = 1; };
+    if (m.hurt > 0) wash(m.hurt * 0.45, '#ff3b5c');
+    if (broken(m)) { wash(0.55, '#2a0610'); return; }
+    if (m.off) { wash(0.62, '#0b0d16'); return; }
+    if (k.draw > 0) {
+      if (m.net < 0) wash(0.3, '#0a1230');
+      else if (m.sat < 0.92) wash(0.07 + (1 - m.sat) * 0.13, m.sat < 0.5 ? '#ff3b30' : '#ffa53c');
+    }
+  }
+
+  drawMachine(ctx, m, sx, sy, z, detail, frame, f, bare = false, box = null) {
+    const k = KINDS[m.kind];
+    // The whole machine, for the marks that belong round all of it (a 1x2 passes its box).
+    const bx = box ? box.x : sx, by = box ? box.y : sy, bw = box ? box.w : z, bh = box ? box.h : z;
 
     if (!detail) {
       // Zoomed out, an Assembler is drawn in the colour of what it makes rather
@@ -1248,7 +1352,7 @@ export class View {
       return;
     }
 
-    ctx.drawImage(bodyTile(m, frame), sx, sy, z, z);
+    if (!bare) ctx.drawImage(bodyTile(m, frame), sx, sy, z, z);
     const s = z / CELL;   // art pixels to screen pixels
 
     // --- chewed. Health is drawn on every machine that has lost any, because a
@@ -1275,9 +1379,9 @@ export class View {
     }
     if (m.hp != null && m.hp < hpMax - 0.01) {
       const r = Math.max(0, m.hp / hpMax);
-      const w = z - 6 * s, h = Math.max(2, 2 * s);
-      px(ctx, sx + 3 * s, sy + 1 * s, w, h, '#05070d');
-      px(ctx, sx + 3 * s, sy + 1 * s, w * r, h, r > 0.5 ? '#ffcd75' : '#ff5d4a');
+      const w = bw - 6 * s, h = Math.max(2, 2 * s);
+      px(ctx, bx + 3 * s, by + 1 * s, w, h, '#05070d');
+      px(ctx, bx + 3 * s, by + 1 * s, w * r, h, r > 0.5 ? '#ffcd75' : '#ff5d4a');
     }
 
     // --- what it is holding, in its window
@@ -1321,7 +1425,7 @@ export class View {
     // --- progress, as a hairline along the bottom edge
     if (m.t > 0 && m.cyc > 0) {
       const p = Math.max(0, Math.min(1, 1 - m.t / m.cyc));
-      px(ctx, sx + 3 * s, sy + z - 3 * s, (z - 6 * s) * p, Math.max(1, 2 * s), k.lit);
+      px(ctx, bx + 3 * s, by + bh - 3 * s, (bw - 6 * s) * p, Math.max(1, 2 * s), k.lit);
     }
 
     // --- a generator's fire, and how much is left in it
@@ -1358,9 +1462,9 @@ export class View {
       const t = Math.max(2, 2 * s), L = Math.max(5, z * 0.32);
       ctx.globalAlpha = 0.9;
       for (const [ox, oy, w, h] of [
-        [0, 0, L, t], [0, 0, t, L], [z - L, 0, L, t], [z - t, 0, t, L],
-        [0, z - t, L, t], [0, z - L, t, L], [z - L, z - t, L, t], [z - t, z - L, t, L],
-      ]) px(ctx, sx + ox, sy + oy, w, h, GOLD);
+        [0, 0, L, t], [0, 0, t, L], [bw - L, 0, L, t], [bw - t, 0, t, L],
+        [0, bh - t, L, t], [0, bh - L, t, L], [bw - L, bh - t, L, t], [bw - t, bh - L, t, L],
+      ]) px(ctx, bx + ox, by + oy, w, h, GOLD);
       ctx.globalAlpha = 1;
     } else if (m.waitT > STALL_BADGE && m.buf.length) {
       // WAITING: it has some of what it needs and not all of it. Rather than a
@@ -1369,17 +1473,17 @@ export class View {
       const miss = missingFor(m);
       const t = Math.max(3, 5 * s);
       miss.slice(0, 2).forEach((ty, k) => {
-        const bx = sx + z - t - 2 * s, by = sy + 2 * s + k * (t + 2 * s);
-        px(ctx, bx - 1, by - 1, t + 2, t + 2, '#05070d');
-        px(ctx, bx, by, t, t, TYPES[ty].color);
-        px(ctx, bx, by, t, Math.max(1, t / 3), TYPES[ty].glow);
+        const qx = bx + bw - t - 2 * s, qy = by + 2 * s + k * (t + 2 * s);
+        px(ctx, qx - 1, qy - 1, t + 2, t + 2, '#05070d');
+        px(ctx, qx, qy, t, t, TYPES[ty].color);
+        px(ctx, qx, qy, t, Math.max(1, t / 3), TYPES[ty].glow);
       });
     } else if (m.waitT > STALL_BADGE && !PASSIVE.has(m.kind)
       && !PLUMBING.has(m.kind) && intake(m) > 0) {
       // STARVED: standing idle with an empty mouth. Fix the feed behind.
       const t = Math.max(2, 3 * s);
-      for (const [ox, oy] of [[0, 0], [z - t, 0], [0, z - t], [z - t, z - t]]) {
-        px(ctx, sx + ox, sy + oy, t, t, '#41a6f6');
+      for (const [ox, oy] of [[0, 0], [bw - t, 0], [0, bh - t], [bw - t, bh - t]]) {
+        px(ctx, bx + ox, by + oy, t, t, '#41a6f6');
       }
     }
 
@@ -1673,9 +1777,9 @@ export class View {
       const tile = bodyTile(ghost.spec, Math.floor(this.t * 24));
       if (sz === 'big') ctx.drawImage(tile, Math.round(sx), Math.round(sy), z * 2, z * 2);
       else if (sz === 'long' && cells.length > 1) {
-        drawHopper(ctx, ghost.spec, Math.round(sx), Math.round(sy), z, true);
-        const [fx, fy] = this.toScreen(cx(cells[1]), cy(cells[1]));
-        ctx.drawImage(tile, Math.round(fx), Math.round(fy), z, z);
+        const lt = longTile(ghost.spec, Math.floor(this.t * 24));
+        const [bsx, bsy] = this.toScreen(Math.min(...cells.map(cx)), Math.min(...cells.map(cy)));
+        ctx.drawImage(lt, Math.round(bsx), Math.round(bsy), lt.width / CELL * z, lt.height / CELL * z);
       } else ctx.drawImage(tile, Math.round(sx), Math.round(sy), z, z);
       ctx.globalAlpha = 1;
     }

@@ -272,19 +272,17 @@ console.log('\nONE MOUTH, ON ONE SIDE');
 {
   // Two lines cannot both be shovelled into one Depot.
   const f = bench();
-  // The Depot is 2x2 (23-24, 25-26): one arm comes down onto its top, the other
-  // up into its solid bottom.
-  ore(f, 20, 24); ore(f, 20, 27);
-  put(f, 'ext', 20, 24, { dir: 0 }); put(f, 'ext', 20, 27, { dir: 0 });
-  belt(f, 21, 22, 24); belt(f, 21, 22, 27);
+  ore(f, 20, 24); ore(f, 20, 26);
+  put(f, 'ext', 20, 24, { dir: 0 }); put(f, 'ext', 20, 26, { dir: 0 });
+  belt(f, 21, 22, 24); belt(f, 21, 22, 26);
   put(f, 'pipe', 23, 24, { dir: 1 });
-  put(f, 'pipe', 23, 27, { dir: 3 });
+  put(f, 'pipe', 23, 26, { dir: 3 });
   put(f, 'depot', 23, 25, { dir: 3 });
   const dep = f.grid[cellOf(23, 25)];
   dep.aimed = 1;
   run(f, 60);
   ok(f.earned > 0, 'a Depot fed from one side sells');
-  ok(f.grid[cellOf(23, 27)].blocked === 1,
+  ok(f.grid[cellOf(23, 26)].blocked === 1,
     'while the arm at its solid side backs up rather than sneaking in');
 }
 {

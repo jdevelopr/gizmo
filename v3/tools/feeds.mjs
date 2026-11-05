@@ -62,7 +62,7 @@ function mixedFuser() {
   put(f, 'pipe', 23, 20, { dir: 0 });
   put(f, 'fuse', 24, 20, { dir: 0 });          // 1x2: 24 and 25
   belt(f, 26, 27, 20);
-  put(f, 'depot', 28, 20);                      // 2x2
+  put(f, 'depot', 28, 20);
   return spin(f, 90);
 }
 

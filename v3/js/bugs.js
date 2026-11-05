@@ -437,7 +437,7 @@ function stepZappers(f, dt) {
     const shot = zapDamage(m, f.done) * (hot ? CHARGED_MULT : 1);
     const spend = () => { if (hot) m.hot--; else m.charge--; };
 
-    // A 2x2 Zapper fires from its middle.
+    // A Zapper fires from its middle (centreOf handles any footprint).
     const [x, y] = centreOf(m, i);
     const r = zapRange(m, f.done);
     const first = nearestMite(f, x, y, r);

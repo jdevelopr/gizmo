@@ -1888,17 +1888,15 @@ Cord, Frame — comes out of Sap patches and is worth almost nothing on its own.
 one of each, and is where the money is. Fusers climb inside a family and never
 across one.</p>
 
-<h3>Big machines</h3>
-<p><b>Generators</b>, <b>Market Depots</b>, <b>Research Labs</b> and <b>Zappers</b>
-are two slots by two. <b>Armories</b>, <b>Fusers</b> and <b>Mutators</b> are one by
-two, laid along the flow: they are fed at the back slot and put out from the front
+<h3>Long machines</h3>
+<p><b>Fusers</b> and <b>Mutators</b> are one slot by two, laid along the flow: they are fed at the back slot and put out from the front
 one, and turning one with <b>R</b> swings it round its back slot — so it needs room
 to turn. The ghost shows the whole footprint before you build.</p>
 
 <h3>Depots and Labs have one mouth</h3>
 <p>Every other machine takes from any side. A <b>Market Depot</b> and a <b>Research
-Lab</b> have a single opening, the whole side the arrow points into — both of its
-slots, so two belts can feed it side by side — and are solid on the other three.
+Lab</b> have a single opening, on the side the arrow points into, and are solid on
+the other three.
 A Depot is where a line <i>ends</i> rather than a wall four lines can be shovelled
 into from every angle. More to sell means a second Depot, or a Balancer merging the
 arms before they arrive.</p>

@@ -121,9 +121,9 @@ console.log('\nThe Armory');
   put(f, 'pipe', 12, 10);
   put(f, 'mut', 11, 11, { mut: 1 });          // 1x2: 11-12
   put(f, 'pipe', 13, 11, { dir: 3 });
-  put(f, 'arm', 13, 10);                      // 1x2: 13-14
-  put(f, 'pipe', 15, 10);
-  put(f, 'depot', 16, 10);                    // 2x2
+  put(f, 'arm', 13, 10);
+  put(f, 'pipe', 14, 10);
+  put(f, 'depot', 15, 10);
   run(f, 60);
   ok(f.shipped[AMMO] > 10, `a split Slag line makes Ammo (${f.shipped[AMMO]} in a minute)`);
   ok(!diagnose(f).jams.length, 'and nothing jams');
@@ -140,9 +140,9 @@ console.log('\nThe Armory sorts out a lopsided feed');
   put(f, 'pipe', 13, 10, { dir: 1 });
   put(f, 'mut', 11, 11, { mut: 1 });          // 1x2: 11-12
   put(f, 'pipe', 13, 11);                     // both arms merge here
-  put(f, 'arm', 14, 11);                      // 1x2: 14-15
-  put(f, 'pipe', 16, 11);
-  put(f, 'depot', 17, 11);
+  put(f, 'arm', 14, 11);
+  put(f, 'pipe', 15, 11);
+  put(f, 'depot', 16, 11);
   run(f, 60);
   const a = f.shipped[AMMO];
   run(f, 60);
@@ -153,7 +153,7 @@ console.log('\nThe Armory sorts out a lopsided feed');
   const g = bench();
   g.patch[cellOf(10, 10)] = 0; g.rich[cellOf(10, 10)] = 2;
   put(g, 'ext', 10, 10); put(g, 'pipe', 11, 10); put(g, 'arm', 12, 10);
-  put(g, 'pipe', 14, 10); put(g, 'depot', 15, 10);
+  put(g, 'pipe', 13, 10); put(g, 'depot', 14, 10);
   run(g, 60);
   ok(g.shipped[AMMO] > 5, `Scrap alone still makes Ammo (${g.shipped[AMMO]})`);
 }
@@ -225,8 +225,8 @@ console.log('\nSkitters');
   ok(SKITTER.speed > MITE.speed && SKITTER.bite > MITE.bite, 'and is faster and bites harder');
 
   const f = bench();
-  put(f, 'gen', 20, 20);                      // 2x2: 20-21
-  put(f, 'depot', 22, 20);
+  put(f, 'gen', 20, 20);
+  put(f, 'depot', 21, 20);
   put(f, 'pipe', 30, 20);
   const sk = spawnMite(f, 20.5, 21.5, null, 'skitter');
   run(f, 4);
@@ -243,7 +243,7 @@ console.log('\nSkitters');
   const z = bench();
   put(z, 'zap', 25, 25);
   z.grid[cellOf(25, 25)].buf.push({ id: 1, ty: AMMO, cp: 0 });
-  put(z, 'pipe', 27, 25);            // something for them to run at (the Zapper is 25-26)
+  put(z, 'pipe', 26, 25);            // something for them to run at
   for (let k = 0; k < 3; k++) spawnMite(z, 28.5, 25.5, null, 'skitter');
   run(z, 4);
   ok(z.zapped === 3 && z.grid[cellOf(25, 25)].charge === AMMO_CHARGES - 3, 'one shot each');
@@ -364,9 +364,9 @@ console.log('\nThe Zapper draws power while it recharges');
 {
   const f = bench();
   f.patch[cellOf(30, 30)] = 0; f.rich[cellOf(30, 30)] = 1;
-  put(f, 'gen', 30, 31);                      // 2x2: 30-31
-  put(f, 'zap', 32, 31);                      // 2x2: 32-33, touching it
-  const g = f.grid[cellOf(30, 31)], z = f.grid[cellOf(32, 31)];
+  put(f, 'gen', 30, 31);
+  put(f, 'zap', 31, 31);
+  const g = f.grid[cellOf(30, 31)], z = f.grid[cellOf(31, 31)];
   for (let k = 0; k < 20; k++) g.buf.push({ id: k, ty: 0, cp: 0 });
   for (let k = 0; k < 3; k++) z.buf.push({ id: 100 + k, ty: AMMO, cp: 0 });
   for (let k = 0; k < 10; k++) spawnMite(f, 33.5, 31.5, 30);

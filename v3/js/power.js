@@ -95,7 +95,7 @@ export function solveTopology(f) {
     const home = gens[k];
     const reach = genReach(g[home], f.done);
     let head = 0, tail = 0;
-    // Power starts from every slot a 2x2 Generator covers, not just its corner.
+    // Power starts from every slot a Generator covers (one, unless it is ever made bigger).
     for (const c of g[home].cells || [home]) { queue[tail] = c; dist[c] = 0; seen[c] = k; tail++; }
     while (head < tail) {
       const at = queue[head++];
@@ -255,7 +255,7 @@ export const speedOf = m => powerMult(m.net >= 0 ? m.sat : 0);
 export function reachFrom(f, at, spec = { level: 1 }) {
   const g = f.grid;
   const reach = genReach(spec, f.done);
-  // A Generator is 2x2: its power starts from all four of its slots.
+  // Power starts from every slot the Generator covers.
   const start = footprint('gen', at, 0) || [at];
   const out = new Set(start);
   const dist = new Map(start.map(c => [c, 0]));

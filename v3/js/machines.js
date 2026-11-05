@@ -39,7 +39,7 @@ export const WORLD = 80;
  * with room to spare, but a packing puzzle with one obvious first move and a
  * fence you want to push outward within a minute of arriving.
  */
-export const CLAIM_START = 5;
+export const CLAIM_START = 3;
 
 /** How much a claim grows per purchase: one ring, so one cell on every side. */
 export const CLAIM_STEP = 2;
@@ -345,20 +345,17 @@ export const KIND_LIST = Object.keys(KINDS);
 /**
  * Not every machine fits on one slot any more.
  *
- * Generators, Market Depots, Research Labs and Zappers are **2x2**: big buildings
- * you plan a line around. Armories, Fusers and Mutators are **1x2**, two slots long
+ * Fusers and Mutators are **1x2**, two slots long
  * in the direction they face — gizmos go in at the back half and come out of the
  * front, like a short assembly line, and turning one swings it round its back slot.
  * Everything else is one slot.
  *
- * A machine is stored once, at its **anchor**: the top-left slot of a 2x2, the back
- * slot of a 1x2. Every slot it covers points at the same machine in the grid, so
+ * A machine is stored once, at its **anchor**: the back slot of a 1x2 (the top-left
+ * slot of a 'big' 2x2, a size the code supports though no machine uses it now).
+ * Every slot it covers points at the same machine in the grid, so
  * anything asking "what is on this slot" gets the right answer from any part of it.
  */
-export const SIZE = {
-  gen: 'big', depot: 'big', lab: 'big', zap: 'big',
-  arm: 'long', fuse: 'long', mut: 'long',
-};
+export const SIZE = { fuse: 'long', mut: 'long' };
 export const sizeKind = kind => SIZE[kind] || 'one';
 
 /** The slots a machine of this kind covers, anchored at `at` and facing `dir`, or null if it hangs off the world. */
@@ -1554,7 +1551,7 @@ export const TUTORIAL = [
   {
     id: 'ext',
     title: 'Put an Extractor on ore',
-    body: 'Press <b>5</b>, then click any slot inside your fence — every one of them is Slag. '
+    body: 'Press <b>5</b>, then click any slot inside your fence — all nine are Slag. '
       + 'An Extractor pulls ore out of the ground underneath it and pushes it out of its front.',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'ext'),
   },
@@ -1562,9 +1559,9 @@ export const TUTORIAL = [
     id: 'depot',
     title: 'Build a Market Depot',
     body: 'Press <b>7</b> and put it down a couple of slots away, in the direction the '
-      + 'Extractor is facing. A Depot is a big building — two slots by two — and buys '
-      + 'anything pushed into it, instantly, at full price, but only through the side it '
-      + 'faces. It aims itself at whatever feeds it, and <b>R</b> turns it by hand.',
+      + 'Extractor is facing. A Depot buys anything pushed into it, instantly, at full '
+      + 'price — but only through the one mouth on its front. It aims itself at whatever '
+      + 'feeds it, and <b>R</b> turns it by hand.',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'depot'),
   },
   {
@@ -1595,7 +1592,7 @@ export const TUTORIAL = [
   {
     id: 'land',
     title: 'Buy a ring of land',
-    body: 'Twenty-five slots fill up fast once Generators and Depots take four each. Press <b>C</b>, or the EXPAND button up top. Land is '
+    body: 'Nine slots is not a factory. Press <b>C</b>, or the EXPAND button up top. Land is '
       + 'cheap to begin with and gets steeply dearer, and the ore out there is richer than '
       + 'the ore under your feet.',
     done: f => f.claim > CLAIM_START,

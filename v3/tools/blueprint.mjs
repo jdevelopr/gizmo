@@ -23,8 +23,7 @@ function bench(cash = 1e9) {
 const put = (f, k, x, y, o = {}) => build(f, { kind: k, ...o }, cellOf(x, y), { free: true, dir: o.dir ?? 0 });
 const line = f => {
   f.patch[cellOf(10, 10)] = 0; f.rich[cellOf(10, 10)] = 1;
-  // Mutator 1x2 on 12-13, Depot 2x2 on 15-16 x 10-11.
-  put(f, 'ext', 10, 10); put(f, 'pipe', 11, 10); put(f, 'mut', 12, 10, { mut: 2 }); put(f, 'pipe', 14, 10); put(f, 'depot', 15, 10);
+  put(f, 'ext', 10, 10); put(f, 'pipe', 11, 10); put(f, 'mut', 12, 10, { mut: 2 }); put(f, 'pipe', 14, 10); put(f, 'depot', 15, 10);   // Mutator 1x2: 12-13
 };
 
 console.log('\nSelecting');
@@ -39,21 +38,20 @@ console.log('\nCopy and paste');
 {
   const f = bench(); line(f);
   const bp = capture(f, areaCells(f, cellOf(11, 10), cellOf(15, 10)));
-  ok(bp.w === 6 && bp.h === 2 && bp.parts.length === 4, `a copy is a blueprint of offsets, big machines and all (${bp.w}x${bp.h})`);
+  ok(bp.w === 5 && bp.h === 1 && bp.parts.length === 4, 'a copy is a blueprint of offsets');
   const p = plan(f, bp, cellOf(21, 20));
   const want = buyCost({ kind: 'pipe' }) * 2 + buyCost({ kind: 'mut', mut: 2 }) + buyCost({ kind: 'depot' }, 1);
   ok(p.cost === want, `the plan prices it, ladders and all ($${p.cost})`);
   const cash = f.cash;
   const r = paste(f, bp, cellOf(21, 20));
   ok(r.placed === 4 && cash - f.cash === want, 'pasting builds all of it and charges the plan');
-  ok(f.grid[cellOf(20, 20)]?.kind === 'mut' && f.grid[cellOf(20, 20)].mut === 2, 'keeping every setting');
-  ok(f.grid[cellOf(24, 21)]?.kind === 'depot', 'and every slot of a big machine');
+  ok(f.grid[cellOf(21, 20)]?.kind === 'mut' && f.grid[cellOf(21, 20)].mut === 2, 'keeping every setting');
   const rot = rotateBp(bp);
-  ok(rot.w === 2 && rot.h === 6 && rot.parts.every((q, k) => q.dir === (bp.parts[k].dir + 1) % 4), 'rotating turns the shape and every machine in it');
+  ok(rot.w === 1 && rot.h === 5 && rot.parts.every((q, k) => q.dir === (bp.parts[k].dir + 1) % 4), 'rotating turns the shape and every machine in it');
   const r4 = paste(f, rot, cellOf(50, 50));
-  const depots = f.cells.map(i => f.grid[i]).filter(m => m.kind === 'depot');
-  ok(r4.placed === 4 && depots.length === 3 && depots.every(m => m.cells.length === 4 && m.cells.every(c => f.grid[c] === m)),
-    `a turned blueprint pastes too, every big machine whole (${r4.placed} of 4)`);
+  const muts = f.cells.map(i => f.grid[i]).filter(m => m.kind === 'mut' && m.dir === 1);
+  ok(r4.placed === 4 && muts.length === 1 && muts[0].cells.length === 2 && muts[0].cells.every(c => f.grid[c] === muts[0]),
+    `a turned blueprint pastes too, the 1x2 Mutator whole (${r4.placed} of 4)`);
   const poor = bench(30); line(poor);
   const r2 = paste(poor, bp, cellOf(21, 30));
   ok(r2.broke && r2.placed < 4, 'running out of money stops it rather than overdrawing');

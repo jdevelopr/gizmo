@@ -36,7 +36,7 @@ import {
   pickInputs, missingFor, canEverAccept, acceptsFrom, faceHit, ONE_MOUTH,
   cellOf, cx, cy, inClaim, claimed, claimCells, inWorld,
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
-  balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
+  balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap, rankOf, rankCost, TECH_RANKS, ROMAN,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
   STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, bridgeSpan,
 } from './machines.js';
@@ -1198,9 +1198,9 @@ export function applyAction(f, a) {
       if (!m) return no('Nothing there');
       const cap = levelCap(f.done);
       if ((m.level || 1) >= cap) {
-        return no(cap < MAX_LEVEL ? 'Overclocking would raise this' : 'Already maxed');
+        return no(cap < MAX_LEVEL ? 'Another rank of Overclocking would raise this' : 'Already at level 5');
       }
-      const c = upgradeCost(m);
+      const c = upgradeCost(m, f.done);
       if (f.cash < c) return no(`Need $${c}`);
       f.cash -= c;
       f.spent += c;
@@ -1264,10 +1264,12 @@ export function applyAction(f, a) {
 export function research(f, id) {
   const t = techById(id);
   if (!t) return no('No such research');
-  if (f.done.includes(id)) return no('Already known');
+  const rank = rankOf(f.done, id);
+  if (rank >= TECH_RANKS) return no('Already at rank V');
   if (!techOpen(t, f.done)) return no('Needs earlier research');
-  if (f.science < t.cost) return no(`Needs ${t.cost} science`);
-  f.science -= t.cost;
+  const cost = rankCost(t, f.done);
+  if (f.science < cost) return no(`Needs ${cost} science`);
+  f.science -= cost;
   const before = f.cells.map(i => f.grid[i]).concat(f.crate).map(m => [m, maxHp(m, f.done)]);
   f.done.push(id);
   f.mapRev++;                  // Surveying, for one, changes what the ground shows
@@ -1278,8 +1280,9 @@ export function research(f, id) {
     if (now !== was && m.hp != null) m.hp = m.hp * now / was;
   }
   f.dirty = true;              // reach, output and yield may all have just changed
-  f.fx.push({ k: 'tech', name: t.name });
-  return yes(`${t.name} complete`);
+  const name = t.name + (rank ? ' ' + ROMAN[rank + 1] : '');
+  f.fx.push({ k: 'tech', name });
+  return yes(`${name} complete`);
 }
 
 /* ------------------------------------------------------------------ health --- */

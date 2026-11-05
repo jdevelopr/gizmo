@@ -185,10 +185,10 @@ function sendHome(f, p) {
 export function upgradeAll(f, cells) {
   const cap = levelCap(f.done);
   const ms = cells.map(i => [i, f.grid[i]]).filter(([, m]) => m && (m.level || 1) < cap)
-    .sort((a, b) => upgradeCost(a[1]) - upgradeCost(b[1]));
+    .sort((a, b) => upgradeCost(a[1], f.done) - upgradeCost(b[1], f.done));
   let n = 0, spent = 0;
   for (const [i, m] of ms) {
-    const c = upgradeCost(m);
+    const c = upgradeCost(m, f.done);
     if (f.cash < c) break;
     f.cash -= c; f.spent += c; spent += c;
     m.level++; m.flash = 1; n++;
@@ -204,7 +204,7 @@ export function upgradeQuote(f, cells) {
   let cost = 0, n = 0;
   for (const i of cells) {
     const m = f.grid[i];
-    if (m && (m.level || 1) < cap) { cost += upgradeCost(m); n++; }
+    if (m && (m.level || 1) < cap) { cost += upgradeCost(m, f.done); n++; }
   }
   return { cost, n };
 }

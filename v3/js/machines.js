@@ -45,7 +45,7 @@ export const CLAIM_START = 3;
 export const CLAIM_STEP = 2;
 
 export const CELL = 32;           // pixel units per slot (art is authored at this size)
-export const MAX_LEVEL = 3;       // machine level cap, raised to 3 by Overclocking
+export const MAX_LEVEL = 5;       // machine level cap: 2 to begin with, raised a level a rank by Overclocking
 
 /* Directions, clockwise from east. dir 0 = east, 1 = south, 2 = west, 3 = north. */
 export const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
@@ -165,10 +165,10 @@ export function powerMult(sat) {
 }
 
 /** Kilowatts a generator makes at each level. */
-export const GEN_OUTPUT = [90, 150, 240];
+export const GEN_OUTPUT = [90, 150, 240, 360, 520];
 
 /** How many machine-to-machine hops a generator's power carries, by level. */
-export const GEN_REACH = [8, 11, 14];
+export const GEN_REACH = [8, 11, 14, 17, 20];
 
 /**
  * Burning a gizmo. Energy is roughly the 0.4 power of its market value, which
@@ -191,7 +191,7 @@ export const VOLTAGE_BONUS = 1.6;
 export const GRIDWORK_REACH = 4;
 
 /** What a level does to a machine's appetite. Levels buy speed, and speed costs. */
-export const LEVEL_DRAW = [1, 1.5, 2.2];
+export const LEVEL_DRAW = [1, 1.5, 2.2, 3.0, 4.0];
 
 /* ---------------------------------------------------------------- machines --- */
 
@@ -480,7 +480,7 @@ export const MAX_HP = {
 export const PLATING_BONUS = 1.5;
 
 export const maxHp = (m, done = []) =>
-  (MAX_HP[m.kind] || 30) * (done.some(id => techById(id)?.hp) ? PLATING_BONUS : 1);
+  (MAX_HP[m.kind] || 30) * grow(done, 'hp', PLATING_BONUS);
 
 /** Is this machine chewed through? It does nothing until it is repaired. */
 export const broken = m => m.hp != null && m.hp <= 0;
@@ -509,29 +509,66 @@ export function repairCost(m, done = []) {
 export const AMMO_CHARGES = 6;
 
 /** Zapper reach in slots, damage per shot and seconds between shots, by level. */
-export const ZAP_RANGE = [4.5, 5.5, 6.5];
-export const ZAP_DAMAGE = [6, 8, 11];
-export const ZAP_COOL = [0.9, 0.75, 0.6];
+export const ZAP_RANGE = [4.5, 5.5, 6.5, 7.5, 8.5];
+export const ZAP_DAMAGE = [6, 8, 11, 15, 20];
+export const ZAP_COOL = [0.9, 0.75, 0.6, 0.5, 0.42];
 /** Extra reach from Focusing research, and how many extra mites Arc research chains to. */
 export const FOCUS_RANGE = 1.5;
 export const ARC_CHAIN = 2;
 export const ARC_HOP = 2;
 
-export const hasTech = (done = [], flag) => done.some(id => techById(id)?.[flag]);
+/**
+ * Research has ranks. `done` holds a node's id once per rank researched, so the
+ * rank of a node is how many times it appears, and `includes` still answers "has
+ * it been researched at all".
+ */
+export const rankOf = (done = [], id) => { let n = 0; for (const d of done) if (d === id) n++; return n; };
+/** The rank of whichever node carries this bonus flag. */
+export const flagRank = (done = [], flag) => {
+  const t = TECH.find(x => x[flag]);
+  return t ? rankOf(done, t.id) : 0;
+};
+export const hasTech = (done = [], flag) => flagRank(done, flag) > 0;
+/**
+ * How a bonus grows with rank: rank I gives the bonus on the card, and each rank
+ * after adds half as much again, so rank V is three times rank I.
+ */
+export const rankScale = r => (r > 0 ? 1 + 0.5 * (r - 1) : 0);
+/** A multiplier of `b` at rank I, grown by rank. */
+const grow = (done, flag, b) => 1 + (b - 1) * rankScale(flagRank(done, flag));
+/** A reduction to `b` at rank I, compounded by rank. */
+const shrink = (done, flag, b) => { const r = flagRank(done, flag); return r ? Math.pow(b, rankScale(r)) : 1; };
+/** An addition of `a` at rank I, grown by rank. */
+const add = (done, flag, a) => a * rankScale(flagRank(done, flag));
+
+/**
+ * The machines a node unlocks get faster with every rank past the first: 10% a rank.
+ * Surveying, which unlocks nothing, speeds Mountain Drills instead.
+ */
+export function unlockSpeed(kind, done = [], mut = 0) {
+  const key = kind === 'asm' ? 'asm:' + mut : kind;
+  const t = TECH.find(x => (x.unlocks || []).includes(key)) || (kind === 'drill' ? TECH.find(x => x.survey) : null);
+  const r = t ? rankOf(done, t.id) : 0;
+  return r > 1 ? 1 + 0.1 * (r - 1) : 1;
+}
 export const zapRange = (m, done = []) =>
-  ZAP_RANGE[(m.level || 1) - 1] + (hasTech(done, 'focus') ? FOCUS_RANGE : 0);
+  ZAP_RANGE[(m.level || 1) - 1] + add(done, 'focus', FOCUS_RANGE);
 export const zapDamage = (m, done = []) =>
-  ZAP_DAMAGE[(m.level || 1) - 1] * (hasTech(done, 'over') ? TECH_BONUS.over : 1);
+  ZAP_DAMAGE[(m.level || 1) - 1] * grow(done, 'over', TECH_BONUS.over);
 export const zapCool = (m, done = []) =>
-  ZAP_COOL[(m.level || 1) - 1] * (hasTech(done, 'cap') ? TECH_BONUS.cap : 1);
+  ZAP_COOL[(m.level || 1) - 1] * shrink(done, 'cap', TECH_BONUS.cap) / unlockSpeed('zap', done);
 
 /** Research-adjusted numbers used by sim.js, bugs.js and beacon.js. */
-export const bridgeSpan = (done = []) => BRIDGE_SPAN + (hasTech(done, 'span') ? TECH_BONUS.span : 0);
-export const tremorCost = (done = []) => TREMOR_COST * (hasTech(done, 'damper') ? TECH_BONUS.damper : 1);
-export const beaconLoss = (done = []) => BEACON_LOSS * (hasTech(done, 'shield') ? TECH_BONUS.shield : 1);
-export const contractPremium = (done = []) => (hasTech(done, 'market') ? TECH_BONUS.market : CONTRACT_PREMIUM);
+export const bridgeSpan = (done = []) => {
+  const r = flagRank(done, 'span');
+  return BRIDGE_SPAN + (r ? TECH_BONUS.span + (r - 1) : 0);     // +3, then +1 a rank
+};
+export const tremorCost = (done = []) => TREMOR_COST * grow(done, 'damper', TECH_BONUS.damper);
+export const beaconLoss = (done = []) => BEACON_LOSS * grow(done, 'shield', TECH_BONUS.shield);
+export const contractPremium = (done = []) => (hasTech(done, 'market')
+  ? 1 + (TECH_BONUS.market - 1) * rankScale(flagRank(done, 'market')) : CONTRACT_PREMIUM);
 export const surveyed = (done = []) => hasTech(done, 'survey');
-export const zapChain = (done = []) => (hasTech(done, 'arc') ? ARC_CHAIN : 0);
+export const zapChain = (done = []) => { const r = flagRank(done, 'arc'); return r ? ARC_CHAIN + (r - 1) : 0; };
 
 /** The Armory's one recipe. */
 export const ARMORY = { ins: [0, 1], out: AMMO, cycle: 1.0, price: 150 };
@@ -706,8 +743,10 @@ export function expandCost(claim) {
 /** Clearing one rubble slot. Flat: it is a chore, not an investment. */
 export const RUBBLE_COST = 50;
 
-export function upgradeCost(m) {
-  return Math.round(price(m) * Math.pow(UP_STEP, (m.level || 1) - 1));
+export function upgradeCost(m, done = []) {
+  // Overclocking past rank III makes every upgrade 15% cheaper a rank.
+  const disc = Math.pow(0.85, Math.max(0, flagRank(done, 'level') - 3));
+  return Math.round(price(m) * Math.pow(UP_STEP, (m.level || 1) - 1) * disc);
 }
 
 /** Everything this machine has cost so far: the purchase plus every level bought. */
@@ -722,7 +761,7 @@ export function scrapValue(m) {
 }
 
 /** What a level buys, for every machine that sells speed. */
-export const LEVEL_SPEED = [1, 0.7, 0.45];
+export const LEVEL_SPEED = [1, 0.7, 0.45, 0.32, 0.24];
 
 /** Extra units a Storage level buys. */
 export const STORE_STEP = 4;
@@ -742,25 +781,28 @@ export function cycleTime(m, done = []) {
   else if (m.kind === 'asm') base = recipeOf(m).cycle;
   else if (m.kind === 'arm') base = ARMORY.cycle;
   else if (m.kind === 'drill') {
-    base = DRILL_BASE * (1 + DRILL_PER_TIER * (TYPES[m.mut]?.tier || 0)) / (hasTech(done, 'drill') ? TECH_BONUS.drill : 1);
+    base = DRILL_BASE * (1 + DRILL_PER_TIER * (TYPES[m.mut]?.tier || 0)) / grow(done, 'drill', TECH_BONUS.drill);
   }
   else if (m.kind === 'ext') base = KINDS.ext.cycle / Math.max(0.2, m.rich || 1) / yieldBonus(done);
   else base = KINDS[m.kind].cycle;
-  // Storage levels buy capacity and a copier's levels buy exits. Neither buys speed.
-  if (m.kind === 'store' || m.kind === 'dup' || m.kind === 'trident') return base;
+  base /= unlockSpeed(m.kind, done, m.mut);
+  // Storage levels buy capacity, not speed. A copier's first three levels buy exits;
+  // its fourth and fifth, which have no more exits to give, buy speed.
+  if (m.kind === 'store') return base;
+  if (m.kind === 'dup' || m.kind === 'trident') return base * [1, 1, 1, 0.75, 0.55][(m.level || 1) - 1];
   return base * (LEVEL_SPEED[(m.level || 1) - 1] ?? 1);
 }
 
 /** Kilowatts this machine asks for while it is working. */
 export function drawOf(m, done = []) {
   const base = KINDS[m.kind]?.draw || 0;
-  return base * (LEVEL_DRAW[(m.level || 1) - 1] ?? 1) * (hasTech(done, 'motor') ? TECH_BONUS.motor : 1);
+  return base * (LEVEL_DRAW[(m.level || 1) - 1] ?? 1) * shrink(done, 'motor', TECH_BONUS.motor);
 }
 
 export function travelTime(m, done = []) {
   const belt = m.kind === 'pipe' || m.kind === 'store' || m.kind === 'bridge';
   return KINDS[m.kind].travel * (m.kind === 'pipe' ? Math.pow(0.78, (m.level || 1) - 1) : 1)
-    * (belt && hasTech(done, 'belt') ? TECH_BONUS.belt : 1);
+    * (belt ? shrink(done, 'belt', TECH_BONUS.belt) : 1) / (belt ? unlockSpeed(m.kind, done) : 1);
 }
 
 /** How many gizmos this machine needs buffered before it fires. */
@@ -870,7 +912,7 @@ export function outputs(m, inputs) {
     case 'dup': {
       if (copy) return [{ ty: a, dir: d, cp: 1 }];
       if (!copyable(a)) return [{ ty: a, dir: d, cp: 0 }];
-      const n = 1 + (m.level || 1);                      // L1: 2, L2: 3, L3: 4
+      const n = 1 + Math.min(3, m.level || 1);           // L1: 2, L2: 3, L3+: 4
       return Array.from({ length: n }, (_, i) => ({ ty: a, dir: d, cp: i ? 1 : 0 }));
     }
 
@@ -1269,7 +1311,7 @@ export const TECH = [
   { id: 'assembly', branch: 'economy', name: 'Assembly', cost: 420, needs: [], unlocks: ['asm:0'],
     blurb: 'Unlocks the Engine Assembler, and with it recipes at all.' },
   { id: 'overclock', branch: 'economy', name: 'Overclocking', cost: 820, needs: ['storage'], level: 3,
-    blurb: 'Raises every machine’s upgrade ceiling from level 2 to level 3.' },
+    blurb: 'Raises every machine’s upgrade ceiling by a level, from 2 toward 5.' },
   { id: 'market', branch: 'economy', name: 'Market Savvy', cost: 900, needs: ['assembly'], market: 1,
     blurb: `Contracts pay ${Math.round((TECH_BONUS.market - 1) * 100)}% over market instead of 35%.` },
   { id: 'assembly2', branch: 'economy', name: 'Assembly II', cost: 1150, needs: ['assembly'], unlocks: ['asm:1'],
@@ -1333,6 +1375,26 @@ export const techById = id => TECH.find(t => t.id === id) || null;
 /** The research that unlocks a machine kind, or null if it is on sale from the start. */
 export const unlockerOf = kind => TECH.find(t => (t.unlocks || []).includes(kind)) || null;
 
+/** Every node has five ranks. Each costs more than the last. */
+export const TECH_RANKS = 5;
+export const RANK_COST = [1, 2, 3.5, 5.5, 8];
+/** What the next rank of a node costs, or 0 if it is maxed. */
+export const rankCost = (t, done = []) => {
+  const r = rankOf(done, t.id);
+  return r >= TECH_RANKS ? 0 : Math.round(t.cost * RANK_COST[r]);
+};
+export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+
+/** What one more rank of this node does, in a few words, for the card. */
+export function rankBlurb(t) {
+  if (t.id === 'overclock') return 'Ranks I–III raise the ceiling a level each, to 5; IV and V make every upgrade 15% cheaper.';
+  if (t.unlocks?.length) return 'Each rank after the first: what it unlocks works 10% faster.';
+  if (t.survey) return 'Each rank after the first: Mountain Drills dig 10% faster.';
+  if (t.span) return 'Each rank after the first: one more slot.';
+  if (t.arc) return 'Each rank after the first: one more mite in the chain.';
+  return 'Each rank after the first adds half as much again — rank V is three times rank I.';
+}
+
 /** Can this node be started — is everything it needs already done? */
 export const techOpen = (t, done) => (t.needs || []).every(n => done.includes(n));
 
@@ -1344,26 +1406,24 @@ export function unlockedBy(done = []) {
 }
 
 /** The upgrade ceiling, which Overclocking raises. */
-export const levelCap = (done = []) =>
-  done.some(id => techById(id)?.level) ? MAX_LEVEL : MAX_LEVEL - 1;
+export const levelCap = (done = []) => Math.min(MAX_LEVEL, 2 + flagRank(done, 'level'));
 
-const hasPower = (done, what) => done.some(id => techById(id)?.power === what);
+const powerRank = (done, what) => { const t = TECH.find(x => x.power === what); return t ? rankOf(done, t.id) : 0; };
 
 /** Kilowatts a generator actually makes, after research. */
 export const genOutput = (m, done = []) =>
-  GEN_OUTPUT[(m.level || 1) - 1] * (hasPower(done, 'output') ? VOLTAGE_BONUS : 1);
+  GEN_OUTPUT[(m.level || 1) - 1] * (1 + (VOLTAGE_BONUS - 1) * rankScale(powerRank(done, 'output')));
 
 /** How many hops a generator's power carries, after research. */
 export const genReach = (m, done = []) =>
-  GEN_REACH[(m.level || 1) - 1] + (hasPower(done, 'reach') ? GRIDWORK_REACH : 0);
+  GEN_REACH[(m.level || 1) - 1] + Math.round(GRIDWORK_REACH * rankScale(powerRank(done, 'reach')));
 
 /** Kilowatt-seconds one of these releases, after research. */
 export const energyOf = (ty, done = []) =>
-  fuelEnergy(ty) * (hasPower(done, 'fuel') ? COMBUSTION_BONUS : 1);
+  fuelEnergy(ty) * (1 + (COMBUSTION_BONUS - 1) * rankScale(powerRank(done, 'fuel')));
 
 /** What Prospecting does to every Extractor. */
-export const yieldBonus = (done = []) =>
-  done.reduce((a, id) => a * (techById(id)?.yield || 1), 1);
+export const yieldBonus = (done = []) => grow(done, 'yield', 1.35);
 
 /**
  * Everything buildable right now. No randomness, no reroll, no cap: what you have

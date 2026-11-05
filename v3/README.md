@@ -489,6 +489,26 @@ and "unknown" when you hover it. Picking up a locked machine by its key says whi
 research it needs. `tools/tech.mjs` checks the tree has no cycles or orphans, that every
 branch is reachable, and that every bonus does what its card says.
 
+### Five ranks of research, five levels of machine
+
+**Every research node has five ranks.** Rank I does what its card says; each rank after
+it costs more (1x, 2x, 3.5x, 5.5x, 8x the base) and adds half as much again, so rank V
+is three times rank I. Reductions — Express Belts, Efficient Motors, Capacitors —
+compound instead, so they never reach zero. Nodes that unlock machines make those
+machines 10% faster for every rank after the first; Surveying's later ranks speed
+Mountain Drills; Long Spans adds a slot a rank and Arc Discharge a mite a rank. A
+node's rank is shown as I–V after its name with five pips under it, and the branch
+headings count ranks (out of five times the number of nodes). In a save, `done` holds a
+node's id once per rank, so older saves load as rank I of everything they had.
+
+**Every machine goes to level 5.** The ceiling starts at level 2, and each rank of
+Overclocking raises it a level until rank III reaches 5; ranks IV and V make every
+upgrade 15% cheaper instead. Every per-level table has five entries — speed (1, 0.7,
+0.45, 0.32, 0.24 of the cycle), draw, Generator output (90 → 520 kW) and reach (8 → 20),
+Zapper range (4.5 → 8.5), damage (6 → 20) and recharge (0.9 → 0.42s). A Doubler's first
+three levels still buy exits; its fourth and fifth buy speed. Level 4 and 5 Zappers
+kill a Mite in one shot.
+
 ### The world is 80x80, and there is a Launch Beacon in a corner
 
 The world grew from 56 to 80 slots a side — about twice the area — and everything in

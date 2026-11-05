@@ -22,7 +22,7 @@ import {
   CHARGED_MULT, shotsOf,
   repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
   SWARM_GRACE, twoInput, CLEARABLE, ARM_RESOLVE, BRANCHES, bridgeSpan, tremorCost, beaconLoss,
-  contractPremium, surveyed, nestAnger, nestBrood, NEST_BROOD, nestSpec,
+  contractPremium, surveyed, rankOf, rankCost, TECH_RANKS, ROMAN, rankBlurb, nestAnger, nestBrood, NEST_BROOD, nestSpec,
   MOUNTAIN, VALLEY, BEETLE, TREMOR_COST, BRIDGE_SPAN, DRILL_BASE, DRILL_PER_TIER, BEACON,
   BEACON_HP, BEACON_LOSS, BEACON_ASSAULTS, BEACON_NEED,
   NESTS, MITE, SKITTER, SKITTER_FROM,
@@ -797,7 +797,7 @@ export class Panel {
     };
     badge($('order-badge'), g.contracts.length);
     badge($('tech-badge'), TECH.filter(t =>
-      !f.done.includes(t.id) && techOpen(t, f.done) && f.science >= t.cost).length);
+      rankOf(f.done, t.id) < TECH_RANKS && techOpen(t, f.done) && f.science >= rankCost(t, f.done)).length);
 
     let key;
     if (this.tab === 'info') {
@@ -1144,10 +1144,10 @@ export class Panel {
       () => this.act('off', cell), true);
     const cap = levelCap(f.done);
     if (m.level < cap) {
-      const c = upgradeCost(m);
+      const c = upgradeCost(m, f.done);
       add(`UPGRADE ${money(c)}`, () => this.act('up', cell), false, f.cash < c);
     } else {
-      add(cap < MAX_LEVEL ? 'NEEDS OVERCLOCKING' : 'MAX LEVEL', null, false, true);
+      add(cap < MAX_LEVEL ? `NEEDS OVERCLOCKING ${ROMAN[cap - 1]}` : 'MAX LEVEL', null, false, true);
     }
     if (CLEARABLE.has(m.kind)) {
       add('CLEAR MACHINE', () => this.act('clearBuf', cell), true);
@@ -1428,8 +1428,8 @@ export class Panel {
     for (const br of BRANCHES) {
       const list = TECH.filter(t => (t.branch || 'economy') === br.id);
       if (!list.length) continue;
-      const got = list.filter(t => f.done.includes(t.id)).length;
-      host.appendChild(el('div', 'pal-group tech-head', `${br.name}  <span>${got} / ${list.length}</span>`));
+      const got = list.reduce((a, t) => a + rankOf(f.done, t.id), 0);
+      host.appendChild(el('div', 'pal-group tech-head', `${br.name}  <span>${got} / ${list.length * TECH_RANKS} ranks</span>`));
       for (const t of list) this.techCard(host, f, t);
     }
   }
@@ -1437,14 +1437,21 @@ export class Panel {
   /** One research card. */
   techCard(host, f, t) {
     {
-      const has = f.done.includes(t.id);
+      const rank = rankOf(f.done, t.id);
+      const has = rank >= TECH_RANKS;            // maxed
+      const cost = rankCost(t, f.done);
       const open = techOpen(t, f.done);
-      const can = open && !has && f.science >= t.cost;
+      const can = open && !has && f.science >= cost;
       const card = el('div', 'card' + (has ? ' done' : can ? ' can' : open ? ' open' : ''));
-      const h = el('h4', null, t.name);
-      h.appendChild(el('span', 'price', has ? 'DONE' : num(t.cost)));
+      const h = el('h4', null, t.name + (rank ? ' ' + ROMAN[rank] : ''));
+      h.appendChild(el('span', 'price', has ? 'MAX' : num(cost)));
       card.appendChild(h);
+      // Five pips: how many ranks are done.
+      const pips = el('div', 'rank-pips');
+      for (let k = 1; k <= TECH_RANKS; k++) pips.appendChild(el('i', k <= rank ? 'on' : null));
+      card.appendChild(pips);
       card.appendChild(el('p', null, t.blurb));
+      if (rank) card.appendChild(el('p', 'rank-note', rankBlurb(t)));
       if (t.unlocks?.length) {
         const row = el('div', 'tech-unlocks');
         for (const u of t.unlocks) {
@@ -1460,13 +1467,13 @@ export class Panel {
           'Needs ' + t.needs.map(n => techById(n).name).join(', ')));
       }
       if (!has && open) {
-        const pct = Math.min(1, f.science / t.cost);
+        const pct = Math.min(1, f.science / cost);
         const meter = el('div', 'meter');
         const fill = el('span');
         fill.style.width = (pct * 100) + '%';
         meter.appendChild(fill);
         card.appendChild(meter);
-        const b = el('button', null, can ? `RESEARCH  ${num(t.cost)}` : `${num(t.cost - f.science)} MORE`);
+        const b = el('button', null, can ? `RESEARCH ${ROMAN[rank + 1]}  ${num(cost)}` : `${num(cost - f.science)} MORE`);
         b.disabled = !can;
         b.onclick = () => this.act('research', t.id);
         card.appendChild(b);

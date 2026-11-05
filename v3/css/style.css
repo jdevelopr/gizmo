@@ -552,3 +552,9 @@ body.hide-tut #tutorial { display: none !important; }
 .tech-head span { color: var(--dimmer); }
 .tech-unlocks { display: flex; gap: 4px; margin: 2px 0 6px; }
 .tech-unlocks canvas { background: #0c0e18; border: 1px solid #242a3f; }
+
+/* --- research ranks --- */
+.rank-pips { display: flex; gap: 3px; margin: 2px 0 6px; }
+.rank-pips i { width: 14px; height: 4px; background: #242a3f; }
+.rank-pips i.on { background: var(--gold); }
+.rank-note { color: var(--dimmer); font-size: 10px; }

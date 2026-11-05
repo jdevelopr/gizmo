@@ -60,7 +60,7 @@ export const DIR_NAME = ['East', 'South', 'West', 'North'];
  * per slot, around 4.5 $/s — is the anchor every other number here is set against,
  * and it is measured in dollars per second either way. Rounds never entered into it.
  */
-export const ALLOY = 0, PART = 1, PRODUCT = 2;
+export const ALLOY = 0, PART = 1, PRODUCT = 2, MUNITION = 3;
 
 export const TYPES = [
   // --- alloy: the ladder, from a Slag patch ---
@@ -80,13 +80,18 @@ export const TYPES = [
   { name: 'Engine',  color: '#ff9d3c', glow: '#ffd9a0', value: 34,  fam: PRODUCT, tier: 0 },
   { name: 'Turbine', color: '#ff6fae', glow: '#ffc4de', value: 132, fam: PRODUCT, tier: 1 },
   { name: 'Reactor', color: '#c8a2ff', glow: '#e8dcff', value: 430, fam: PRODUCT, tier: 2 },
+  // --- munition: from an Armory, and only worth anything to a Zapper ---
+  { name: 'Ammo',    color: '#e8f04a', glow: '#fbffb8', value: 3,   fam: MUNITION, tier: 0 },
 ];
 export const MAX_TYPE = TYPES.length - 1;
 
 /** Where each family starts in TYPES, and how many rungs it has. */
-export const FAM_START = [0, 8, 11];
-export const FAM_LEN = [8, 3, 3];
-export const FAM_NAME = ['Alloy', 'Part', 'Product'];
+export const FAM_START = [0, 8, 11, 14];
+export const FAM_LEN = [8, 3, 3, 1];
+export const FAM_NAME = ['Alloy', 'Part', 'Product', 'Munition'];
+
+/** The one gizmo a Zapper eats. Made by an Armory from one Scrap and one Copper. */
+export const AMMO = 14;
 export const LADDER_MAX = FAM_LEN[ALLOY] - 1;
 
 export const famOf = ty => TYPES[ty]?.fam ?? ALLOY;
@@ -283,6 +288,22 @@ export const KINDS = {
     price: 110, cycle: 1.9, cap: 2, hold: 8, travel: 0.52, draw: 8,
     body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
   },
+  arm: {
+    name: 'Armory', short: 'ARMORY',
+    desc: 'Presses one Scrap and one Copper into one Ammo, and takes from any side. Bring '
+      + 'the two in on different faces and it never stalls. Ammo is what a Zapper fires.',
+    price: 150, cycle: 1.0, cap: 2, hold: 8, travel: 0.52, draw: 8,
+    body: '#4a4416', trim: '#c9c23f', lit: '#fbffb8',
+  },
+  zap: {
+    name: 'Zapper', short: 'ZAPPER',
+    // Passive: it has a mouth and never a job. bugs.js loads it and fires it.
+    desc: 'A laser turret. Feed it Ammo on a belt — every Ammo is several shots — and it '
+      + 'zaps any mite that comes within range. Draws power while it recharges between '
+      + 'shots, so a big swarm is a big spike on its grid.',
+    price: 220, cycle: 0, cap: 0, hold: 4, travel: 0, draw: 12, passive: true,
+    body: '#2a1f4a', trim: '#8f6cff', lit: '#e0d4ff',
+  },
 };
 
 export const KIND_LIST = Object.keys(KINDS);
@@ -301,6 +322,113 @@ export const PASSIVE = new Set(KIND_LIST.filter(k => KINDS[k].passive));
  * is the machine behind it, and that machine has a badge of its own.
  */
 export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort']);
+
+/* ---------------------------------------------------------------- mites --- */
+
+/**
+ * Mites, and what stops them.
+ *
+ * Nests sit out on the wild ground beyond your fence, more of them near the Sap.
+ * They are woken by **noise**: every Extractor digging, every Generator burning and
+ * every heavy machine working adds to a pressure gauge, and when it fills a swarm
+ * sets out for the nearest thing you have built. A quiet factory is left alone for
+ * a long time; a loud one is visited often, by more of them.
+ *
+ * Mites chew. A conveyor is long, cheap and out on the edges, so it is what they go
+ * for first. A chewed machine runs slower the more damaged it is and stops entirely
+ * at zero, until you pay to repair it. Nothing is ever destroyed — the custody rule
+ * holds — so a broken belt simply holds what it was carrying until it is mended.
+ *
+ * The answer is the **Zapper**, which needs two things from the factory it guards:
+ * power to recharge, and Ammo, which an **Armory** presses out of Scrap and Copper.
+ * Defending an outpost is therefore a logistics problem like everything else here.
+ */
+
+/** Noise each kind makes while it is working (and not switched off or broken). */
+export const NOISE = { ext: 1, gen: 1.4, asm: 0.6, fuse: 0.4, mut: 0.3, dup: 0.5, trident: 0.5, arm: 0.4 };
+
+/** Noise-seconds that fill the gauge and send one swarm. */
+export const SWARM_COST = 1100;
+
+/** No swarm leaves a nest before this many seconds of factory time. */
+export const SWARM_GRACE = 420;
+
+/** The most mites alive on the map at once. */
+export const MITE_CAP = 140;
+
+/** A mite, at the first swarm. Later swarms are a little tougher. */
+export const MITE = { hp: 5, speed: 0.8, bite: 1.5, hpPerWave: 0.18, hpMax: 14 };
+
+/** How big a swarm is, given how loud the factory is and how many have come before. */
+export const swarmSize = (noise, waves) =>
+  Math.min(24, 2 + Math.floor(Math.sqrt(Math.max(0, noise)) * 0.8 + waves * 0.25));
+
+/** A nest. Out of reach of everything but a Zapper parked close to the fence. */
+export const NEST_HP = 120;
+export const NEST_BOUNTY = 150;
+/** Seconds before a destroyed nest is replaced by a new one, somewhere far off. */
+export const NEST_REGROW = 600;
+
+/** Hit points, by kind. Belts are flimsy on purpose: they are what mites eat first. */
+export const MAX_HP = {
+  pipe: 12, store: 20, bal: 15, sort: 15, ext: 30, gen: 40, depot: 50, lab: 40,
+  dup: 30, trident: 30, mut: 30, asm: 35, fuse: 30, arm: 30, zap: 45,
+};
+
+/** What Plating research multiplies every machine's hit points by. */
+export const PLATING_BONUS = 1.5;
+
+export const maxHp = (m, done = []) =>
+  (MAX_HP[m.kind] || 30) * (done.some(id => techById(id)?.hp) ? PLATING_BONUS : 1);
+
+/** Is this machine chewed through? It does nothing until it is repaired. */
+export const broken = m => m.hp != null && m.hp <= 0;
+
+/**
+ * What damage does to a machine's speed. Half speed just before it breaks, which
+ * is enough to notice and not so much that one mite on a belt is a catastrophe.
+ */
+export function hpMult(m, done = []) {
+  if (m.hp == null) return 1;
+  if (m.hp <= 0) return 0;
+  return 0.5 + 0.5 * Math.min(1, m.hp / maxHp(m, done));
+}
+
+/** Repairing costs a fraction of the machine's price, in proportion to the damage. */
+export const REPAIR_RATE = 0.4;
+
+export function repairCost(m, done = []) {
+  const max = maxHp(m, done);
+  const hp = m.hp == null ? max : m.hp;
+  if (hp >= max) return 0;
+  return Math.max(1, Math.round(price(m) * REPAIR_RATE * (1 - hp / max)));
+}
+
+/** Shots one Ammo loads into a Zapper. */
+export const AMMO_CHARGES = 6;
+
+/** Zapper reach in slots, damage per shot and seconds between shots, by level. */
+export const ZAP_RANGE = [4.5, 5.5, 6.5];
+export const ZAP_DAMAGE = [6, 8, 11];
+export const ZAP_COOL = [0.9, 0.75, 0.6];
+/** Extra reach from Focusing research, and how many extra mites Arc research chains to. */
+export const FOCUS_RANGE = 1.5;
+export const ARC_CHAIN = 2;
+export const ARC_HOP = 2;
+
+const hasTech = (done, flag) => done.some(id => techById(id)?.[flag]);
+export const zapRange = (m, done = []) =>
+  ZAP_RANGE[(m.level || 1) - 1] + (hasTech(done, 'focus') ? FOCUS_RANGE : 0);
+export const zapDamage = m => ZAP_DAMAGE[(m.level || 1) - 1];
+export const zapCool = m => ZAP_COOL[(m.level || 1) - 1];
+export const zapChain = (done = []) => (hasTech(done, 'arc') ? ARC_CHAIN : 0);
+
+/** The Armory's one recipe. */
+export const ARMORY = { ins: [0, 1], out: AMMO, cycle: 1.0, price: 150 };
+
+/** The recipe a two-input machine is building, or null for everything else. */
+export const twoInput = m =>
+  (m?.kind === 'asm' ? recipeOf(m) : m?.kind === 'arm' ? ARMORY : null);
 
 /** Machines you may only own so many of cheaply — each costs more than the last. */
 export const LADDERED = { ext: 1.22, depot: 1.55, lab: 1.7 };
@@ -355,6 +483,10 @@ export function makeMachine(spec, id) {
     fuel: 0,    // generators only: kilowatt-seconds left in whatever is burning
     load: 0,    // generators only: kilowatts it is actually delivering
     rich: spec.rich || 1,   // extractors only: the richness of the patch underneath
+    hp: spec.hp ?? (MAX_HP[spec.kind] || 30),   // mites chew this down; 0 is broken
+    charge: 0,  // zappers only: shots loaded
+    cool: 0,    // zappers only: seconds until the next shot is ready
+    kills: 0,   // zappers only: lifetime mites zapped
   };
 }
 
@@ -389,6 +521,7 @@ export const TYPED = { mut: 'Mutator', sort: 'Sorter' };
 export function label(spec) {
   if (spec.kind === 'asm') return `${TYPES[recipeOf(spec).out].name} Assembler`;
   if (spec.kind === 'ext') return 'Extractor';
+  if (spec.kind === 'arm') return 'Armory';
   const t = TYPED[spec.kind];
   return t ? `${TYPES[spec.mut ?? 1].name} ${t}` : KINDS[spec.kind].name;
 }
@@ -398,6 +531,7 @@ export const sideName = m => (m.mir ? 'left' : 'right');
 
 export function describe(spec) {
   if (spec.kind === 'asm') return `${recipeText(recipeOf(spec))}. Both ingredients, every time.`;
+  if (spec.kind === 'arm') return `${recipeText(ARMORY)}. ` + KINDS.arm.desc;
   if (spec.kind === 'mut') return `Rewrites any gizmo into ${TYPES[spec.mut ?? 1].name}.`;
   if (spec.kind === 'sort') {
     return `${TYPES[spec.mut ?? 1].name} goes ${sideName(spec)}; everything else straight ahead.`;
@@ -478,6 +612,7 @@ export function cycleTime(m, done = []) {
   let base;
   if (m.kind === 'mut') base = MUT_CYCLE[m.mut ?? 1];
   else if (m.kind === 'asm') base = recipeOf(m).cycle;
+  else if (m.kind === 'arm') base = ARMORY.cycle;
   else if (m.kind === 'ext') base = KINDS.ext.cycle / Math.max(0.2, m.rich || 1) / yieldBonus(done);
   else base = KINDS[m.kind].cycle;
   // Storage levels buy capacity and a copier's levels buy exits. Neither buys speed.
@@ -628,14 +763,15 @@ export function outputs(m, inputs) {
       return [{ ty: upFam(a), dir: d, cp }];
     }
 
-    case 'asm': {
-      const r = recipeOf(m);
+    case 'asm':
+    case 'arm': {
+      const r = twoInput(m);
       const cp = (inputs[0]?.cp && inputs[1]?.cp) ? 1 : 0;
       return [{ ty: r.out, dir: d, cp }];
     }
 
     default:
-      return [];   // depot, lab and gen never emit anything
+      return [];   // depot, lab, gen and zap never emit anything
   }
 }
 
@@ -675,15 +811,18 @@ export function wants(m, ty, side = null) {
   // A machine that has been switched off turns everything away, which is the
   // point of switching it off: the line behind it backs up and stops, on purpose.
   if (m.off) return false;
+  // A machine the mites have chewed through takes nothing until it is repaired.
+  if (broken(m)) return false;
   if (side != null && !acceptsFrom(m, side)) return false;
   if (m.kind === 'ext') return false;
   if (m.kind === 'depot' || m.kind === 'lab' || m.kind === 'gen') return true;
-  if (m.kind === 'asm') {
-    if (!recipeOf(m).ins.includes(ty)) return false;
+  if (m.kind === 'zap') return ty === AMMO;
+  if (m.kind === 'asm' || m.kind === 'arm') {
+    if (!twoInput(m).ins.includes(ty)) return false;
     return queued(m, ty) < LANE;
   }
   if (m.kind === 'fuse') {
-    if (famOf(ty) === PRODUCT) return false;      // products are terminal
+    if (famOf(ty) >= PRODUCT) return false;       // products and ammo are terminal
     const have = queued(m, ty);
     if (have) return have < LANE;
     // A new type only gets a queue if there is one going spare.
@@ -707,8 +846,9 @@ export function canEverAccept(m, ty, side = null) {
   if (!m) return true;
   if (side != null && !acceptsFrom(m, side)) return false;
   if (m.kind === 'ext') return false;
-  if (m.kind === 'asm') return recipeOf(m).ins.includes(ty);
-  if (m.kind === 'fuse') return famOf(ty) !== PRODUCT;
+  if (m.kind === 'zap') return ty === AMMO;
+  if (m.kind === 'asm' || m.kind === 'arm') return twoInput(m).ins.includes(ty);
+  if (m.kind === 'fuse') return famOf(ty) < PRODUCT;
   return true;
 }
 
@@ -728,8 +868,8 @@ export function pickInputs(m) {
   const need = intake(m);
   if (!need) return [];
 
-  if (m.kind === 'asm') {
-    const want = recipeOf(m).ins.slice();
+  if (m.kind === 'asm' || m.kind === 'arm') {
+    const want = twoInput(m).ins.slice();
     const take = [];
     for (let i = 0; i < m.buf.length && want.length; i++) {
       const k = want.indexOf(m.buf[i].ty);
@@ -760,8 +900,8 @@ export function pickInputs(m) {
  */
 export function missingFor(m) {
   if (!m) return [];
-  if (m.kind === 'asm') {
-    const want = recipeOf(m).ins.slice();
+  if (m.kind === 'asm' || m.kind === 'arm') {
+    const want = twoInput(m).ins.slice();
     for (const g of m.buf) {
       const k = want.indexOf(g.ty);
       if (k >= 0) want.splice(k, 1);
@@ -783,7 +923,7 @@ export function missingFor(m) {
 export function exitDirs(m) {
   const d = m.dir | 0;
   switch (m.kind) {
-    case 'depot': case 'lab': case 'gen':
+    case 'depot': case 'lab': case 'gen': case 'zap':
       return [];
     case 'bal':
       return balDirs(m);
@@ -896,6 +1036,12 @@ export const TECH = [
     blurb: 'Unlocks the Reactor Assembler, the richest recipe there is.' },
   { id: 'trifurcation', name: 'Trifurcation', cost: 3400, needs: ['replication'],
     unlocks: ['trident'], blurb: 'Unlocks the Trident: three exits, one job.' },
+  { id: 'focus', name: 'Focusing', cost: 260, needs: [], focus: 1,
+    blurb: `Every Zapper reaches ${FOCUS_RANGE} slots further.` },
+  { id: 'arc', name: 'Arc Discharge', cost: 900, needs: ['focus'], arc: 1,
+    blurb: `Every zap jumps on to ${ARC_CHAIN} more mites standing close to the first.` },
+  { id: 'plating', name: 'Plating', cost: 1300, needs: ['arc'], hp: 1,
+    blurb: 'Every machine on the map takes 50% more chewing before it breaks.' },
 ];
 
 export const techById = id => TECH.find(t => t.id === id) || null;
@@ -905,7 +1051,7 @@ export const techOpen = (t, done) => (t.needs || []).every(n => done.includes(n)
 
 /** Everything a set of finished research makes buildable. */
 export function unlockedBy(done = []) {
-  const out = new Set(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse']);
+  const out = new Set(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse', 'arm', 'zap']);
   for (const id of done) for (const u of techById(id)?.unlocks || []) out.add(u);
   return out;
 }
@@ -954,6 +1100,8 @@ export function catalogue(done = [], counts = {}) {
   RECIPES.forEach((r, i) => { if (on.has('asm:' + i)) add({ kind: 'asm', mut: i }); });
   if (on.has('dup')) add({ kind: 'dup' });
   if (on.has('trident')) add({ kind: 'trident' });
+  add({ kind: 'arm' });
+  add({ kind: 'zap' });
   return out;
 }
 
@@ -1078,6 +1226,7 @@ export const MILESTONES = [
   { id: 'science', name: 'Run an experiment', hint: 'Push a gizmo into a Research Lab.' },
   { id: 'expand', name: 'Buy land', hint: 'Claim a ring, and reach the patches outside your fence.' },
   { id: 'recipe', name: 'Assemble a product', hint: 'Research Assembly, then feed an Assembler both halves.' },
+  { id: 'zap', name: 'Zap a mite', hint: 'Build a Zapper near your line and belt Ammo into it from an Armory.' },
 ];
 
 /* ------------------------------------------------------------------- misc --- */

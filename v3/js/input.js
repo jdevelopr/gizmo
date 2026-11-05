@@ -327,6 +327,12 @@ export class Input {
         else if (this.target() >= 0) this.act('mir', this.target());
         break;
       case 'o': this.act('off', this.target()); break;
+      case 'z': this.act('tool', { kind: 'zap' }); break;
+      case 'b': this.act('tool', { kind: 'arm' }); break;
+      case 'h':
+        if (e.shiftKey) this.act('repairAll');
+        else this.act('repair', this.target());
+        break;
       case 'q': this.act('pipette', this.target()); break;
       case 'm': this.act('pickup', this.target()); break;
       case 'x': case 'delete': case 'backspace':

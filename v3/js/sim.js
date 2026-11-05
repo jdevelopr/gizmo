@@ -38,9 +38,10 @@ import {
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
-  STALL_BADGE, label, PLUMBING,
+  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
+import { initBugs, stepBugs, nestAt } from './bugs.js';
 import { generateWorld } from './world.js';
 
 const EPS = 1e-6;
@@ -88,8 +89,9 @@ export function createFactory({ cash = 400, seed = 1, world = null } = {}) {
     nid: 1,
     t: 0,               // seconds of factory time elapsed
     mapRev: 0,          // bumped whenever the ground itself changes, so the
-                        // renderer knows to repaint its one big floor canvas               // seconds of factory time elapsed
+                        // renderer knows to repaint its one big floor canvas
   };
+  initBugs(f);
   return f;
 }
 
@@ -110,6 +112,7 @@ export function starterKit(f) {
 /** Put a machine down with no cost, no checks and no auto-facing. */
 function placeRaw(f, spec, i) {
   const m = makeMachine(spec, f.nid++);
+  if (spec.hp == null) m.hp = maxHp(m, f.done);
   if (spec.kind === 'ext') { m.mut = f.patch[i]; m.rich = f.rich[i] || 1; }
   f.grid[i] = m;
   f.dirty = true;
@@ -268,7 +271,7 @@ function retally(f) {
 const jobActive = m => m.t > 0 || !!(m.out && m.out.length);
 
 /** How fast this machine's clock is running, given the grid it is on. */
-export const speedOf = m => powerMult(m.net >= 0 ? m.sat : 0);
+export const speedOf = (m, done = []) => powerMult(m.net >= 0 ? m.sat : 0) * hpMult(m, done);
 
 /* ------------------------------------------------------------------- step --- */
 
@@ -279,15 +282,19 @@ export function stepFactory(f, dt) {
   retally(f);
   if (f.dirty) rebuild(f);
   balancePower(f, dt);
+  stepBugs(f, dt);
 
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
+    // Chewed through. Like a machine switched off, it holds what it has and does
+    // nothing — but it is drawn as broken, not as paused, and it costs to fix.
+    if (broken(m)) { m.blockT = 0; m.waitT = 0; m.blocked = 0; continue; }
     // Switched off. It keeps whatever is in its hands — you have paused it, not
     // emptied it — and it is not stuck, so nothing badges it as stuck.
     if (m.off) { m.blockT = 0; m.waitT = 0; continue; }
     if (PASSIVE.has(m.kind)) { runPassive(f, m, i); continue; }
-    const sp = speedOf(m);
+    const sp = speedOf(m, f.done);
     if (jobActive(m)) {
       m.t -= dt * sp;
       if (m.t <= 0) release(f, m, i, sp);
@@ -607,6 +614,7 @@ export function buildCheck(f, spec, i) {
   if (f.terrain[i] === RUBBLE) return no(`Rubble — clear it for $${RUBBLE_COST}`);
   if (f.terrain[i] !== OPEN) return no('Bedrock will not move');
   if (spec.kind === 'ext' && f.patch[i] < 0) return no('An Extractor has to stand on ore');
+  if (nestAt(f, i)) return no('A mite nest — zap it out first');
   // Building over the top of something is allowed, and is the normal way to change
   // your mind about a slot. Whatever was there goes in the crate — unless the crate
   // is full, which is the one thing that can stop it.
@@ -829,6 +837,7 @@ export function moveMachine(f, from, to) {
   if (!claimed(to, f.claim)) return no('You do not own this land');
   if (f.terrain[to] !== OPEN) return no('Something is in the way');
   if (m.kind === 'ext' && f.patch[to] < 0) return no('An Extractor has to stand on ore');
+  if (nestAt(f, to)) return no('A mite nest — zap it out first');
   if (f.grid[to]) {
     // Dropping one machine on another puts the one underneath in the crate, the
     // same as building over it does. Nothing on this map is ever destroyed by
@@ -988,7 +997,14 @@ export function research(f, id) {
   if (!techOpen(t, f.done)) return no('Needs earlier research');
   if (f.science < t.cost) return no(`Needs ${t.cost} science`);
   f.science -= t.cost;
+  const before = f.cells.map(i => f.grid[i]).concat(f.crate).map(m => [m, maxHp(m, f.done)]);
   f.done.push(id);
+  // Plating raises every machine's ceiling, and lifts what it has by the same
+  // proportion, so a machine at full health is still at full health afterwards.
+  for (const [m, was] of before) {
+    const now = maxHp(m, f.done);
+    if (now !== was && m.hp != null) m.hp = m.hp * now / was;
+  }
   f.dirty = true;              // reach, output and yield may all have just changed
   f.fx.push({ k: 'tech', name: t.name });
   return yes(`${t.name} complete`);
@@ -1007,10 +1023,12 @@ export function research(f, id) {
 export function diagnose(f) {
   let blocked = 0, starved = 0, waiting = 0, unpowered = 0;
   let dryGens = 0, gens = 0, depots = 0, exts = 0;
-  let waitingFor = null, waitingAt = -1, switchedOff = 0;
+  let waitingFor = null, waitingAt = -1, switchedOff = 0, brokenN = 0, hurt = 0;
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
+    if (broken(m)) { brokenN++; continue; }
+    if (m.hp != null && m.hp < maxHp(m, f.done) - 0.01) hurt++;
     if (m.off) { switchedOff++; continue; }
     if (m.kind === 'gen') { gens++; if (m.fuel <= 0 && !m.buf.length) dryGens++; continue; }
     if (m.kind === 'depot') { depots++; continue; }
@@ -1035,7 +1053,7 @@ export function diagnose(f) {
   const jammed = jams(f);
   return {
     blocked, starved, waiting, unpowered, dryGens, gens, depots, exts, worst,
-    waitingFor, waitingAt, switchedOff, jams: jammed,
+    waitingFor, waitingAt, switchedOff, jams: jammed, broken: brokenN, hurt,
   };
 }
 
@@ -1059,7 +1077,7 @@ export function jams(f) {
   const out = [];
   for (const i of f.cells) {
     const m = f.grid[i];
-    if (!m || m.off || !m.blocked || m.blockT <= STALL_BADGE) continue;
+    if (!m || m.off || broken(m) || !m.blocked || m.blockT <= STALL_BADGE) continue;
     for (const o of m.out || []) {
       const nx = cx(i) + DIRS[o.dir][0], ny = cy(i) + DIRS[o.dir][1];
       if (!openAt(f, nx, ny)) continue;

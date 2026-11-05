@@ -11,8 +11,9 @@
 
 import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
-  expandCost, buyCost, label, PASSIVE,
+  expandCost, buyCost, label, PASSIVE, zapRange,
 } from './machines.js';
+import { repairMachine, repairAll } from './bugs.js';
 import { View, ZOOMS, DEFAULT_ZOOM } from './render.js';
 import {
   build, buildCheck, moveMachine, scrapMachine, applyAction, research,
@@ -156,6 +157,7 @@ function frame(now) {
     ghost: S.ghost,
     dragPath: S.drag?.mode === 'build' ? S.drag.path : null,
     reach: S.reach,
+    range: S.range,
   });
 
   hud.update(g, tutorial.update(g));
@@ -196,7 +198,32 @@ function playFx(fx) {
     else if (e.k === 'sweep') view.float(`-${e.n}`, cx(e.cell) + 0.5, cy(e.cell), '#8b96b8');
     else if (e.k === 'tech') toast(g, `${e.name} researched`, '#b8bcff');
     else if (e.k === 'grow') toast(g, `Claim is now ${e.claim} x ${e.claim}`, '#a7f070');
+    else if (e.k === 'zap') view.beam(e.path);
+    else if (e.k === 'kill') view.float('ZAP', e.x, e.y - 0.3, '#e0d4ff');
+    else if (e.k === 'repair') view.float(`-$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#ffcd75');
+    else if (e.k === 'nest') {
+      view.float(`+$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#a7f070');
+      toast(g, `Nest destroyed — ${money(e.v)} bounty`, '#a7f070');
+    } else if (e.k === 'stir') toast(g, 'The mites are stirring. A swarm is coming soon.', '#ff9ab8');
+    else if (e.k === 'swarm') toast(g, `A swarm of ${e.n} mites is coming from the ${compass(e.cell)}`, '#ff6f9a');
+    else if (e.k === 'broke') {
+      // Throttled: a swarm loose on a belt run breaks things faster than anybody
+      // wants to read about them one at a time.
+      if (g.f.t - (S.lastBroke || -99) > 4) {
+        S.lastBroke = g.f.t;
+        toast(g, `Mites broke ${label(g.f.grid[e.cell] || { kind: 'pipe' })} — H repairs it`, '#ff8a6a');
+      }
+    }
   }
+}
+
+/** Which way a slot lies from the middle of the map, in words. */
+function compass(cell) {
+  const c = (WORLD - 1) / 2;
+  const dx = cx(cell) - c, dy = cy(cell) - c;
+  const ns = dy < -Math.abs(dx) / 2 ? 'north' : dy > Math.abs(dx) / 2 ? 'south' : '';
+  const ew = dx > Math.abs(dy) / 2 ? 'east' : dx < -Math.abs(dy) / 2 ? 'west' : '';
+  return (ns + ew) || 'wilds';
 }
 
 /**
@@ -218,6 +245,9 @@ function place(spec, cell, dir, mir) {
 function updateGhost() {
   S.ghost = null;
   S.reach = null;
+  // A Zapper's reach is shown while you hold one, and while one is selected.
+  const sel = S.selected >= 0 ? g.f.grid[S.selected] : null;
+  S.range = sel?.kind === 'zap' ? { cell: S.selected, r: zapRange(sel, g.f.done) } : null;
   if (S.hand >= 0) {
     if (S.hover >= 0) {
       const m = g.f.grid[S.hand];
@@ -236,6 +266,7 @@ function updateGhost() {
   const cost = free ? 0 : buyCost(S.tool, countKind(g.f, S.tool.kind));
   S.ghost = { cell: S.hover, spec: S.tool, mode, ok: check.ok && g.f.cash >= cost };
   if (S.tool.kind === 'gen') S.reach = reachFrom(g.f, S.hover, { level: 1 });
+  if (S.tool.kind === 'zap') S.range = { cell: S.hover, r: zapRange({ level: S.tool.level || 1 }, g.f.done) };
 }
 
 /**
@@ -264,9 +295,9 @@ function updateHint() {
       (drag ? 'click, or drag to lay a run  ·  ' : '') +
       '<b>R</b> turn  <b>F</b> flip  <b>Esc</b> drop';
   } else if (S.selected >= 0 && g.f.grid[S.selected]) {
-    txt = '<b>R</b> turn  <b>M</b> move  <b>X</b> scrap  <b>Q</b> copy to hand  ·  drag to pan  ·  <b>V</b> power  <b>?</b> controls';
+    txt = '<b>R</b> turn  <b>M</b> move  <b>X</b> scrap  <b>H</b> repair  <b>Q</b> copy to hand  ·  drag to pan  ·  <b>V</b> power  <b>?</b> controls';
   } else {
-    txt = '<b>drag</b> to move the map  ·  <b>1</b>–<b>0</b> build  ·  <b>Q</b> copy  <b>V</b> power  <b>C</b> buy land  <b>?</b> controls';
+    txt = '<b>drag</b> to move the map  ·  <b>1</b>–<b>0</b> build  ·  <b>Z</b> zapper  <b>B</b> armory  ·  <b>Q</b> copy  <b>V</b> power  <b>C</b> buy land  <b>?</b> controls';
   }
   if (n.dataset.txt !== txt) { n.dataset.txt = txt; n.innerHTML = txt; }
 }
@@ -433,6 +464,19 @@ function act(name, payload, extra) {
       const n = sweepGround(f, payload);
       if (n) toast(g, `${n} swept up`, '#8b96b8');
       return { ok: !!n, swept: n };
+    }
+    case 'repair': {
+      if (payload == null || payload < 0 || !f.grid[payload]) return;
+      const r = repairMachine(f, payload);
+      if (!r.ok && r.msg !== 'Not damaged') toast(g, r.msg, '#ff8a6a');
+      panel.key = '';
+      return r;
+    }
+    case 'repairAll': {
+      const r = repairAll(f);
+      toast(g, r.msg, r.ok ? '#ffcd75' : '#ff8a6a');
+      panel.key = '';
+      return r;
     }
     case 'clear': {
       if (payload == null || payload < 0) return;

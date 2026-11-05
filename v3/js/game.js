@@ -25,6 +25,7 @@ import {
   money, makeMachine, techById, unlockedBy, OPEN,
 } from './machines.js';
 import { generateWorld } from './world.js';
+import { spawnMite } from './bugs.js';
 import {
   createFactory, starterKit, stepFactory, rebuild, drainFx, diagnose, reachesPayout,
 } from './sim.js';
@@ -272,7 +273,8 @@ export function checkMilestones(g) {
     if (m.kind === 'gen' && m.fuel > 0) hit('power');
     if (m.kind === 'mut' && m.net >= 0) hit('mutate');
   }
-  for (let ty = 11; ty < TYPES.length; ty++) if (f.shipped[ty] > 0) hit('recipe');
+  for (let ty = 11; ty <= 13; ty++) if (f.shipped[ty] > 0) hit('recipe');
+  if (f.zapped > 0) hit('zap');
 }
 
 /* ------------------------------------------------------------------ toasts --- */
@@ -312,9 +314,9 @@ export function serialise(g) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
-    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0]);
+    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.charge | 0]);
   }
-  const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0]);
+  const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10]);
   const cleared = [];
   const base = generateWorld(f.seed);
   for (let i = 0; i < f.terrain.length; i++) {
@@ -338,6 +340,17 @@ export function serialise(g) {
     cleared,
     machines,
     crate,
+    // Mites are saved, unlike gizmos: reloading must not be a way to make a
+    // swarm that is halfway through your belts simply vanish.
+    bugs: {
+      nests: (f.nests || []).map(n => [n.cell, Math.round(n.hp)]),
+      mites: (f.mites || []).map(mt => [Math.round(mt.x * 100) / 100, Math.round(mt.y * 100) / 100, Math.round(mt.hp * 10) / 10, mt.max]),
+      swarm: Math.round(f.swarm || 0),
+      waves: f.waves || 0,
+      zapped: f.zapped || 0,
+      chewed: f.chewed || 0,
+      regrow: (f.regrow || []).map(t => Math.round(t)),
+    },
   };
 }
 
@@ -357,9 +370,10 @@ export function deserialise(data) {
   f.done = (data.done || []).filter(id => techById(id));
   (data.shipped || []).forEach((n, ty) => { if (ty < f.shipped.length) f.shipped[ty] = n; });
 
-  for (const [i, kind, dir, level, mut, mir, off] of data.machines || []) {
+  for (const [i, kind, dir, level, mut, mir, off, hp, charge] of data.machines || []) {
     if (!Number.isInteger(i) || i < 0 || i >= f.grid.length) continue;
-    const m = makeMachine({ kind, dir, mut, mir, level, off }, f.nid++);
+    const m = makeMachine({ kind, dir, mut, mir, level, off, hp: hp ?? undefined }, f.nid++);
+    if (charge) m.charge = charge;
     if (kind === 'ext') {
       // The world is rebuilt from its seed, so an Extractor whose ore is not
       // there any more — an older save, a changed generator — cannot stand. It
@@ -371,9 +385,23 @@ export function deserialise(data) {
     }
     f.grid[i] = m;
   }
-  for (const [kind, dir, level, mut, mir, off] of data.crate || []) {
+  for (const [kind, dir, level, mut, mir, off, hp] of data.crate || []) {
     if (!kind) continue;
-    f.crate.push(makeMachine({ kind, dir, mut, mir, level, off }, f.nid++));
+    f.crate.push(makeMachine({ kind, dir, mut, mir, level, off, hp: hp ?? undefined }, f.nid++));
+  }
+  const b = data.bugs;
+  if (b) {
+    f.nests = (b.nests || []).filter(([c, hp]) => Number.isInteger(c) && hp > 0).map(([cell, hp]) => ({ cell, hp }));
+    f.mites = [];
+    for (const [x, y, hp, max] of b.mites || []) {
+      const mt = spawnMite(f, x, y, max || hp);
+      if (mt) { mt.x = x; mt.y = y; mt.hp = hp; }
+    }
+    f.swarm = b.swarm || 0;
+    f.waves = b.waves || 0;
+    f.zapped = b.zapped || 0;
+    f.chewed = b.chewed || 0;
+    f.regrow = b.regrow || [];
   }
   rebuild(f);
 

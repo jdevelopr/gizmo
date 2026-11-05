@@ -41,7 +41,7 @@
 
 import {
   DIRS, cellOf, cx, cy, inWorld,
-  drawOf, intake, genOutput, genReach, energyOf, powerMult, KINDS,
+  drawOf, intake, genOutput, genReach, energyOf, powerMult, KINDS, broken,
 } from './machines.js';
 
 /**
@@ -153,6 +153,9 @@ export function solveTopology(f) {
  */
 function busy(m) {
   if (m.off) return false;                      // switched off draws nothing
+  if (broken(m)) return false;                  // and so does a chewed-through one
+  // A Zapper draws while it recharges between shots — so a swarm is a spike.
+  if (m.kind === 'zap') return m.cool > 0;
   if (KINDS[m.kind].passive) return false;
   if (m.work.length) return true;
   return m.buf.length >= intake(m);
@@ -180,7 +183,7 @@ export function balancePower(f, dt) {
     for (const gi of net.gens) {
       const m = g[gi];
       if (!m) continue;
-      if (m.off) { m.load = 0; continue; }       // a generator you switched off
+      if (m.off || broken(m)) { m.load = 0; continue; }   // switched off, or chewed through
       if (m.fuel <= 0 && m.buf.length) {
         const fuel = m.buf.shift();
         m.fuel = energyOf(fuel.ty, f.done);
@@ -210,7 +213,7 @@ export function balancePower(f, dt) {
     if (delivered > 0 && net.supply > 0) {
       for (const gi of net.gens) {
         const m = g[gi];
-        if (!m || m.off || m.fuel <= 0) continue;
+        if (!m || m.off || broken(m) || m.fuel <= 0) continue;
         const share = genOutput(m, f.done) / net.supply * delivered;
         m.load = share;
         m.fuel = Math.max(0, m.fuel - share * dt);

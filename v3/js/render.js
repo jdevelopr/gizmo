@@ -31,6 +31,7 @@ import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
   cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
+  ARMORY, broken, maxHp, AMMO_CHARGES, NEST_HP,
 } from './machines.js';
 import { heldTypes, machineLoad, contents } from './sim.js';
 
@@ -127,7 +128,7 @@ function makeCanvas(w, h) {
 const tiles = new Map();
 
 /** How many animation frames a kind's body has. Most have one. */
-const FRAMES = { pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab: 4 };
+const FRAMES = { pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab: 4, arm: 4, zap: 4 };
 
 export function frameCount(kind) { return FRAMES[kind] || 1; }
 
@@ -471,8 +472,124 @@ function drawBody(ctx, m, frame) {
       break;
     }
 
+    case 'arm': {
+      // A press: a heavy ram over a die, with a cell of Ammo in the window and the
+      // two intake ports in the colours of Scrap and Copper.
+      const inA = TYPES[ARMORY.ins[0]], inB = TYPES[ARMORY.ins[1]], out = TYPES[ARMORY.out];
+      px(ctx, 6, 6, 20, 20, '#0e1526');
+      const ram = [0, 2, 3, 1][frame % 4];
+      px(ctx, 9, 7 + ram, 14, 4, shade(trim, 1.1));
+      px(ctx, 9, 7 + ram, 14, 1, lit);
+      px(ctx, 15, 5, 2, 2 + ram, shade(trim, 0.7));
+      px(ctx, 11, 14, 10, 8, '#05070d');
+      px(ctx, 13, 15, 6, 6, out.color);
+      px(ctx, 13, 15, 6, 2, out.glow);
+      px(ctx, 15, 14, 2, 1, out.glow);
+      px(ctx, 5, 25, 9, 4, '#05070d');
+      px(ctx, 6, 26, 7, 2, inA.color);
+      px(ctx, 18, 25, 9, 4, '#05070d');
+      px(ctx, 19, 26, 7, 2, inB.color);
+      chevron(ctx, cxp, cyp, d, lit, 10);
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 3, 6 + i * 4, 2, 2, lit);
+      break;
+    }
+
+    case 'zap': {
+      // A coil turret: a squat base, a wound column, and an orb on top that hums.
+      px(ctx, 7, 20, 18, 6, '#0e0a1c');
+      px(ctx, 8, 21, 16, 4, shade(body, 1.4));
+      px(ctx, 8, 21, 16, 1, shade(trim, 0.9));
+      px(ctx, 12, 11, 8, 10, '#0e0a1c');
+      for (let r = 0; r < 4; r++) px(ctx, 12, 12 + r * 2, 8, 1, r % 2 ? trim : shade(trim, 0.6));
+      const pulse = [0.85, 1, 1.15, 1][frame % 4];
+      px(ctx, 11, 4, 10, 8, '#0e0a1c');
+      px(ctx, 12, 5, 8, 6, shade(trim, pulse));
+      px(ctx, 13, 6, 4, 3, lit);
+      px(ctx, 14, 6, 2, 1, '#ffffff');
+      // the arms that the arc jumps from
+      px(ctx, 6, 8, 5, 2, shade(trim, 0.8));
+      px(ctx, 21, 8, 5, 2, shade(trim, 0.8));
+      px(ctx, 5, 7, 2, 2, lit);
+      px(ctx, 25, 7, 2, 2, lit);
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 4, 21 + i * 3, 2, 2, lit);
+      break;
+    }
+
     default:
       chevron(ctx, cxp, cyp, d, trim, 8);
+  }
+}
+
+/* ------------------------------------------------------------------ mites --- */
+
+/**
+ * A mite, drawn live at its exact position. Ten art-pixels long, six legs that
+ * scuttle, and a head that points the way it is going. Zoomed right out it is a
+ * single pink pixel, which is what it should be: from that far away the only
+ * question is how many and where.
+ */
+function drawMite(ctx, mt, sx, sy, z) {
+  const s = z / CELL;
+  if (z < 16) {
+    const w = Math.max(2, Math.round(z / 6));
+    px(ctx, sx - w / 2, sy - w / 2, w, w, '#ff4f7a');
+    return;
+  }
+  const chew = mt.st === 'chew';
+  const jig = chew ? Math.round(Math.sin(mt.ph * 2) * s) : 0;
+  const leg = Math.floor(mt.ph) % 2;
+  const horiz = mt.face === 0 || mt.face === 2;
+  const L = 10 * s, W = 7 * s;
+  const bw = horiz ? L : W, bh = horiz ? W : L;
+  const x0 = Math.round(sx - bw / 2 + jig), y0 = Math.round(sy - bh / 2);
+  const p = Math.max(1, Math.round(s));
+  // legs
+  for (let k = 0; k < 3; k++) {
+    const o = (k * 3 + 1.5) * s + ((k + leg) % 2 ? s : 0);
+    if (horiz) {
+      px(ctx, x0 + o, y0 - 2 * s, p, 2 * s, '#3a0f1e');
+      px(ctx, x0 + o, y0 + bh, p, 2 * s, '#3a0f1e');
+    } else {
+      px(ctx, x0 - 2 * s, y0 + o, 2 * s, p, '#3a0f1e');
+      px(ctx, x0 + bw, y0 + o, 2 * s, p, '#3a0f1e');
+    }
+  }
+  // body and shell
+  px(ctx, x0, y0, bw, bh, '#2a0a16');
+  px(ctx, x0 + p, y0 + p, bw - 2 * p, bh - 2 * p, '#8a2346');
+  if (horiz) px(ctx, x0 + p, y0 + p, bw - 2 * p, p, '#c0436c');
+  else px(ctx, x0 + p, y0 + p, p, bh - 2 * p, '#c0436c');
+  // head, toward where it is going
+  const hw = 4 * s;
+  const hx = mt.face === 0 ? x0 + bw - p : mt.face === 2 ? x0 - hw + p : x0 + (bw - hw) / 2;
+  const hy = mt.face === 1 ? y0 + bh - p : mt.face === 3 ? y0 - hw + p : y0 + (bh - hw) / 2;
+  px(ctx, hx, hy, hw, hw, '#2a0a16');
+  px(ctx, hx + p, hy + p, hw - 2 * p, hw - 2 * p, chew ? '#ff7aa0' : '#d8577f');
+  px(ctx, hx + p, hy + p, p, p, '#ffe0ea');
+  // a hurt mite shows it
+  if (mt.hp < mt.max) {
+    const w = 10 * s;
+    px(ctx, sx - w / 2, sy - 7 * s, w, Math.max(1, s), '#2a0a16');
+    px(ctx, sx - w / 2, sy - 7 * s, w * Math.max(0, mt.hp / mt.max), Math.max(1, s), '#ff9ab8');
+  }
+}
+
+/** A nest: a mound of earth with holes in it and something glowing underneath. */
+function drawNest(ctx, n, sx, sy, z, t) {
+  const s = z / CELL;
+  if (z < 16) { px(ctx, sx + z * 0.2, sy + z * 0.2, z * 0.6, z * 0.6, '#7a1f4a'); return; }
+  const glow = 0.75 + Math.sin(t * 3 + n.cell) * 0.25;
+  px(ctx, sx + 3 * s, sy + 10 * s, 26 * s, 18 * s, '#1c0a14');
+  px(ctx, sx + 5 * s, sy + 8 * s, 22 * s, 18 * s, '#3b1430');
+  px(ctx, sx + 8 * s, sy + 5 * s, 16 * s, 8 * s, '#5c1f48');
+  px(ctx, sx + 8 * s, sy + 5 * s, 16 * s, 2 * s, '#7e2c62');
+  for (const [hx, hy] of [[9, 12], [18, 10], [13, 18], [21, 19]]) {
+    px(ctx, sx + hx * s, sy + hy * s, 4 * s, 3 * s, '#05070d');
+    px(ctx, sx + (hx + 1) * s, sy + (hy + 1) * s, 2 * s, s, shade('#ff4f7a', glow));
+  }
+  if (n.hp < NEST_HP) {
+    px(ctx, sx + 4 * s, sy + 2 * s, 24 * s, 2 * s, '#05070d');
+    px(ctx, sx + 4 * s, sy + 2 * s, 24 * s * Math.max(0, n.hp / NEST_HP), 2 * s, '#ff4f7a');
   }
 }
 
@@ -576,6 +693,8 @@ export class View {
     this.floats = [];
     this.t = 0;
     this.showPower = false;
+    this.beams = [];
+    this.lastDt = 0;
     this.stats = { drawn: 0, gizmos: 0 };
   }
 
@@ -679,6 +798,7 @@ export class View {
     const ctx = this.ctx;
     const z = this.cam.zoom;
     this.t += Math.max(0, ui.dt || 0);
+    this.lastDt = Math.max(0, ui.dt || 0);
     ctx.clearRect(0, 0, this.w, this.h);
     px(ctx, 0, 0, this.w, this.h, INK);
 
@@ -707,6 +827,10 @@ export class View {
 
     // 3. the gizmos
     this.drawGizmos(ctx, f, b, z);
+
+    // 3b. nests, mites and the arcs that kill them
+    this.drawBugs(ctx, f, b, z);
+    if (ui.range) this.drawRange(ctx, ui.range.cell, ui.range.r, z);
 
     // 4. everything that is about what you are doing rather than what is there
     if (this.showPower) this.drawPowerOverlay(ctx, f, b, z);
@@ -756,13 +880,44 @@ export class View {
         const cxp = sx + z / 2, cyp = sy + z / 2;
         px(ctx, cxp + DIRS[d][0] * z * 0.28 - h / 2, cyp + DIRS[d][1] * z * 0.28 - h / 2, h, h, k.trim);
       }
-      if (m.off) { ctx.globalAlpha = 0.62; px(ctx, sx, sy, z, z, '#0b0d16'); ctx.globalAlpha = 1; }
+      if (broken(m)) { ctx.globalAlpha = 0.7; px(ctx, sx, sy, z, z, '#5a0f1e'); ctx.globalAlpha = 1; }
+      else if (m.off) { ctx.globalAlpha = 0.62; px(ctx, sx, sy, z, z, '#0b0d16'); ctx.globalAlpha = 1; }
       else if (m.net < 0 && k.draw > 0) { ctx.globalAlpha = 0.3; px(ctx, sx, sy, z, z, '#0a1230'); ctx.globalAlpha = 1; }
+      if (m.hurt > 0) { ctx.globalAlpha = m.hurt * 0.5; px(ctx, sx, sy, z, z, '#ff3b5c'); ctx.globalAlpha = 1; }
       return;
     }
 
     ctx.drawImage(bodyTile(m, frame), sx, sy, z, z);
     const s = z / CELL;   // art pixels to screen pixels
+
+    // --- chewed. Health is drawn on every machine that has lost any, because a
+    // belt halfway eaten is the one you want to find before it breaks.
+    const hpMax = maxHp(m, f?.done || []);
+    if (m.hurt > 0) {
+      ctx.globalAlpha = m.hurt * 0.45;
+      px(ctx, sx, sy, z, z, '#ff3b5c');
+      ctx.globalAlpha = 1;
+    }
+    if (broken(m)) {
+      ctx.globalAlpha = 0.55;
+      px(ctx, sx, sy, z, z, '#2a0610');
+      ctx.globalAlpha = 1;
+      // a crack across it, and a red cross in the corner: this one needs paying for
+      const c = '#ff4f6a';
+      for (let k2 = 0; k2 < 6; k2++) px(ctx, sx + (7 + k2 * 3) * s, sy + (9 + (k2 % 2) * 3 + k2 * 2) * s, 3 * s, 2 * s, '#05070d');
+      const t = Math.max(2, 2 * s), q = Math.max(4, 7 * s);
+      for (let k2 = 0; k2 < q; k2 += t) {
+        px(ctx, sx + 2 * s + k2, sy + 2 * s + k2, t, t, c);
+        px(ctx, sx + 2 * s + q - t - k2, sy + 2 * s + k2, t, t, c);
+      }
+      return;
+    }
+    if (m.hp != null && m.hp < hpMax - 0.01) {
+      const r = Math.max(0, m.hp / hpMax);
+      const w = z - 6 * s, h = Math.max(2, 2 * s);
+      px(ctx, sx + 3 * s, sy + 1 * s, w, h, '#05070d');
+      px(ctx, sx + 3 * s, sy + 1 * s, w * r, h, r > 0.5 ? '#ffcd75' : '#ff5d4a');
+    }
 
     // --- what it is holding, in its window
     // Switched off by hand. Everything below — cargo, progress, stall badges, the
@@ -814,6 +969,14 @@ export class View {
       const stock = Math.min(1, machineLoad(m) / cap);
       px(ctx, sx + 3 * s, sy + 3 * s, Math.max(1, 2 * s), (z - 6 * s) * stock, m.fuel > 0 ? HOT : '#4a3a30');
       if (m.fuel <= 0) this.badge(ctx, sx, sy, z, '#ff5d4a');
+    }
+
+    // --- a Zapper's charges, as pips down its side, and a red badge when it is dry
+    if (m.kind === 'zap') {
+      const n = Math.min(AMMO_CHARGES, m.charge | 0);
+      const t = Math.max(1, 2 * s);
+      for (let k2 = 0; k2 < n; k2++) px(ctx, sx + z - 5 * s, sy + (6 + k2 * 3) * s, t, t, '#fbffb8');
+      if (m.charge <= 0 && !m.buf.length) this.badge(ctx, sx, sy, z, '#ff5d4a');
     }
 
     /*
@@ -884,6 +1047,76 @@ export class View {
         }
       }
     }
+  }
+
+  /* ----------------------------------------------------------------- bugs --- */
+
+  /** Called by main.js for every zap the simulation fires. */
+  beam(path) {
+    if (this.beams.length > 40) this.beams.shift();
+    this.beams.push({ path, life: 1 });
+  }
+
+  drawBugs(ctx, f, b, z) {
+    const inView = (x, y) => x >= b.x0 - 1 && x <= b.x1 + 2 && y >= b.y0 - 1 && y <= b.y1 + 2;
+    for (const n of f.nests || []) {
+      const x = cx(n.cell), y = cy(n.cell);
+      if (!inView(x, y)) continue;
+      const [sx, sy] = this.toScreen(x, y);
+      drawNest(ctx, n, Math.round(sx), Math.round(sy), z, this.t);
+    }
+    for (const mt of f.mites || []) {
+      if (!inView(mt.x, mt.y)) continue;
+      const [sx, sy] = this.toScreen(mt.x, mt.y);
+      drawMite(ctx, mt, sx, sy, z);
+    }
+    // The arcs. Jagged, re-jittered every frame, gone in a fifth of a second.
+    if (!this.beams.length) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let k = this.beams.length - 1; k >= 0; k--) {
+      const bm = this.beams[k];
+      bm.life -= (this.lastDt || 0.016) * 5;
+      if (bm.life <= 0) { this.beams.splice(k, 1); continue; }
+      const pts = [];
+      for (let j = 0; j < bm.path.length - 1; j++) {
+        const [x0, y0] = bm.path[j], [x1, y1] = bm.path[j + 1];
+        const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+        const nx = -(y1 - y0) / len, ny = (x1 - x0) / len;
+        const steps = Math.max(2, Math.round(len * 2));
+        for (let q = 0; q <= steps; q++) {
+          const u = q / steps;
+          const jit = (q === 0 || q === steps) ? 0 : (Math.random() - 0.5) * 0.35;
+          pts.push(this.toScreen(x0 + (x1 - x0) * u + nx * jit, y0 + (y1 - y0) * u + ny * jit));
+        }
+      }
+      for (const [w, col, a] of [[Math.max(3, z / 7), '#8f6cff', 0.45], [Math.max(1, z / 20), '#f4eeff', 1]]) {
+        ctx.globalAlpha = a * bm.life;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        pts.forEach(([px_, py_], q) => (q ? ctx.lineTo(px_, py_) : ctx.moveTo(px_, py_)));
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** A Zapper's reach, while you are holding one or have one selected. */
+  drawRange(ctx, cell, r, z) {
+    const [sx, sy] = this.toScreen(cx(cell) + 0.5, cy(cell) + 0.5);
+    ctx.save();
+    ctx.globalAlpha = 0.1;
+    ctx.fillStyle = '#8f6cff';
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * z, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.7;
+    ctx.strokeStyle = '#b8a4ff';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.restore();
   }
 
   badge(ctx, sx, sy, z, color) {

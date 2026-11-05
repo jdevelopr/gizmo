@@ -398,6 +398,44 @@ of its seed — so a save is the seed, the handful of slots you have cleared, an
 machines. Gizmos in flight are deliberately not saved: reloading empties the belts,
 which costs a few seconds of production and saves a great deal of complexity.
 
+### Mites, Zappers and the Armory
+
+A factory with nothing to push back against is a spreadsheet that runs itself. So
+out beyond the fence there are **nests** — one near every Sap patch and a few more
+in the far rings, a pure function of the seed like the ore — and they are woken by
+**noise**.
+
+Every Extractor digging, Generator burning and heavy machine working is loud. Noise
+fills a gauge; every time it fills, a swarm leaves the nest nearest you, bigger the
+louder you are. Nothing comes for the first seven minutes, so the opening is still
+the opening, and the STATS tab shows how loud you are and roughly when the next
+swarm is due.
+
+**Mites chew, belts first.** They walk straight at the nearest thing you have
+built, counting belts as nearer than they are, because a belt is long, cheap and
+out on the edge. A damaged machine runs slower — half speed just before it breaks —
+and at zero it **breaks**: it holds whatever it was carrying and does nothing until
+it is repaired. Nothing is destroyed, so the custody rule still holds. Repair is
+`H` on one machine or `Shift H` for everything, and costs 40% of the machine's price
+scaled by the damage.
+
+**The Zapper** (`Z`) is a coil turret that zaps the nearest mite in reach. It needs
+two things from the factory it guards: **Ammo**, six shots each, belted in like
+anything else, and **power**, which it draws while it recharges between shots — so a
+swarm is a spike on its grid, and a browned-out Zapper fires slowly. With nothing
+moving in reach it chips at a nest instead, and a dead nest pays a bounty before
+another digs in somewhere far off.
+
+**The Armory** (`B`) presses one Scrap and one Copper into one Ammo. The natural
+build is a Balancer on a Slag line with its branch through a Copper Mutator, and the
+two arms brought into *different faces* of the Armory — merged onto one belt, a run
+of Scrap can fill the Scrap queue and stand in front of the Copper forever.
+
+Three research nodes sit behind it: **Focusing** (+1.5 reach), **Arc Discharge**
+(every zap jumps to two more mites) and **Plating** (+50% hit points on everything).
+Mites are saved with the world, unlike gizmos in flight: reloading must not be a way
+to make a swarm halfway through your belts vanish.
+
 ---
 
 ## What survived untouched
@@ -445,6 +483,8 @@ differently because they want opposite fixes.
 | `Q` | pipette — copy what is under the cursor into your hand |
 | `M` | pick a machine up and move it, for free |
 | `O` | switch a machine off, or back on |
+| `Z` / `B` | pick up a Zapper / an Armory to build |
+| `H` / `Shift H` | repair the machine under the cursor / repair everything |
 | click a machine | its recipe as a picture, what is inside it, and what it is short of |
 | build on top | replaces what is there; the old one goes to the crate, free to put back |
 | `X` / `Delete` | scrap a machine for half of what it cost — or, on a bare slot, sweep up what is lying there |
@@ -512,6 +552,7 @@ css/style.css       the whole look
 js/machines.js      every number in the game lives here
 js/world.js         the map: ore patches, terrain, and the guaranteed opening
 js/power.js         the grid — who is on which, and how much they get
+js/bugs.js          nests, noise, swarms, mites chewing, Zappers firing, repair
 js/sim.js           the factory simulation, inherited from GIZMO 2 and made real-time
 js/render.js        the camera renderer: one ground canvas, cached machine tiles
 js/ui.js            the build bar, the HUD, the four panel tabs, the minimap, the manual
@@ -537,6 +578,7 @@ node tools/power.mjs      # every claim the manual makes about electricity
 node tools/world.mjs 500  # is every generated world playable?
 node tools/feeds.mjs      # can one belt feed a machine that needs two things?
 node tools/economy.mjs    # the cost tables, and what real builds earn
+node tools/bugs.mjs       # mites chew, broken stops, repair, Armory, Zapper
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

@@ -18,8 +18,11 @@ import {
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
   MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME, TUTORIAL, TUTORIAL_END,
   upFam, tierOf, famOf, copyable, exitDirs, intake, pickInputs, PASSIVE, PLUMBING,
-  ONE_MOUTH, acceptsFrom, faceHit,
+  ONE_MOUTH, acceptsFrom, faceHit, ARMORY, AMMO, AMMO_CHARGES, broken, maxHp,
+  repairCost, zapRange, zapDamage, zapCool, zapChain, MAX_HP, NEST_HP, NEST_BOUNTY,
+  SWARM_GRACE, twoInput,
 } from './machines.js';
+import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
 import {
   kindCounts, countKind, diagnose, machineLoad, speedOf, reachesPayout,
@@ -48,6 +51,7 @@ const GROUPS = [
   { name: 'GROUND & TRADE', kinds: ['ext', 'gen', 'depot', 'lab'] },
   { name: 'PROCESSING', kinds: ['mut', 'fuse', 'asm'] },
   { name: 'MULTIPLYING', kinds: ['dup', 'trident'] },
+  { name: 'DEFENCE', kinds: ['arm', 'zap'] },
 ];
 
 /** Which number key holds which kind. Ten slots, ten of the game's twelve machines. */
@@ -334,6 +338,21 @@ export function diagramFor(m) {
       d.appendChild(part(upFam(ty), true));
       return d;
     }
+    case 'arm': {
+      const inHand = m.work.map(w => w.ty);
+      ARMORY.ins.forEach((ty, i) => {
+        if (i) d.appendChild(op('+'));
+        d.appendChild(part(ty, inHand.includes(ty) || queued(m, ty) > 0, null, 1));
+      });
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(AMMO, true));
+      return d;
+    }
+    case 'zap':
+      d.appendChild(part(AMMO, m.charge > 0 || m.buf.length > 0, null, 1));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, `${AMMO_CHARGES} zaps`));
+      return d;
     case 'mut':
       d.appendChild(part(null, true, 'anything'));
       d.appendChild(op('\u2192'));
@@ -558,6 +577,17 @@ export class Hud {
       head = d.jams.length > 1 ? `${d.jams.length} LINES STOPPED FOR GOOD` : 'LINE STOPPED FOR GOOD';
       body = `A belt is trying to push ${j.why}. That will never clear on its own — `
         + 'move the machine, or put a Sorter in front of it to send that type elsewhere.';
+    } else if (mitesInside(f) > 0) {
+      const n = mitesInside(f);
+      head = n > 1 ? `${n} MITES IN THE FACTORY` : 'A MITE IN THE FACTORY';
+      body = (f.cells.some(i => f.grid[i]?.kind === 'zap')
+        ? 'Check your Zappers have Ammo and power, and that they reach the line being eaten.'
+        : 'They are chewing your machines. Build a Zapper (Z) near them and belt Ammo into it from an Armory (B).');
+    } else if (d.broken) {
+      const all = damaged(f);
+      head = `${d.broken} MACHINE${d.broken > 1 ? 'S' : ''} BROKEN`;
+      body = `Chewed through, and doing nothing until repaired. Click one and press H, or `
+        + `Shift H repairs everything for ${money(all.cost)}.`;
     } else if (!d.gens) {
       head = 'UNPOWERED';
       body = `Every machine is running at ${Math.round(UNPOWERED * 100)}%. Build a Generator touching your line and feed it ore.`;
@@ -578,6 +608,10 @@ export class Hud {
       body = `Something has half of what it needs and none of the other half. It is `
         + `showing the colour on the map; click it to see which queue is empty. A two-input `
         + `machine takes both halves off one belt happily — what it cannot do is invent the half you are not sending.`;
+    } else if ((f.mites?.length || 0) > 0) {
+      head = `${f.mites.length} MITE${f.mites.length > 1 ? 'S' : ''} ON THE WAY`;
+      body = 'A swarm is crossing the wilds toward your fence. Zappers with Ammo stop them; '
+        + 'whatever gets through will chew your belts first.';
     }
     /*
      * There is deliberately no "N machines backed up" line here any more. A factory
@@ -689,7 +723,7 @@ export class Panel {
     let key;
     if (this.tab === 'info') {
       const m = S.selected >= 0 ? f.grid[S.selected] : null;
-      key = `info|${S.selected}|${m ? m.kind + m.dir + m.level + m.mut + m.mir : 'x'}` +
+      key = `info|${S.selected}|${m ? m.kind + m.dir + m.level + m.mut + m.mir + '|' + repairCost(m, f.done) : 'x'}` +
         `|${S.tool ? S.tool.kind + S.tool.mut : ''}|${Math.round(f.cash / 10)}` +
         `|${m || S.selected < 0 ? '' : looseTypes(f, S.selected).length}`;
     } else if (this.tab === 'tech') {
@@ -765,6 +799,21 @@ export class Panel {
     const t = f.terrain[i], ore = f.patch[i];
     const owned = cx(i) >= claimMin(f.claim) && cx(i) <= claimMax(f.claim)
       && cy(i) >= claimMin(f.claim) && cy(i) <= claimMax(f.claim);
+    const nest = nestAt(f, i);
+    if (nest) {
+      host.appendChild(el('h3', null, 'MITE NEST'));
+      host.appendChild(el('div', 'sub', `${cx(i)}, ${cy(i)}`));
+      const r = el('div', 'rows');
+      addRow(r, 'Health', `${Math.ceil(nest.hp)} of ${NEST_HP}`, 'bad');
+      addRow(r, 'Destroying it pays', money(NEST_BOUNTY), 'good');
+      host.appendChild(r);
+      host.appendChild(el('p', 'body',
+        'Swarms come out of here when your factory gets loud. A Zapper with nothing else '
+        + 'to shoot at will chip away at a nest in its reach — so a Zapper parked near the '
+        + 'fence, fed Ammo, clears the ground beyond it. Another nest will dig in somewhere '
+        + 'far off, eventually.'));
+      return;
+    }
     host.appendChild(el('h3', null,
       t === BEDROCK ? 'BEDROCK' : t === RUBBLE ? 'RUBBLE' :
         ore >= 0 ? `${(ORE_NAME[ore] || 'ORE').toUpperCase()} PATCH` : 'EMPTY GROUND'));
@@ -827,7 +876,7 @@ export class Panel {
     const t = el('div');
     t.appendChild(el('h3', null, label(m).toUpperCase()));
     t.appendChild(el('div', 'sub',
-      (m.off ? 'SWITCHED OFF  ·  ' : '')
+      (broken(m) ? 'BROKEN  ·  ' : '') + (m.off ? 'SWITCHED OFF  ·  ' : '')
       + `Level ${m.level} of ${levelCap(f.done)}  ·  `
       + (ONE_MOUTH.has(m.kind) ? `mouth faces ${DIR_NAME[m.dir]}` : `facing ${DIR_NAME[m.dir]}`)
       + `  ·  ${cx(cell)}, ${cy(cell)}`));
@@ -854,7 +903,16 @@ export class Panel {
       b.onclick = fn;
       acts.appendChild(b);
     };
-    if (m.kind !== 'gen') {
+    const rc = repairCost(m, f.done);
+    if (rc) {
+      add(`REPAIR ${money(rc)} <span class="k">H</span>`, () => this.act('repair', cell), true, f.cash < rc);
+      const all = damaged(f);
+      if (all.cells.length > 1) {
+        add(`REPAIR ALL ${all.cells.length}  ${money(all.cost)} <span class="k">⇧H</span>`,
+          () => this.act('repairAll'), true, f.cash < 1);
+      }
+    }
+    if (m.kind !== 'gen' && m.kind !== 'zap') {
       add('ROTATE <span class="k">R</span>', () => this.act('rot', cell));
     }
     if (m.kind === 'bal' || m.kind === 'sort') add('FLIP <span class="k">F</span>', () => this.act('mir', cell));
@@ -902,7 +960,8 @@ export class Panel {
     const sig = m.buf.map(x => x.ty).join('.') + '|' + heldTypes(m).join('.')
       + '|' + (m.blockT > STALL_BADGE ? 'b' : m.waitT > STALL_BADGE ? 'w' : '-')
       + '|' + Math.round(m.sat * 20) + '|' + Math.round(machineLoad(m) * 2)
-      + '|' + (m.kind === 'gen' ? Math.round(m.fuel / 5) : 0) + '|' + (m.off | 0);
+      + '|' + (m.kind === 'gen' ? Math.round(m.fuel / 5) : 0) + '|' + (m.off | 0)
+      + '|' + Math.round(m.hp || 0) + '|' + (m.charge | 0) + '|' + (m.kills | 0);
     if (sig === L.sig) return;
     L.sig = sig;
     L.diagramHost.textContent = '';
@@ -917,8 +976,40 @@ export class Panel {
   liveRows(g, m, cell) {
     const f = g.f;
     const rows = el('div', 'rows');
-    const sp = speedOf(m);
+    const sp = speedOf(m, f.done);
     const cyc = cycleTime(m, f.done);
+
+    // Health first, when there is anything to say about it.
+    const hpMax = maxHp(m, f.done);
+    if (m.hp != null && m.hp < hpMax - 0.01) {
+      addRow(rows, 'Health', broken(m) ? `BROKEN — 0 of ${Math.round(hpMax)}`
+        : `${Math.ceil(m.hp)} of ${Math.round(hpMax)}  ·  ${Math.round((0.5 + 0.5 * m.hp / hpMax) * 100)}% speed`,
+        broken(m) ? 'bad' : 'warn');
+      addRow(rows, 'Repair costs', money(repairCost(m, f.done)), 'warn');
+      if (broken(m)) {
+        addRow(rows, 'While it is broken', 'it holds what it has, takes nothing, does nothing');
+        return rows;
+      }
+    }
+
+    if (m.kind === 'zap') {
+      const net = m.net >= 0 ? f.nets[m.net] : null;
+      addRow(rows, 'Shots loaded', `${m.charge | 0}`, m.charge > 0 ? 'good' : 'bad');
+      addRow(rows, 'Ammo queued', `${m.buf.length} of ${capacity(m)}  ·  ${AMMO_CHARGES} shots each`,
+        m.buf.length ? 'good' : (m.charge > 0 ? 'warn' : 'bad'));
+      addRow(rows, 'Reach', `${zapRange(m, f.done)} slots`);
+      addRow(rows, 'Damage', `${zapDamage(m)} a shot` + (zapChain(f.done) ? `  ·  arcs to ${zapChain(f.done)} more` : ''));
+      addRow(rows, 'Recharge', `${(zapCool(m) / Math.max(0.05, sp)).toFixed(2)}s at this power`,
+        sp >= 0.95 ? 'good' : 'warn');
+      addRow(rows, 'Draws', `${drawOf(m).toFixed(1)} kW while recharging`);
+      addRow(rows, 'Power', m.net < 0 ? `off grid — recharges at ${Math.round(UNPOWERED * 100)}%`
+        : `${Math.round(m.sat * 100)}% satisfied`, m.net < 0 ? 'bad' : m.sat >= 0.95 ? 'good' : 'warn');
+      if (net) addRow(rows, 'This grid', `${Math.round(net.demand)} / ${Math.round(net.supply)} kW`);
+      addRow(rows, 'Mites zapped', String(m.kills | 0), m.kills ? 'good' : '');
+      addRow(rows, 'Status', m.off ? 'SWITCHED OFF' : (m.charge > 0 || m.buf.length) ? 'armed' : 'NO AMMO — belt some in from an Armory',
+        m.off ? 'warn' : (m.charge > 0 || m.buf.length) ? 'good' : 'bad');
+      return rows;
+    }
 
     if (m.kind === 'gen') {
       const out = genOutput(m, f.done);
@@ -971,9 +1062,9 @@ export class Panel {
 
     // A two-input machine keeps a queue per ingredient, and which of them is empty
     // is the whole story of why it is or is not running. So show them.
-    if (m.kind === 'asm') {
-      addRow(rows, 'Recipe', recipeText(recipeOf(m)));
-      for (const ty of recipeOf(m).ins) {
+    if (m.kind === 'asm' || m.kind === 'arm') {
+      addRow(rows, 'Recipe', recipeText(twoInput(m)));
+      for (const ty of twoInput(m).ins) {
         const n = queued(m, ty);
         addRow(rows, `${TYPES[ty].name} queued`, `${n} of ${LANE}`,
           n ? (n >= LANE ? 'warn' : 'good') : 'bad');
@@ -1032,6 +1123,17 @@ export class Panel {
     } else if (spec.kind === 'depot' || spec.kind === 'lab') {
       addRow(rows, 'Needs power', 'no');
       addRow(rows, 'Throughput', 'unlimited');
+    } else if (spec.kind === 'zap') {
+      addRow(rows, 'Eats', `Ammo — ${AMMO_CHARGES} shots each`);
+      addRow(rows, 'Reach', `${zapRange({ level: 1 }, f.done)} slots`);
+      addRow(rows, 'Damage', `${zapDamage({ level: 1 })} a shot`);
+      addRow(rows, 'Recharge', `${zapCool({ level: 1 })}s at full power`);
+      addRow(rows, 'Draws', `${KINDS.zap.draw} kW while recharging`);
+    } else if (spec.kind === 'arm') {
+      addRow(rows, 'Recipe', recipeText(ARMORY));
+      addRow(rows, 'Cycle', `${ARMORY.cycle.toFixed(2)}s`);
+      addRow(rows, 'Draws', `${KINDS.arm.draw} kW while working`);
+      addRow(rows, 'Tip', 'bring Scrap and Copper in on different faces');
     } else {
       addRow(rows, 'Cycle', `${cycleTime({ ...spec, level: 1, rich: 1 }, f.done).toFixed(2)}s`);
       addRow(rows, 'Draws', `${KINDS[spec.kind].draw} kW while working`);
@@ -1169,6 +1271,22 @@ export class Panel {
     addRow(build, 'Gizmos in flight', num(f.gizmos.length));
     host.appendChild(build);
 
+    host.appendChild(el('div', 'sub', 'MITES'));
+    const bug = el('div', 'rows');
+    const eta = swarmEta(f);
+    addRow(bug, 'Factory noise', (f.noise || 0).toFixed(1), f.noise > 15 ? 'warn' : '');
+    addRow(bug, 'Next swarm', !isFinite(eta) ? 'not while it is this quiet'
+      : f.t < SWARM_GRACE ? `not before ${clock(SWARM_GRACE)}  ·  about ${clock(eta)}` : `in about ${clock(eta)}`,
+      isFinite(eta) && eta < 60 ? 'warn' : '');
+    addRow(bug, 'Swarms so far', num(f.waves || 0));
+    addRow(bug, 'Mites alive', num(f.mites?.length || 0), f.mites?.length ? 'warn' : 'good');
+    addRow(bug, 'Nests', num(f.nests?.length || 0));
+    addRow(bug, 'Mites zapped', num(f.zapped || 0));
+    addRow(bug, 'Machines chewed through', num(f.chewed || 0), f.chewed ? 'warn' : '');
+    addRow(bug, 'Broken right now', num(d.broken || 0), d.broken ? 'bad' : 'good');
+    addRow(bug, 'Damaged', num(d.hurt || 0), d.hurt ? 'warn' : 'good');
+    host.appendChild(bug);
+
     host.appendChild(el('div', 'sub', 'SHIPPING, PER SECOND'));
     const ship = el('div', 'rows');
     let any = false;
@@ -1234,11 +1352,19 @@ export function drawMinimap(canvas, g, view) {
         else if (m.kind === 'gen') { r = m.fuel > 0 ? 255 : 120; gg = m.fuel > 0 ? 138 : 60; b = 74; }
         else if (m.kind === 'lab') { r = 184; gg = 188; b = 255; }
         else if (m.kind === 'ext') { r = 224; gg = 138; b = 60; }
+        else if (m.kind === 'zap') { r = 143; gg = 108; b = 255; }
+        else if (broken(m)) { r = 120; gg = 20; b = 40; }
         else if (m.net < 0 && KINDS[m.kind].draw > 0) { r = 70; gg = 82; b = 128; }
         else { r = 150; gg = 168; b = 206; }
       }
       put(i, r, gg, b);
     }
+  }
+  // Nests, and every mite on the map, in the one colour nothing else uses.
+  for (const n of f.nests || []) put(n.cell, 200, 40, 110);
+  for (const mt of f.mites || []) {
+    const x = Math.floor(mt.x), y = Math.floor(mt.y);
+    if (x >= 0 && y >= 0 && x < WORLD && y < WORLD) put(cellOf(x, y), 255, 79, 122);
   }
   ctx.putImageData(img, 0, 0);
 
@@ -1378,6 +1504,31 @@ run you have already laid fix its direction rather than cost you the whole run
 again. The build ghost is green on empty ground and amber when it is about to
 replace something.</p>
 
+<h3>Mites</h3>
+<p>Out beyond your fence are <b>nests</b>, and there is always one near every Sap
+patch. They are woken by <b>noise</b>: every Extractor digging, every Generator
+burning and every heavy machine working is loud, and the louder your factory, the
+more often a swarm sets out for it — and the bigger it is. Nothing comes for the
+first ${Math.round(SWARM_GRACE / 60)} minutes. The STATS tab shows how loud you are and
+roughly when the next swarm is due.</p>
+<p>Mites walk straight at the nearest thing you have built, and they go for
+<b>belts first</b>. A chewed machine runs slower the more damaged it is, and at zero
+it <b>breaks</b>: it holds whatever it was carrying, takes nothing and does nothing
+until you repair it. Nothing is destroyed. Repair is <b>H</b> on one machine, or
+<b>Shift H</b> for everything, and costs a share of the machine's price in proportion
+to the damage. Belts have ${MAX_HP.pipe} hit points; a Market Depot has ${MAX_HP.depot}.</p>
+<p>The answer is the <b>Zapper</b> (<b>Z</b>). It zaps the nearest mite in reach —
+${zapRange({ level: 1 }, f?.done || [])} slots at level 1 — and every <b>Ammo</b> you feed it is
+${AMMO_CHARGES} shots. It draws power while it recharges between shots, so a swarm is a
+spike on its grid, and a browned-out Zapper fires slowly. With nothing moving in
+reach, it will chip away at a nest instead, and a dead nest pays
+${money(NEST_BOUNTY)}.</p>
+<p>Ammo comes from an <b>Armory</b> (<b>B</b>): one Scrap and one Copper make one Ammo.
+The easy build is a Balancer on a Slag line, its branch through a Copper Mutator, and
+the two arms brought into <b>different faces</b> of the Armory — then it never stalls.
+Belt the Ammo to your Zappers like anything else; a Balancer will share one Armory
+between two of them.</p>
+
 <h3>Switching things off</h3>
 <p>Any machine can be switched off, with <b>O</b> or the button in its panel. An off
 machine does nothing, draws no power, and turns everything away — so the line behind
@@ -1431,6 +1582,8 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <tr><td>Q</td><td class="k">Pipette — copy whatever is under the cursor into your hand</td></tr>
 <tr><td>M</td><td class="k">Pick a machine up and move it, for free</td></tr>
 <tr><td>O</td><td class="k">Switch a machine off, or back on</td></tr>
+<tr><td>Z / B</td><td class="k">Pick up a Zapper / an Armory to build</td></tr>
+<tr><td>H / Shift H</td><td class="k">Repair the machine under the cursor / repair everything</td></tr>
 <tr><td>Build on top</td><td class="k">Replaces it; the old one goes to the crate, free to put back</td></tr>
 <tr><td>X / Delete</td><td class="k">Scrap a machine for half of what it cost — or, on a bare slot, sweep up whatever is lying there</td></tr>
 <tr><td>Right click</td><td class="k">Put down what you are holding, or scrap what is there. Right-drag takes out a whole run, litter and all</td></tr>

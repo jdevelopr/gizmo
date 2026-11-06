@@ -1321,6 +1321,17 @@ export const claimMax = claim => claimMin(claim) + claim - 1;
  * world for a running factory: the simulation asks it before letting a gizmo
  * travel and before letting a machine be set down.
  */
+/**
+ * Fog of war: you can see your own land and FOG slots beyond it in every
+ * direction, and nothing further. Buying land pushes the fog back.
+ */
+export const FOG = 3;
+export const seenXY = (f, x, y) => {
+  const lo = claimMin(f.claim) - FOG, hi = claimMax(f.claim) + FOG;
+  return x >= lo && x <= hi && y >= lo && y <= hi;
+};
+export const seen = (f, i) => seenXY(f, cx(i), cy(i));
+
 export function inClaim(x, y, claim) {
   const lo = claimMin(claim), hi = lo + claim - 1;
   return x >= lo && y >= lo && x <= hi && y <= hi;

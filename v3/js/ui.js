@@ -13,7 +13,7 @@ import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
   levelCap, techById, techOpen, unlockedBy, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
-  cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
+  cellOf, cx, cy, claimMin, claimMax, seen, seenXY, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
   MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME, TUTORIAL, TUTORIAL_END,
@@ -1090,6 +1090,11 @@ export class Panel {
   /** A slot with nothing on it: what the ground is, and what it would cost. */
   groundInfo(host, g, i) {
     const f = g.f;
+    if (!seen(f, i)) {
+      host.appendChild(el('h3', null, 'UNEXPLORED'));
+      host.appendChild(el('p', 'blurb', 'Fog. You can see three slots beyond your land; buy more land to see further.'));
+      return;
+    }
     const t = f.terrain[i], ore = f.patch[i];
     const owned = cx(i) >= claimMin(f.claim) && cx(i) <= claimMax(f.claim)
       && cy(i) >= claimMin(f.claim) && cy(i) <= claimMax(f.claim);
@@ -1906,6 +1911,7 @@ export function drawMinimap(canvas, g, view) {
     for (let x = 0; x < WORLD; x++) {
       const i = cellOf(x, y);
       const own = x >= lo && x <= hi && y >= lo && y <= hi;
+      if (!seenXY(f, x, y)) { put(i, 6, 7, 13); continue; }
       let r = own ? 26 : 13, gg = own ? 31 : 16, b = own ? 47 : 26;
 
       const ore = f.patch[i];
@@ -1948,11 +1954,13 @@ export function drawMinimap(canvas, g, view) {
   }
   // Nests, and every mite on the map, in the one colour nothing else uses.
   for (const n of f.nests || []) {
+    if (!seen(f, n.cell)) continue;           // hidden in the fog
     if (n.kind === 'skitter') put(n.cell, 120, 200, 40); else put(n.cell, 200, 40, 110);
   }
   for (const mt of f.mites || []) {
     const x = Math.floor(mt.x), y = Math.floor(mt.y);
     if (x < 0 || y < 0 || x >= WORLD || y >= WORLD) continue;
+    if (!seenXY(f, x, y)) continue;
     if (mt.kind === 'skitter') put(cellOf(x, y), 190, 255, 90);
     else if (mt.kind === 'beetle') put(cellOf(x, y), 255, 170, 60);
     else put(cellOf(x, y), 255, 79, 122);

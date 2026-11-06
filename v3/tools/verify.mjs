@@ -596,5 +596,19 @@ console.log('\nTHE FREE DEPOT');
   ok(f.cash === c0, 'nor does selling a crated Depot while none is standing');
 }
 
+console.log('\nFOG OF WAR');
+{
+  const M = await import('../js/machines.js');
+  const sim = await import('../js/sim.js');
+  const gm = await import('../js/game.js');
+  const g = gm.createGame({ seed: 5, teach: false });
+  const f = g.f;
+  const hi = M.claimMax(f.claim), lo = M.claimMin(f.claim);
+  ok(M.seenXY(f, hi + M.FOG, lo) && !M.seenXY(f, hi + M.FOG + 1, lo), `you can see exactly ${M.FOG} slots beyond your land`);
+  f.cash = 1e6;
+  sim.applyAction(f, { a: 'expand' });
+  ok(M.seenXY(f, hi + M.FOG + 1, lo), 'and buying land pushes the fog back');
+}
+
 console.log(fails ? `\n${fails} invariant(s) broken.` : '\nEvery invariant holds.');
 process.exit(fails ? 1 : 0);

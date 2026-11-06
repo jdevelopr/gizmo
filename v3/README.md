@@ -294,6 +294,14 @@ Once it has run once, this browser never sees it again unless it is asked for. E
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
 
+### Fog of war
+
+You can see your own land and three slots beyond it in every direction (`FOG` in
+machines.js), and nothing further: past that, the map, the minimap and the hover
+card show only fog — no ground, ore, mountains, nests, creatures or Beacon. The
+last rings before the fog fade toward it. Buying land pushes the fog back, so the
+world is uncovered as you expand.
+
 ### Box selections: to the crate, and rubble
 
 Shift-drag a box and, alongside copy, move, upgrade, repair, switch off and scrap,

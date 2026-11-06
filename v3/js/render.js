@@ -29,7 +29,7 @@
 
 import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
-  cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON, SPACE,
+  cx, cy, cellOf, inWorld, claimMin, claimMax, FOG, seenXY, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON, SPACE,
   BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP, surveyed, sizeKind, footprint,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
   ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
@@ -969,6 +969,17 @@ function drawNest(ctx, n, sx, sy, z, t) {
  * and by far the cheapest thing in this file: every frame after the first is a
  * single `drawImage` of whatever rectangle the camera is looking at.
  */
+/** One slot of fog: near-black, with a faint drift of grain that never tiles. */
+function drawFog(ctx, x, y, gx, gy) {
+  px(ctx, x, y, CELL, CELL, '#06070d');
+  let h = ((gx * 92821) ^ (gy * 68917)) >>> 0;
+  for (let k = 0; k < 5; k++) {
+    h = (h * 1103515245 + 12345) >>> 0;
+    const ox = (h >>> 8) % (CELL - 6), oy = (h >>> 16) % (CELL - 6);
+    px(ctx, x + ox, y + oy, 6, 4, k % 2 ? '#0a0c14' : '#090a12');
+  }
+}
+
 function paintGround(g, f) {
   const ctx = g.getContext('2d');
   const lo = claimMin(f.claim), hi = claimMax(f.claim);
@@ -980,6 +991,10 @@ function paintGround(g, f) {
       const own = x >= lo && x <= hi && y >= lo && y <= hi;
       const px0 = x * CELL, py0 = y * CELL;
       const checker = (x + y) & 1;
+
+      // Fog of war: past FOG slots beyond the claim, nothing is drawn but fog.
+      const ring = Math.max(lo - x, x - hi, lo - y, y - hi);
+      if (ring > FOG) { drawFog(ctx, px0, py0, x, y); continue; }
 
       px(ctx, px0, py0, CELL, CELL, own ? (checker ? FLOOR2 : FLOOR) : (checker ? DIRT2 : DIRT));
       if (own) {
@@ -1008,6 +1023,12 @@ function paintGround(g, f) {
       else if (t === MOUNTAIN) drawMountain(ctx, px0, py0, f, i, !own);
       else if (t === VALLEY) drawValley(ctx, px0, py0, f, x, y, !own);
       else if (t !== OPEN) drawRock(ctx, px0, py0, t, !own);
+      // the last ring before the fog fades toward it
+      if (ring > 0) {
+        ctx.globalAlpha = ring === FOG ? 0.45 : ring === FOG - 1 ? 0.22 : 0.08;
+        px(ctx, px0, py0, CELL, CELL, '#04050a');
+        ctx.globalAlpha = 1;
+      }
     }
   }
 
@@ -1691,6 +1712,9 @@ export class View {
   drawBeacon(ctx, f, b, z) {
     const bc = f.beacon;
     if (!bc) return;
+    // Hidden in the fog until your land comes within sight of it.
+    const lo = claimMin(f.claim) - FOG, hi = claimMax(f.claim) + FOG;
+    if (bc.x0 + BEACON_SIZE - 1 < lo || bc.x0 > hi || bc.y0 + BEACON_SIZE - 1 < lo || bc.y0 > hi) return;
     if (bc.x0 + BEACON_SIZE < b.x0 - 1 || bc.x0 > b.x1 + 1 || bc.y0 + BEACON_SIZE < b.y0 - 1 || bc.y0 > b.y1 + 1) {
       if (!bc.done) return;
     }
@@ -1866,12 +1890,12 @@ export class View {
     const inView = (x, y) => x >= b.x0 - 1 && x <= b.x1 + 2 && y >= b.y0 - 1 && y <= b.y1 + 2;
     for (const n of f.nests || []) {
       const x = cx(n.cell), y = cy(n.cell);
-      if (!inView(x, y)) continue;
+      if (!inView(x, y) || !seenXY(f, x, y)) continue;
       const [sx, sy] = this.toScreen(x, y);
       drawNest(ctx, n, Math.round(sx), Math.round(sy), z, this.t);
     }
     for (const mt of f.mites || []) {
-      if (!inView(mt.x, mt.y)) continue;
+      if (!inView(mt.x, mt.y) || !seenXY(f, Math.floor(mt.x), Math.floor(mt.y))) continue;
       const [sx, sy] = this.toScreen(mt.x, mt.y);
       drawMite(ctx, mt, sx, sy, z);
     }

@@ -12,7 +12,7 @@
 import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
   expandCost, buyCost, label, PASSIVE, zapRange, unlockedBy, unlockerOf, unlockKey,
-  sizeKind, footprint, STORY_LEVELS, goalText, techById, techOpen, rankCost, rankOf,
+  sizeKind, footprint, STORY_LEVELS, goalText, DRONE_RANGE, techById, techOpen, rankCost, rankOf,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
 import { repairBeacon, progress as beaconProgress } from './beacon.js';
@@ -311,6 +311,13 @@ function playFx(fx) {
       case 'up': sfx('up'); if (near(e.cell)) view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#ffcd75', 10, 2.5, 0.5, 3); break;
       case 'scrap': sfx('scrap'); if (near(e.cell)) view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#6b6146', 8, 2, 0.5, 3); break;
       case 'repair': sfx('repair'); if (near(e.cell)) view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#a7f070', 6, 1.6, 0.45, 2); break;
+      case 'drone':
+        if (near(e.cell) || near(e.from)) {
+          view.fly(e.from, e.cell);
+          sfx('repair');
+          view.burst(cx(e.cell) + 0.5, cy(e.cell) + 0.5, '#4fd8d0', 6, 1.4, 0.5, 2);
+        }
+        break;
       case 'rot': sfx('rot'); break;
       case 'move': sfx('move'); break;
       case 'swarm': sfx('swarm'); view.pulse('#ff3b5c'); break;
@@ -581,7 +588,8 @@ function updateGhost() {
   S.reach = null;
   // A Zapper's reach is shown while you hold one, and while one is selected.
   const sel = S.selected >= 0 ? g.f.grid[S.selected] : null;
-  S.range = sel?.kind === 'zap' ? { cell: sel.at ?? S.selected, r: zapRange(sel, g.f.done) } : null;
+  S.range = sel?.kind === 'zap' ? { cell: sel.at ?? S.selected, r: zapRange(sel, g.f.done) }
+    : sel?.kind === 'drone' ? { cell: sel.at ?? S.selected, r: DRONE_RANGE[(sel.level || 1) - 1] } : null;
   if (S.hand >= 0) {
     if (S.hover >= 0) {
       const m = g.f.grid[S.hand];
@@ -617,7 +625,8 @@ function updateGhost() {
   }
   const cells = check.cells || footprint(spec.kind, S.hover, spec.dir) || [S.hover];
   S.ghost = { cell: S.hover, spec, cells, mode, ok: check.ok && g.f.cash >= cost };
-  if (S.tool.kind === 'gen') S.reach = reachFrom(g.f, S.hover, { level: 1 });
+  if (S.tool.kind === 'gen' || S.tool.kind === 'solar') S.reach = reachFrom(g.f, S.hover, { kind: S.tool.kind, level: 1 });
+  if (S.tool.kind === 'drone') S.range = { cell: S.hover, r: DRONE_RANGE[0] };
   if (S.tool.kind === 'zap') S.range = { cell: S.hover, r: zapRange({ level: S.tool.level || 1 }, g.f.done) };
 }
 

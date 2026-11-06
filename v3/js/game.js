@@ -408,7 +408,7 @@ export function checkMilestones(g) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
-    if (m.kind === 'gen' && m.fuel > 0) hit('power');
+    if ((m.kind === 'gen' && m.fuel > 0) || m.kind === 'solar') hit('power');
     if (m.kind === 'mut' && m.net >= 0) hit('mutate');
   }
   for (let ty = 11; ty <= 13; ty++) if (f.shipped[ty] > 0) hit('recipe');

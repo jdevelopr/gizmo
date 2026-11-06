@@ -49,7 +49,7 @@ console.log('\nEvery card can be written');
     try { T.techEffect(t, r); } catch (e) { bad = bad || `${t.id} rank ${r}: ${e.message}`; }
   }
   ok(!bad, 'every node, every rank, has a description', bad || '');
-  ok(TECH.every(t => !t.flat || /Generators|Balancers|Sorters|Fusers|Mutator/.test(t.name)),
+  ok(TECH.every(t => !t.flat || /Generators|Balancers|Sorters|Fusers|Mutator|Overflow Splitters|Solar Panels/.test(t.name)),
     'every starter node is named after the machine it unlocks');
 }
 

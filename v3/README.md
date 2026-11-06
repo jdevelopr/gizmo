@@ -294,6 +294,23 @@ Once it has run once, this browser never sees it again unless it is asked for. E
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
 
+### Five more machines
+
+All five are research, spread across the branches, and each has its own card in
+the inspector.
+
+| Machine | Research | What it does |
+|---|---|---|
+| **Overflow Splitter** | Overflow Splitters (Production, 40 flat, after Balancers) | Everything goes straight ahead; only when ahead is backed up does the extra spill out of its side. F flips the side. "Feed the Generator first, sell the rest." |
+| **Recycler** | Recyclers (Production, after Sorters) | Takes anything at all and pushes out one Scrap for each. Clears a jammed mix, spare Ammo, the wrong rung. |
+| **Solar Panel** | Solar Panels (Power, 35 flat, after Generators) | A steady 15 kW with no fuel (22 / 32 / 45 / 62 by level), spreading 4–8 hops. |
+| **Pylon** | Pylons (Power, after Gridwork) | Two Pylons facing the same way in a line link with a wire and carry power across the gap — rock, valley or open space — but never gizmos. Gap of 3 slots at level 1, then 4, 5, 6 and 8. Chains work. The brighter insulator is the end power leaves from. |
+| **Repair Drone Bay** | Repair Drones (Defence, after Pest Control) | Takes Copper only and holds six. Every 3s (faster with levels) it spends 2 Copper to fully repair the most damaged machine within 6–10 slots; you can watch the drone fly out and back. Six pips on its foot show the Copper it holds. |
+
+`pairPylons` (sim.js) links Pylons; `power.js` treats a Solar Panel as a source that
+never needs fuel and follows Pylon wires like a Bridge's span. The build bar has a
+new POWER group for Generators, Solar Panels and Pylons.
+
 ### Gus, the foreman
 
 First-time players are taught by **Gus**, a cheerful veteran prospector in a
@@ -896,6 +913,7 @@ node tools/tech.mjs       # the research tree: shape, unlocks and every bonus
 node tools/sizes.mjs      # 1x2 machines: footprints, turning, flow, moving, power
 node tools/story.mjs      # story mode: the eight worlds, goals, carry-over and saving
 node tools/tips.mjs       # Gus's one-time tips fire when they should, and only once
+node tools/newmachines.mjs # Overflow Splitter, Recycler, Solar Panel, Pylon, Repair Drone Bay
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

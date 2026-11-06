@@ -130,7 +130,7 @@ function makeCanvas(w, h) {
 const tiles = new Map();
 
 /** How many animation frames a kind's body has. Most have one. */
-const FRAMES = { pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab: 4, arm: 4, zap: 4, drill: 4 };
+const FRAMES = { pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab: 4, arm: 4, zap: 4, drill: 4, recyc: 4, pylon: 4, drone: 4, solar: 8 };
 
 export function frameCount(kind) { return FRAMES[kind] || 1; }
 
@@ -550,6 +550,126 @@ function drawBody(ctx, m, frame) {
       px(ctx, 5, 7, 2, 2, lit);
       px(ctx, 25, 7, 2, 2, lit);
       for (let i = 0; i < lvl - 1; i++) px(ctx, 4, 21 + i * 3, 2, 2, lit);
+      break;
+    }
+
+    case 'over': {
+      // The through-channel runs straight; the side channel is a real exit, with
+      // its own outward arrow — but a gate sits at the head of it, so it only takes
+      // what the front cannot. The gate is the one thing that says "overflow".
+      rp(ctx, cxp, cyp, d, -13, -5, 26, 10, '#0e1526');
+      chevron(ctx, cxp, cyp, d, trim, 8);
+      const side = (d + (m.mir ? 3 : 1)) % 4;
+      rp(ctx, cxp, cyp, side, 3, -4, 10, 8, '#0e1526');
+      chevron(ctx, cxp, cyp, side, lit, 7);
+      // the gate across the head of the side exit, with a notch it spills through
+      rp(ctx, cxp, cyp, side, 4, -5, 2, 4, shade(trim, 1.25));
+      rp(ctx, cxp, cyp, side, 4, 1, 2, 4, shade(trim, 1.25));
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
+      break;
+    }
+
+    case 'recyc': {
+      // A shredder: a hopper mouth with two rows of teeth that chew in turn, scrap
+      // falling out underneath, and the way it unloads.
+      px(ctx, 7, 6, 18, 14, '#0d140c');
+      px(ctx, 8, 7, 16, 12, '#05070d');
+      const a = frame % 2;
+      for (let k = 0; k < 4; k++) {
+        px(ctx, 9 + k * 4 + a * 2, 8, 2, 4, shade(trim, 1.15));
+        px(ctx, 9 + k * 4 + (1 - a) * 2, 14, 2, 4, shade(trim, 0.85));
+      }
+      px(ctx, 8, 12, 16, 2, shade(body, 0.6));
+      // the drum's axle bolts
+      px(ctx, 7, 12, 2, 2, lit); px(ctx, 23, 12, 2, 2, lit);
+      // scrap tumbling out
+      const fall = frame % 4;
+      px(ctx, 12 + fall, 21, 3, 2, '#8b93a8');
+      px(ctx, 18 - fall, 23, 2, 2, '#c3cbdb');
+      px(ctx, 15, 24 - (fall % 2), 2, 2, '#8b93a8');
+      chevron(ctx, cxp, cyp, d, lit, 10);
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
+      break;
+    }
+
+    case 'pylon': {
+      // A lattice mast seen from above: a braced square with a cross arm along the
+      // way it faces. The front insulator burns brighter than the back one: that is
+      // the end power goes out of, toward its partner. R swings it round.
+      px(ctx, 9, 9, 14, 14, '#0c0b16');
+      px(ctx, 10, 10, 12, 12, shade(body, 1.2));
+      for (let k = 0; k < 12; k += 2) {
+        px(ctx, 10 + k, 10 + k, 2, 2, shade(trim, 0.7));
+        px(ctx, 20 - k, 10 + k, 2, 2, shade(trim, 0.7));
+      }
+      rp(ctx, cxp, cyp, d, -12, -2, 24, 4, shade(trim, 0.9));
+      rp(ctx, cxp, cyp, d, -12, -2, 24, 1, trim);
+      // an insulator at each end; the front one — where the power goes out — burns brighter
+      rp(ctx, cxp, cyp, d, -12, -3, 3, 6, shade(lit, 0.55));
+      rp(ctx, cxp, cyp, d, 9, -3, 3, 6, lit);
+      rp(ctx, cxp, cyp, d, 10, -2, 1, 4, '#ffffff');
+      // the spark at the top of the mast
+      const on = frame % 4;
+      px(ctx, 14, 14, 4, 4, '#05070d');
+      px(ctx, 15, 15, 2, 2, on === 3 ? '#ffffff' : lit);
+      if (on === 1) { px(ctx, 13, 13, 1, 1, lit); px(ctx, 18, 18, 1, 1, lit); }
+      if (on === 2) { px(ctx, 18, 13, 1, 1, lit); px(ctx, 13, 18, 1, 1, lit); }
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
+      break;
+    }
+
+    case 'drone': {
+      // A landing pad, and a quad-rotor drone hovering over it.
+      px(ctx, 5, 5, 22, 22, '#0a1416');
+      px(ctx, 6, 6, 20, 20, shade(body, 1.1));
+      // pad corners
+      for (const [qx, qy] of [[7, 7], [23, 7], [7, 23], [23, 23]]) px(ctx, qx, qy, 2, 2, shade(trim, 0.6));
+      // the drone's shadow on the pad
+      px(ctx, 12, 22, 8, 2, shade(body, 0.6));
+      const bob = frame % 4 === 1 || frame % 4 === 2 ? -1 : 0;
+      const y = 11 + bob;
+      // arms, in an X
+      for (let k = 0; k < 4; k++) {
+        px(ctx, 11 + k, y + k, 1, 1, shade(trim, 0.6));
+        px(ctx, 20 - k, y + k, 1, 1, shade(trim, 0.6));
+        px(ctx, 11 + k, y + 7 - k, 1, 1, shade(trim, 0.6));
+        px(ctx, 20 - k, y + 7 - k, 1, 1, shade(trim, 0.6));
+      }
+      // rotors: discs at the four corners whose blades flick between two angles
+      const blade = frame % 2;
+      for (const [rx, ry] of [[8, y - 3], [19, y - 3], [8, y + 6], [19, y + 6]]) {
+        px(ctx, rx, ry, 5, 5, shade(body, 0.75));
+        if (blade) px(ctx, rx, ry + 2, 5, 1, lit); else px(ctx, rx + 2, ry, 1, 5, lit);
+        px(ctx, rx + 2, ry + 2, 1, 1, '#ffffff');
+      }
+      // the body, with a glowing eye
+      px(ctx, 13, y + 1, 6, 6, '#05070d');
+      px(ctx, 14, y + 2, 4, 4, trim);
+      px(ctx, 15, y + 3, 2, 2, '#ffffff');
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 3, 6 + i * 4, 2, 2, lit);
+      break;
+    }
+
+    case 'solar': {
+      // A panel of cells in a frame, and a glint that sweeps slowly across it.
+      px(ctx, 5, 6, 22, 20, '#05070d');
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 4; c++) {
+          const x = 6 + c * 5, y = 7 + r * 6;
+          px(ctx, x, y, 4, 5, shade(trim, 0.55));
+          px(ctx, x, y, 4, 1, shade(trim, 0.85));
+          px(ctx, x + 1, y + 2, 2, 1, shade(trim, 0.45));
+        }
+      }
+      // the glint: a short diagonal of light, one step further along each frame
+      const g = frame % 8;
+      for (let k = 0; k < 4; k++) {
+        const gx = 4 + g * 3 + k, gy = 22 - k * 4;
+        if (gx >= 6 && gx < 26 && gy >= 7 && gy < 25) px(ctx, gx, gy, 2, 2, lit);
+      }
+      // the stand under it
+      px(ctx, 14, 25, 4, 2, shade(body, 1.6));
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 27, 7 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -1262,6 +1382,8 @@ export class View {
     // 3b. the Beacon, bridge spans, then nests, mites and the arcs that kill them
     this.drawBeacon(ctx, f, b, z);
     this.drawSpans(ctx, f, b, z);
+    this.drawWires(ctx, f, b, z);
+    this.drawFlights(ctx, z, ui.dt || 0);
     this.drawBugs(ctx, f, b, z);
     if (ui.range) this.drawRange(ctx, ui.range.cell, ui.range.r, z);
 
@@ -1460,6 +1582,15 @@ export class View {
       if (m.fuel <= 0) this.badge(ctx, sx, sy, z, '#ff5d4a');
     }
 
+    // --- a Drone Bay's Copper, as up to six pips along its foot
+    if (m.kind === 'drone') {
+      const n = Math.min(6, m.buf.filter(gz => gz.ty === 1).length);
+      const t = Math.max(1, 2 * s);
+      for (let k2 = 0; k2 < 6; k2++) {
+        px(ctx, sx + (7 + k2 * 3.2) * s, sy + z - 4 * s, t, t, k2 < n ? TYPES[1].color : '#16181f');
+      }
+    }
+
     // --- a Zapper's charges, as pips down its side, and a red badge when it is dry
     if (m.kind === 'zap') {
       // Charged shots in pink on top, plain shots in yellow below them.
@@ -1643,6 +1774,69 @@ export class View {
   }
 
   /** A dashed rope between each paired Bridge, so it is obvious which pairs with which. */
+  /**
+   * Pylon wires: a thin line that sags between a linked pair, from the bright
+   * insulator of the sender to the far one, with a spark riding along it.
+   */
+  drawWires(ctx, f, b, z) {
+    const s = z / CELL;
+    for (const i of f.cells) {
+      const m = f.grid[i];
+      if (m?.kind !== 'pylon' || !(m.wireTo >= 0)) continue;
+      const x = cx(i), y = cy(i), j = m.wireTo;
+      if (Math.max(x, cx(j)) < b.x0 - 1 || Math.min(x, cx(j)) > b.x1 + 1
+        || Math.max(y, cy(j)) < b.y0 - 1 || Math.min(y, cy(j)) > b.y1 + 1) continue;
+      const [dx, dy] = DIRS[m.dir | 0];
+      const [ax, ay] = this.toScreen(x + 0.5 + dx * 0.33, y + 0.5 + dy * 0.33);
+      const [bx, by] = this.toScreen(cx(j) + 0.5 - dx * 0.33, cy(j) + 0.5 - dy * 0.33);
+      const sag = (dx ? 1 : 0.35) * z * 0.18;
+      const steps = Math.max(8, Math.round(Math.hypot(bx - ax, by - ay) / Math.max(2, s * 2)));
+      const w = Math.max(1, Math.round(s));
+      const at = t => [ax + (bx - ax) * t, ay + (by - ay) * t + Math.sin(t * Math.PI) * sag];
+      for (let k = 0; k <= steps; k++) {
+        const [px0, py0] = at(k / steps);
+        px(ctx, px0, py0 + w, w, w, '#0c0b16');
+        px(ctx, px0, py0, w, w, '#b8b0e8');
+      }
+      const [sx, sy] = at((this.t * 0.7 + (i % 7) * 0.13) % 1);
+      const sp = Math.max(2, Math.round(s * 2.5));
+      px(ctx, sx - sp / 2, sy - sp / 2, sp, sp, '#fff3a0');
+      px(ctx, sx - w / 2, sy - w / 2, w, w, '#ffffff');
+    }
+  }
+
+  /** A repair drone's trip: out from its bay to the machine it fixes, and home. */
+  fly(from, to) {
+    if (!this.flights) this.flights = [];
+    if (this.flights.length > 20) this.flights.shift();
+    this.flights.push({ ax: cx(from) + 0.5, ay: cy(from) + 0.5, bx: cx(to) + 0.5, by: cy(to) + 0.5, t: 0 });
+  }
+
+  drawFlights(ctx, z, dt) {
+    if (!this.flights?.length) return;
+    const s = z / CELL;
+    for (let k = this.flights.length - 1; k >= 0; k--) {
+      const fl = this.flights[k];
+      fl.t += dt;
+      const dur = 1.4;
+      if (fl.t >= dur) { this.flights.splice(k, 1); continue; }
+      const p = fl.t / dur;
+      const q = p < 0.5 ? p * 2 : 2 - p * 2;
+      const e = q * q * (3 - 2 * q);
+      const wx = fl.ax + (fl.bx - fl.ax) * e, wy = fl.ay + (fl.by - fl.ay) * e - Math.sin(q * Math.PI) * 0.4;
+      const [sx, sy] = this.toScreen(wx, wy);
+      const u = Math.max(1, Math.round(s * 1.5));
+      const blade = Math.floor(this.t * 30) % 2;
+      // body, eye, and four rotor flicks
+      px(ctx, sx - 2 * u, sy - 2 * u, 4 * u, 4 * u, '#05070d');
+      px(ctx, sx - u, sy - u, 2 * u, 2 * u, '#4fd8d0');
+      for (const [ox, oy] of [[-3, -3], [2, -3], [-3, 2], [2, 2]]) {
+        if (blade) px(ctx, sx + (ox - 0.5) * u, sy + oy * u, 2 * u, u, '#b6fff6');
+        else px(ctx, sx + ox * u, sy + (oy - 0.5) * u, u, 2 * u, '#b6fff6');
+      }
+    }
+  }
+
   drawSpans(ctx, f, b, z) {
     ctx.save();
     ctx.strokeStyle = '#c9a26a';

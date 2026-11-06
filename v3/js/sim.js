@@ -36,7 +36,7 @@ import {
   pickInputs, missingFor, canEverAccept, acceptsFrom, faceHit, ONE_MOUTH,
   cellOf, cx, cy, inClaim, claimed, claimCells, inWorld,
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
-  balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap, rankOf, rankCost, TECH_RANKS, ROMAN,
+  balDirs, REROUTES, wants, SCIENCE_RATE, sideDir, LEVEL_SPEED, PYLON_GAP, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, maxHp as hpMax, techById, techOpen, levelCap, rankOf, rankCost, TECH_RANKS, ROMAN,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
   STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, footprint, frontOf, sizeKind, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, SPACE, bridgeSpan,
 } from './machines.js';
@@ -196,6 +196,7 @@ export function rebuild(f) {
   }
   f.cells = cells;
   pairBridges(f);
+  pairPylons(f);
   solveTopology(f);
   relink(f);
 }
@@ -241,6 +242,38 @@ export function pairBridges(f) {
       }
       entry = !entry;
       at = nx;
+    }
+  }
+}
+
+/**
+ * Link up Pylons. Each Pylon reaches ahead the way it faces, up to its level's gap
+ * plus one, for the first Pylon facing the same way, and strings a wire to it.
+ * Chains work: A to B, B to C. A wire carries power both ways and nothing else.
+ *
+ * `wireTo` is the slot this one sends to (for drawing), `wires` every slot it is
+ * wired to in either direction (for the power solver).
+ */
+export function pairPylons(f) {
+  const pylons = [];
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (m?.kind === 'pylon') { m.wireTo = -1; m.wires = []; pylons.push(i); }
+  }
+  for (const i of pylons) {
+    const m = f.grid[i], d = m.dir | 0;
+    const reach = (PYLON_GAP[(m.level || 1) - 1] ?? 3) + 1;
+    for (let k = 1; k <= reach; k++) {
+      const x = cx(i) + DIRS[d][0] * k, y = cy(i) + DIRS[d][1] * k;
+      if (!inWorld(x, y)) break;
+      const n = f.grid[cellOf(x, y)];
+      if (n?.kind === 'pylon' && (n.dir | 0) === d) {
+        const j = cellOf(x, y);
+        m.wireTo = j;
+        m.wires.push(j);
+        n.wires.push(i);
+        break;
+      }
     }
   }
 }
@@ -471,7 +504,7 @@ export function stepFactory(f, dt) {
     // Switched off. It keeps whatever is in its hands — you have paused it, not
     // emptied it — and it is not stuck, so nothing badges it as stuck.
     if (m.off) { m.blockT = 0; m.waitT = 0; continue; }
-    if (PASSIVE.has(m.kind)) { runPassive(f, m, i); continue; }
+    if (PASSIVE.has(m.kind)) { runPassive(f, m, i, dt); continue; }
     const sp = speedOf(m, f.done);
     if (jobActive(m)) {
       m.t -= dt * sp;
@@ -513,7 +546,8 @@ export function stepFactory(f, dt) {
  * it on a cycle, so neither is ever the bottleneck. A shop that could only serve
  * one customer a second would be a throughput puzzle nobody asked for.
  */
-function runPassive(f, m, i) {
+function runPassive(f, m, i, dt = 0) {
+  if (m.kind === 'drone') { runDrone(f, m, i, dt); return; }
   if (!m.buf.length) return;
   if (m.kind === 'depot') {
     for (const g of m.buf) {
@@ -537,6 +571,44 @@ function runPassive(f, m, i) {
     m.flash = 1;
   }
   // 'gen' keeps its buffer: power.js lights one gizmo at a time out of it.
+}
+
+/**
+ * A Repair Drone Bay. Every cycle, if it holds enough Copper and something within
+ * range is damaged, its drone flies out and fully repairs the worst of them —
+ * worst by share of health lost, so a broken machine always goes first.
+ */
+function runDrone(f, m, i, dt) {
+  const sp = speedOf(m, f.done);
+  m.t = Math.max(0, (m.t || 0) - dt * sp);
+  if (m.t > 0) return;
+  const fuel = m.buf.filter(g => g.ty === DRONE_FUEL).length;
+  if (fuel < DRONE_COST) { m.waiting = 1; return; }
+  m.waiting = 0;
+  const r = DRONE_RANGE[(m.level || 1) - 1] ?? 6;
+  let best = -1, worst = 0;
+  for (const c of f.cells) {
+    const t = f.grid[c];
+    if (!t || t.hp == null) continue;
+    const max = hpMax(t, f.done);
+    const lost = 1 - t.hp / max;
+    if (lost <= 0.001) continue;
+    if (Math.hypot(cx(c) - cx(i), cy(c) - cy(i)) > r) continue;
+    if (lost > worst) { worst = lost; best = c; }
+  }
+  if (best < 0) return;
+  // Spend the Copper, fly, fix.
+  let paid = 0;
+  for (let k = m.buf.length - 1; k >= 0 && paid < DRONE_COST; k--) {
+    if (m.buf[k].ty === DRONE_FUEL) { m.buf.splice(k, 1); paid++; }
+  }
+  const t = f.grid[best];
+  t.hp = hpMax(t, f.done);
+  t.flash = 1;
+  m.flash = 1;
+  m.t = m.cyc = DRONE_CYCLE * (LEVEL_SPEED[(m.level || 1) - 1] ?? 1);
+  f.repaired = (f.repaired || 0) + 1;
+  f.fx.push({ k: 'drone', from: i, cell: best });
 }
 
 function startJob(f, m, i) {
@@ -574,6 +646,8 @@ function startJob(f, m, i) {
  */
 function pickExit(f, i, m, o) {
   let cands = [o.dir];
+  // An Overflow Splitter tries ahead first, and only then its side.
+  if (m.kind === 'over') cands = [m.dir | 0, sideDir(m)];
   if (REROUTES.has(m.kind)) {
     const all = balDirs(m);
     const at = Math.max(0, all.indexOf(o.dir));
@@ -689,7 +763,7 @@ export { machineLoad, contents };
 /* ------------------------------------------------------------ auto-facing --- */
 
 /** Machines that aim themselves when set down: the routing family, plus Storage. */
-const AUTO_FACE = new Set(['pipe', 'store', 'bal', 'sort', 'ext', 'depot', 'lab', 'drill', 'bridge']);
+const AUTO_FACE = new Set(['pipe', 'store', 'bal', 'sort', 'over', 'ext', 'depot', 'lab', 'drill', 'bridge']);
 
 /** Every Depot on the map, which is what a loose belt wants to be pointing at. */
 export function depotsOf(f) {
@@ -901,7 +975,7 @@ export function autoFace(f, i) {
   if (!m) return;
   const d = smartDir(f, i);
   if (d != null && d !== m.dir) m.dir = d;
-  if (m.kind !== 'bal' && m.kind !== 'sort') return;
+  if (m.kind !== 'bal' && m.kind !== 'sort' && m.kind !== 'over') return;
   const open = side => {
     const dd = ((m.dir | 0) + side) % 4;
     return openAt(f, cx(i) + DIRS[dd][0], cy(i) + DIRS[dd][1]);
@@ -1306,7 +1380,7 @@ export function applyAction(f, a) {
 
     case 'mir': {
       if (!m) return no('Nothing there');
-      if (m.kind !== 'bal' && m.kind !== 'sort') return no('Nothing to flip');
+      if (m.kind !== 'bal' && m.kind !== 'sort' && m.kind !== 'over') return no('Nothing to flip');
       m.mir = m.mir ? 0 : 1;
       relink(f);
       f.fx.push({ k: 'rot', cell: a.i });

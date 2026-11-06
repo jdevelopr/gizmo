@@ -166,6 +166,25 @@ export function powerMult(sat) {
   return UNPOWERED + (POWERED - UNPOWERED) * s * s;
 }
 
+/**
+ * The Solar Panel: a little power, all the time, from nothing. A sixth of a
+ * Generator at level 1, and its power spreads only a few hops.
+ */
+export const SOLAR_OUTPUT = [15, 22, 32, 45, 62];
+export const SOLAR_REACH = [4, 5, 6, 7, 8];
+
+/** The Pylon: how many slots may lie between a linked pair, by level. */
+export const PYLON_GAP = [3, 4, 5, 6, 8];
+
+/**
+ * The Repair Drone Bay: fed Copper, it spends DRONE_COST of it to fully repair the
+ * most damaged machine within range, once a cycle. It holds six.
+ */
+export const DRONE_FUEL = 1;          // Copper
+export const DRONE_COST = 2;
+export const DRONE_CYCLE = 3;
+export const DRONE_RANGE = [6, 7, 8, 9, 10];
+
 /** Kilowatts a generator makes at each level. */
 export const GEN_OUTPUT = [90, 150, 240, 360, 520];
 
@@ -338,6 +357,41 @@ export const KINDS = {
     price: 220, cycle: 0, cap: 0, hold: 4, travel: 0, draw: 12, passive: true,
     body: '#2a1f4a', trim: '#8f6cff', lit: '#e0d4ff',
   },
+  over: {
+    name: 'Overflow Splitter', short: 'OVERFLOW',
+    desc: 'Sends everything straight ahead, and only when the line ahead is backed up does it '
+      + 'spill the extra out of its side. Feed the Generator first, sell the rest. FLIP chooses the side.',
+    price: 35, cycle: 0.34, cap: 1, hold: 2, travel: 0.34, draw: 2,
+    body: '#4a2a22', trim: '#e0805a', lit: '#ffc2a0',
+  },
+  recyc: {
+    name: 'Recycler', short: 'RECYCLER',
+    desc: 'Shreds anything you feed it — a jammed mix, spare Ammo, the wrong rung — and '
+      + 'pushes out one Scrap for each. The clean-up crew for a messy line.',
+    price: 90, cycle: 0.8, cap: 1, hold: 4, travel: 0.52, draw: 6,
+    body: '#2c3a2a', trim: '#7fae6a', lit: '#c8f0a0',
+  },
+  pylon: {
+    name: 'Pylon', short: 'PYLON',
+    desc: 'Comes in pairs. Two Pylons facing the same way, a few slots apart, carry power '
+      + 'across whatever is between them — rock, a valley, open space. Power only, never gizmos.',
+    price: 70, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,
+    body: '#34304a', trim: '#b8b0e8', lit: '#fff3a0',
+  },
+  drone: {
+    name: 'Repair Drone Bay', short: 'DRONE BAY',
+    desc: 'Feed it Copper and it keeps a drone flying: every few seconds it spends two Copper to '
+      + 'fully patch up the most damaged machine nearby. Holds six Copper.',
+    price: 180, cycle: 0, cap: 0, hold: 6, travel: 0, draw: 6, passive: true,
+    body: '#1f3d44', trim: '#4fd8d0', lit: '#b6fff6',
+  },
+  solar: {
+    name: 'Solar Panel', short: 'SOLAR',
+    desc: 'A little steady power with no fuel at all. Weak on its own; a field of them runs an '
+      + 'early line with no ore going up a chimney.',
+    price: 60, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,
+    body: '#1a2440', trim: '#5a8fe0', lit: '#bfe0ff',
+  },
 };
 
 export const KIND_LIST = Object.keys(KINDS);
@@ -400,7 +454,7 @@ export const PASSIVE = new Set(KIND_LIST.filter(k => KINDS[k].passive));
  * works to draw, and said nothing: if a belt is empty, the thing worth looking at
  * is the machine behind it, and that machine has a badge of its own.
  */
-export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort']);
+export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort', 'over']);
 
 /* ---------------------------------------------------------------- mites --- */
 
@@ -424,7 +478,7 @@ export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort']);
  */
 
 /** Noise each kind makes while it is working (and not switched off or broken). */
-export const NOISE = { ext: 1, gen: 1.4, asm: 0.6, fuse: 0.4, mut: 0.3, dup: 0.5, trident: 0.5, arm: 0.4, drill: 1.2 };
+export const NOISE = { ext: 1, gen: 1.4, asm: 0.6, fuse: 0.4, mut: 0.3, dup: 0.5, trident: 0.5, arm: 0.4, drill: 1.2, recyc: 0.5 };
 
 /** Noise-seconds that fill the gauge and send one swarm. */
 export const SWARM_COST = 1100;
@@ -521,6 +575,7 @@ export const NEST_POP_MAX = 240;
 export const MAX_HP = {
   pipe: 12, store: 20, bal: 15, sort: 15, ext: 30, gen: 40, depot: 50, lab: 40,
   dup: 30, trident: 30, mut: 30, asm: 35, fuse: 30, arm: 30, zap: 45, drill: 40, bridge: 25,
+  over: 15, recyc: 30, pylon: 25, drone: 35, solar: 20,
 };
 
 /** What Plating research multiplies every machine's hit points by. */
@@ -761,6 +816,9 @@ export function describe(spec) {
   if (spec.kind === 'bal') {
     return `Alternates between straight ahead and ${sideName(spec)}. Never copies.`;
   }
+  if (spec.kind === 'over') {
+    return `Everything goes straight ahead; only when ahead is backed up does the extra spill ${sideName(spec)}.`;
+  }
   return KINDS[spec.kind].desc;
 }
 
@@ -978,6 +1036,16 @@ export function outputs(m, inputs) {
     case 'bal':
       return [{ ty: a, dir: nextExit(m, balDirs(m)), cp: copy }];
 
+    // An Overflow Splitter always aims ahead; release() spills it to the side only
+    // when ahead cannot take it.
+    case 'over':
+      return [{ ty: a, dir: d, cp: copy }];
+
+    // A Recycler turns anything at all into one Scrap. Always an original: what
+    // goes in is gone, whatever it was.
+    case 'recyc':
+      return [{ ty: 0, dir: d, cp: 0 }];
+
     case 'sort': {
       const want = m.mut ?? 1;
       if (a !== want) return [{ ty: a, dir: d, cp: copy }];
@@ -1039,6 +1107,7 @@ export function outputs(m, inputs) {
 export function acceptsFrom(m, side) {
   if (!m) return false;
   if (m.kind === 'ext' || m.kind === 'drill') return false;   // no mouth at all
+  if (m.kind === 'pylon' || m.kind === 'solar') return false; // power only
   if (m.kind === 'depot' || m.kind === 'lab') return side === (m.dir | 0);
   return true;
 }
@@ -1057,6 +1126,7 @@ export function wants(m, ty, side = null) {
   if (m.kind === 'ext' || m.kind === 'drill') return false;
   if (m.kind === 'depot' || m.kind === 'lab' || m.kind === 'gen') return true;
   if (m.kind === 'zap') return isAmmo(ty);
+  if (m.kind === 'drone') return ty === DRONE_FUEL;
   // An Armory has no per-ingredient limit: it takes Scrap and Copper for as long as
   // it has room, so a run of one can never stand in front of the other on a belt.
   if (m.kind === 'arm') return twoInput(m).ins.includes(ty);
@@ -1090,6 +1160,8 @@ export function canEverAccept(m, ty, side = null) {
   if (side != null && !acceptsFrom(m, side)) return false;
   if (m.kind === 'ext' || m.kind === 'drill') return false;
   if (m.kind === 'zap') return isAmmo(ty);
+  if (m.kind === 'drone') return ty === DRONE_FUEL;
+  if (m.kind === 'pylon' || m.kind === 'solar') return false;
   if (m.kind === 'asm' || m.kind === 'arm') return twoInput(m).ins.includes(ty);
   if (m.kind === 'fuse') return fusable(ty);
   return true;
@@ -1187,7 +1259,10 @@ export function exitDirs(m) {
   const d = m.dir | 0;
   switch (m.kind) {
     case 'depot': case 'lab': case 'gen': case 'zap':
+    case 'pylon': case 'solar': case 'drone':
       return [];
+    case 'over':
+      return [d, sideDir(m)];
     case 'drill':
       return [(d + 2) % 4];
     case 'bal':
@@ -1389,6 +1464,11 @@ export const TECH = [
   { id: 'mut7', branch: 'economy', name: 'Prism Mutator', cost: 2600, needs: ['mut6'], unlocks: ['mut:7'],
     blurb: 'Unlocks the Prism Mutator, the top of the ladder.' },
 
+  { id: 'overflow', branch: 'economy', name: 'Overflow Splitters', cost: 40, flat: true, needs: ['balancing'], unlocks: ['over'],
+    blurb: 'Unlocks the Overflow Splitter: everything straight ahead, and only the extra out of the side.' },
+  { id: 'recycling', branch: 'economy', name: 'Recyclers', cost: 220, needs: ['sorting'], unlocks: ['recyc'],
+    blurb: 'Unlocks the Recycler, which shreds anything into one Scrap. The clean-up crew for a messy line.' },
+
   // ---- production
   { id: 'storage', branch: 'economy', name: 'Warehousing', cost: 140, needs: ['balancing'], unlocks: ['store'],
     blurb: 'Unlocks Storage — a belt with a deep buffer, and the cure for a line '
@@ -1415,6 +1495,10 @@ export const TECH = [
   { id: 'generators', branch: 'power', name: 'Generators', cost: 20, flat: true, needs: [], unlocks: ['gen'],
     blurb: 'Unlocks the Generator. Feed it ore and it powers every machine it touches, and '
       + 'everything those touch — an unpowered machine runs at a fifth of its speed.' },
+  { id: 'solar', branch: 'power', name: 'Solar Panels', cost: 35, flat: true, needs: ['generators'], unlocks: ['solar'],
+    blurb: 'Unlocks the Solar Panel: a little steady power with no fuel at all.' },
+  { id: 'pylons', branch: 'power', name: 'Pylons', cost: 300, needs: ['gridwork'], unlocks: ['pylon'],
+    blurb: 'Unlocks the Pylon. A pair facing the same way carries power across a gap — rock, valley or open space.' },
   { id: 'gridwork', branch: 'power', name: 'Gridwork', cost: 180, needs: ['generators'], power: 'reach',
     blurb: `Every generator's power reaches ${GRIDWORK_REACH} machines further.` },
   { id: 'combustion', branch: 'power', name: 'Combustion', cost: 380, needs: ['gridwork'], power: 'fuel',
@@ -1430,6 +1514,8 @@ export const TECH = [
   { id: 'defense', branch: 'defense', name: 'Pest Control', cost: 120, needs: [], unlocks: ['arm', 'zap'],
     blurb: 'Unlocks the Armory and the Zapper. The first swarm comes a few minutes in; '
       + 'research this before it arrives.' },
+  { id: 'drones', branch: 'defense', name: 'Repair Drones', cost: 350, needs: ['defense'], unlocks: ['drone'],
+    blurb: 'Unlocks the Repair Drone Bay: fed Copper, it patches up damaged machines nearby on its own.' },
   { id: 'focus', branch: 'defense', name: 'Focusing', cost: 260, needs: ['defense'], focus: 1,
     blurb: `Every Zapper reaches ${FOCUS_RANGE} slots further.` },
   { id: 'capacitor', branch: 'defense', name: 'Capacitors', cost: 600, needs: ['defense'], cap: 1,
@@ -1549,19 +1635,24 @@ export function catalogue(done = [], counts = {}) {
 
   add({ kind: 'pipe' });
   if (on.has('bal')) add({ kind: 'bal' });
+  if (on.has('over')) add({ kind: 'over' });
   if (on.has('sort')) add({ kind: 'sort' });
   if (on.has('store')) add({ kind: 'store' });
   add({ kind: 'ext' });
   if (on.has('gen')) add({ kind: 'gen' });
+  if (on.has('solar')) add({ kind: 'solar' });
+  if (on.has('pylon')) add({ kind: 'pylon' });
   add({ kind: 'depot' });
   add({ kind: 'lab' });
   for (let t = 1; t <= LADDER_MAX; t++) if (on.has('mut:' + t)) add({ kind: 'mut', mut: t });
   if (on.has('fuse')) add({ kind: 'fuse' });
+  if (on.has('recyc')) add({ kind: 'recyc' });
   RECIPES.forEach((r, i) => { if (on.has('asm:' + i)) add({ kind: 'asm', mut: i }); });
   if (on.has('dup')) add({ kind: 'dup' });
   if (on.has('trident')) add({ kind: 'trident' });
   if (on.has('arm')) add({ kind: 'arm' });
   if (on.has('zap')) add({ kind: 'zap' });
+  if (on.has('drone')) add({ kind: 'drone' });
   if (on.has('drill')) add({ kind: 'drill' });
   if (on.has('bridge')) add({ kind: 'bridge' });
   return out;

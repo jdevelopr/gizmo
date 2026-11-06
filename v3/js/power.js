@@ -42,7 +42,15 @@
 import {
   DIRS, cellOf, cx, cy, inWorld,
   drawOf, intake, genOutput, genReach, energyOf, powerMult, KINDS, broken, footprint,
+  SOLAR_OUTPUT, SOLAR_REACH,
 } from './machines.js';
+
+/** Is this a power source — a Generator, or a Solar Panel? */
+const SOURCE = new Set(['gen', 'solar']);
+/** How many hops a source's power carries. */
+const sourceReach = (m, done) => (m.kind === 'solar' ? SOLAR_REACH[(m.level || 1) - 1] ?? 4 : genReach(m, done));
+/** What a source makes right now: a Generator only while burning, a panel always. */
+export const sourceOutput = (m, done) => (m.kind === 'solar' ? SOLAR_OUTPUT[(m.level || 1) - 1] ?? 15 : genOutput(m, done));
 
 /**
  * How fast a grid's satisfaction is allowed to move, in units per second. Demand
@@ -72,7 +80,7 @@ export function solveTopology(f) {
   const gens = [];
   for (let i = 0; i < n; i++) if (g[i]) g[i].net = -1;
   // One entry per generator, however many slots it covers.
-  for (const i of f.cells || []) if (g[i]?.kind === 'gen') gens.push(i);
+  for (const i of f.cells || []) if (SOURCE.has(g[i]?.kind)) gens.push(i);
 
   // Union-find over generators. Two generators that both reach the same machine
   // are pooled: they share that machine's load whether they were meant to or not,
@@ -93,7 +101,7 @@ export function solveTopology(f) {
 
   for (let k = 0; k < gens.length; k++) {
     const home = gens[k];
-    const reach = genReach(g[home], f.done);
+    const reach = sourceReach(g[home], f.done);
     let head = 0, tail = 0;
     // Power starts from every slot a Generator covers (one, unless it is ever made bigger).
     for (const c of g[home].cells || [home]) { queue[tail] = c; dist[c] = 0; seen[c] = k; tail++; }
@@ -104,17 +112,19 @@ export function solveTopology(f) {
       else claimedBy[at] = k;
       if (dist[at] >= reach) continue;
       const x = cx(at), y = cy(at);
-      for (let d = 0; d < 5; d++) {
+      // The four neighbours, plus a paired Bridge's partner and a Pylon's wires.
+      const here = g[at];
+      const extra = here?.kind === 'bridge' && here.pair >= 0 ? [here.pair]
+        : here?.kind === 'pylon' && here.wires?.length ? here.wires : null;
+      const nn = 4 + (extra ? extra.length : 0);
+      for (let d = 0; d < nn; d++) {
         let ni;
         if (d < 4) {
           const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
           if (!inWorld(nx, ny)) continue;
           ni = cellOf(nx, ny);
         } else {
-          // A paired Bridge carries power across to its partner, gap and all.
-          const b = g[at];
-          if (!b || b.kind !== 'bridge' || !(b.pair >= 0)) continue;
-          ni = b.pair;
+          ni = extra[d - 4];
         }
         if (seen[ni] === k || !g[ni]) continue;    // an empty slot is a broken wire
         seen[ni] = k;
@@ -163,6 +173,8 @@ function busy(m) {
   if (broken(m)) return false;                  // and so does a chewed-through one
   // A Zapper draws while it recharges between shots — so a swarm is a spike.
   if (m.kind === 'zap') return m.cool > 0;
+  // A Drone Bay draws while its drone is out.
+  if (m.kind === 'drone') return (m.t || 0) > 0;
   if (KINDS[m.kind].passive) return false;
   if (m.work.length) return true;
   return m.buf.length >= intake(m);
@@ -191,6 +203,7 @@ export function balancePower(f, dt) {
       const m = g[gi];
       if (!m) continue;
       if (m.off || broken(m)) { m.load = 0; continue; }   // switched off, or chewed through
+      if (m.kind === 'solar') { m.load = 0; net.supply += sourceOutput(m, f.done); net.hot++; continue; }
       if (m.fuel <= 0 && m.buf.length) {
         const fuel = m.buf.shift();
         m.fuel = energyOf(fuel.ty, f.done);
@@ -220,7 +233,9 @@ export function balancePower(f, dt) {
     if (delivered > 0 && net.supply > 0) {
       for (const gi of net.gens) {
         const m = g[gi];
-        if (!m || m.off || broken(m) || m.fuel <= 0) continue;
+        if (!m || m.off || broken(m)) continue;
+        if (m.kind === 'solar') { m.load = sourceOutput(m, f.done) / net.supply * delivered; continue; }
+        if (m.fuel <= 0) continue;
         const share = genOutput(m, f.done) / net.supply * delivered;
         m.load = share;
         m.fuel = Math.max(0, m.fuel - share * dt);
@@ -254,7 +269,7 @@ export const speedOf = m => powerMult(m.net >= 0 ? m.sat : 0);
  */
 export function reachFrom(f, at, spec = { level: 1 }) {
   const g = f.grid;
-  const reach = genReach(spec, f.done);
+  const reach = spec.kind === 'solar' ? SOLAR_REACH[(spec.level || 1) - 1] ?? 4 : genReach(spec, f.done);
   // Power starts from every slot the Generator covers.
   const start = footprint('gen', at, 0) || [at];
   const out = new Set(start);
@@ -289,7 +304,7 @@ export function powerSummary(f) {
     supply += net.supply;
     demand += net.demand;
     if (net.demand > 0) worst = Math.min(worst, net.sat);
-    for (const gi of net.gens) if (f.grid[gi] && f.grid[gi].fuel <= 0) dry++;
+    for (const gi of net.gens) if (f.grid[gi]?.kind === 'gen' && f.grid[gi].fuel <= 0) dry++;
   }
   for (const i of f.cells || []) {
     const m = f.grid[i];

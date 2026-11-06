@@ -12,7 +12,7 @@
 import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
-  levelCap, techById, techOpen, unlockedBy, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
+  levelCap, techById, techOpen, unlockedBy, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
   cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
@@ -61,11 +61,12 @@ const el = (tag, cls, html) => {
  * are deep enough in the tech tree that most games never see them.
  */
 const GROUPS = [
-  { name: 'LOGISTICS', kinds: ['pipe', 'bal', 'sort', 'store'] },
-  { name: 'GROUND & TRADE', kinds: ['ext', 'gen', 'depot', 'lab'] },
-  { name: 'PROCESSING', kinds: ['mut', 'fuse', 'asm'] },
+  { name: 'LOGISTICS', kinds: ['pipe', 'bal', 'over', 'sort', 'store'] },
+  { name: 'GROUND & TRADE', kinds: ['ext', 'depot', 'lab'] },
+  { name: 'POWER', kinds: ['gen', 'solar', 'pylon'] },
+  { name: 'PROCESSING', kinds: ['mut', 'fuse', 'asm', 'recyc'] },
   { name: 'MULTIPLYING', kinds: ['dup', 'trident'] },
-  { name: 'DEFENCE', kinds: ['arm', 'zap'] },
+  { name: 'DEFENCE', kinds: ['arm', 'zap', 'drone'] },
   { name: 'TERRAIN', kinds: ['drill', 'bridge'] },
 ];
 
@@ -395,6 +396,31 @@ export function diagramFor(m) {
       d.appendChild(part(ty ?? null, ty != null, `${m.level + 1} out, ${m.level} of them copies`));
       return d;
     }
+    case 'solar':
+      d.appendChild(part(null, true, 'sunlight'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, 'power, always'));
+      return d;
+    case 'pylon':
+      d.appendChild(part(null, true, 'power'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, m.wireTo >= 0 ? 'across the gap' : 'its partner ahead'));
+      return d;
+    case 'drone':
+      d.appendChild(part(1, m.buf.filter(g => g.ty === 1).length >= 2, null, 2));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, 'one machine fully repaired'));
+      return d;
+    case 'recyc':
+      d.appendChild(part(null, true, 'anything'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(0, true));
+      return d;
+    case 'over':
+      d.appendChild(part(null, true, 'straight on'));
+      d.appendChild(op('·'));
+      d.appendChild(part(null, true, `the overflow ${sideName(m)}`));
+      return d;
     case 'gen':
       d.appendChild(part(null, true, 'anything burnable'));
       d.appendChild(op('\u2192'));
@@ -1189,7 +1215,7 @@ export class Panel {
     if (m.kind !== 'gen' && m.kind !== 'zap') {
       add('ROTATE <span class="k">R</span>', () => this.act('rot', cell));
     }
-    if (m.kind === 'bal' || m.kind === 'sort') add('FLIP <span class="k">F</span>', () => this.act('mir', cell));
+    if (m.kind === 'bal' || m.kind === 'sort' || m.kind === 'over') add('FLIP <span class="k">F</span>', () => this.act('mir', cell));
     add('MOVE <span class="k">M</span>', () => this.act('pickup', cell));
     add('TO CRATE', () => this.act('stash', cell));
     add(m.off ? 'SWITCH ON <span class="k">O</span>' : 'SWITCH OFF <span class="k">O</span>',
@@ -1290,6 +1316,34 @@ export class Panel {
         : m.hot > 0 ? 'armed — firing Charged Ammo'
           : (shotsOf(m) > 0 || m.buf.length) ? 'armed' : 'NO AMMO — belt some in from an Armory',
         m.off ? 'warn' : (shotsOf(m) > 0 || m.buf.length) ? 'good' : 'bad');
+      return rows;
+    }
+
+    if (m.kind === 'solar') {
+      const net = m.net >= 0 ? f.nets[m.net] : null;
+      addRow(rows, 'Output', `${SOLAR_OUTPUT[(m.level || 1) - 1]} kW, always`, 'good');
+      addRow(rows, 'Reach', `${SOLAR_REACH[(m.level || 1) - 1]} machines`);
+      addRow(rows, 'Fuel', 'none — it never runs dry');
+      if (net) addRow(rows, 'This grid', `${Math.round(net.demand)} / ${Math.round(net.supply)} kW`,
+        net.sat >= 0.95 ? 'good' : net.sat >= 0.7 ? 'warn' : 'bad');
+      return rows;
+    }
+    if (m.kind === 'pylon') {
+      const gap = PYLON_GAP[(m.level || 1) - 1];
+      const from = (m.wires || []).filter(j => j !== m.wireTo);
+      addRow(rows, 'Sends to', m.wireTo >= 0 ? `${cx(m.wireTo)}, ${cy(m.wireTo)}`
+        : `nothing — put a Pylon facing ${DIR_NAME[m.dir]} up to ${gap} slots beyond it`, m.wireTo >= 0 ? 'good' : 'warn');
+      if (from.length) addRow(rows, 'Fed by', from.map(j => `${cx(j)}, ${cy(j)}`).join('  ·  '), 'good');
+      addRow(rows, 'Gap it spans', `up to ${gap} slots${(m.level || 1) < 5 ? ` — level ${(m.level || 1) + 1} reaches ${PYLON_GAP[m.level || 1]}` : ''}`);
+      addRow(rows, 'Grid', m.net >= 0 ? `on a grid · ${Math.round(f.nets[m.net].supply)} kW` : 'no power reaching it', m.net >= 0 ? 'good' : 'warn');
+      return rows;
+    }
+    if (m.kind === 'drone') {
+      const cu = m.buf.filter(gz => gz.ty === DRONE_FUEL).length;
+      addRow(rows, 'Copper', `${cu} of ${capacity(m)}`, cu >= DRONE_COST ? 'good' : 'bad');
+      addRow(rows, 'Each repair', `${DRONE_COST} Copper, fixes one machine fully`);
+      addRow(rows, 'Range', `${DRONE_RANGE[(m.level || 1) - 1]} slots`);
+      addRow(rows, 'Drone', (m.t || 0) > 0 ? 'out on a job' : cu < DRONE_COST ? 'grounded — belt Copper in' : 'standing by', (m.t || 0) > 0 ? 'good' : cu < DRONE_COST ? 'bad' : '');
       return rows;
     }
 
@@ -1410,7 +1464,7 @@ export class Panel {
     } else {
       addRow(rows, 'Status', 'running', 'good');
     }
-    if (m.kind === 'bal' || m.kind === 'sort') addRow(rows, 'Branch', sideName(m));
+    if (m.kind === 'bal' || m.kind === 'sort' || m.kind === 'over') addRow(rows, m.kind === 'over' ? 'Spills' : 'Branch', sideName(m));
     return rows;
   }
 
@@ -1442,6 +1496,24 @@ export class Panel {
     } else if (spec.kind === 'bridge') {
       addRow(rows, 'Pairs with', `a Bridge facing the same way, up to ${bridgeSpan(f?.done || []) - 1} slots ahead`);
       addRow(rows, 'Carries', 'gizmos and power over anything');
+    } else if (spec.kind === 'solar') {
+      addRow(rows, 'Output', `${SOLAR_OUTPUT[0]} kW, always — no fuel`);
+      addRow(rows, 'Reach', `${SOLAR_REACH[0]} machines at level 1`);
+    } else if (spec.kind === 'pylon') {
+      addRow(rows, 'Links to', 'the next Pylon ahead facing the same way');
+      addRow(rows, 'Gap', `up to ${PYLON_GAP[0]} slots at level 1, ${PYLON_GAP[4]} at level 5`);
+      addRow(rows, 'Carries', 'power only — never gizmos');
+    } else if (spec.kind === 'drone') {
+      addRow(rows, 'Eats', `Copper — ${DRONE_COST} per repair, holds ${KINDS.drone.hold}`);
+      addRow(rows, 'Repairs', `the most damaged machine within ${DRONE_RANGE[0]} slots`);
+      addRow(rows, 'Every', `${DRONE_CYCLE}s at full power`);
+    } else if (spec.kind === 'recyc') {
+      addRow(rows, 'Eats', 'anything');
+      addRow(rows, 'Makes', 'one Scrap for each');
+      addRow(rows, 'Cycle', `${cycleTime({ ...spec, level: 1 }, f.done).toFixed(2)}s`);
+    } else if (spec.kind === 'over') {
+      addRow(rows, 'Ahead', 'everything, while it can take it');
+      addRow(rows, 'Side', 'only the overflow');
     } else if (spec.kind === 'zap') {
       addRow(rows, 'Eats', `Ammo — ${AMMO_CHARGES} shots each`);
       addRow(rows, 'Reach', `${zapRange({ level: 1 }, f.done)} slots`);
@@ -1841,6 +1913,9 @@ export function drawMinimap(canvas, g, view) {
         else if (m.kind === 'zap') { r = 143; gg = 108; b = 255; }
         else if (m.kind === 'drill') { r = 210; gg = 214; b = 230; }
         else if (m.kind === 'bridge') { r = 201; gg = 162; b = 106; }
+        else if (m.kind === 'solar') { r = 90; gg = 143; b = 224; }
+        else if (m.kind === 'pylon') { r = 255; gg = 243; b = 160; }
+        else if (m.kind === 'drone') { r = 79; gg = 216; b = 208; }
         else if (broken(m)) { r = 120; gg = 20; b = 40; }
         else if (m.net < 0 && KINDS[m.kind].draw > 0) { r = 70; gg = 82; b = 128; }
         else { r = 150; gg = 168; b = 206; }

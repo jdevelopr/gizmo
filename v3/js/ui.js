@@ -29,7 +29,7 @@ import {
   NEST_BROOD_MAX, NEST_ANGER, NEST_ANGER_MIN,
 } from './machines.js';
 import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
-import { mountainAt, mountainAhead } from './sim.js';
+import { mountainAt, mountainAhead, scrapPay } from './sim.js';
 import {
   progress as beaconProgress, beaconLines, beaconRepairCost, beaconHot, beaconReachable, mouthApproach,
 } from './beacon.js';
@@ -1203,7 +1203,7 @@ export class Panel {
     if (CLEARABLE.has(m.kind)) {
       add('CLEAR MACHINE', () => this.act('clearBuf', cell), true);
     }
-    add(`SCRAP  +${money(scrapValue(m))} <span class="k">X</span>`, () => this.act('scrap', cell), true);
+    add(`SCRAP  +${money(scrapPay(f, m))} <span class="k">X</span>`, () => this.act('scrap', cell), true);
     host.appendChild(acts);
 
     // --- a sorter's filter is free to change, so it gets the whole ladder

@@ -317,7 +317,9 @@ Machine prices, upgrades and land cost half what they used to (`PRICE_SCALE`
 Whenever no Market Depot is standing — at the start of every game, and any time
 after — the next Depot is **free**, so a factory that has spent itself to nothing
 can never be locked out of selling. A free Depot is marked (`m.free`, saved) and
-scraps for nothing, so it cannot be farmed for cash.
+scraps for nothing, so it cannot be farmed for cash. Selling the **last** Depot
+standing pays nothing either, bought or free — nor does selling a crated Depot
+while none is standing — since the next one would be free (`scrapPay` in sim.js).
 
 An unpowered machine runs at 30% (was 20%) and a fully powered one at 1.75x its
 listed speed (`POWERED`, was 1x), so power is a nearly sixfold boost.

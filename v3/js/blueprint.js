@@ -244,8 +244,21 @@ export function scrapAll(f, cells) {
   return { n, got };
 }
 
-export const scrapQuote = (f, cells) =>
-  cells.reduce((a, i) => a + (f.grid[i] ? scrapValue(f.grid[i]) : 0), 0);
+export function scrapQuote(f, cells) {
+  // Walked in the same order scrapAll goes, so the last Depot standing — which
+  // pays nothing — is the same one in the quote as in the sale.
+  let depots = countKind(f, 'depot');
+  let got = 0;
+  const seen = new Set();
+  for (const i of cells) {
+    const m = f.grid[i];
+    if (!m || seen.has(m)) continue;
+    seen.add(m);
+    if (m.kind === 'depot') { if (depots > 1) got += scrapValue(m); depots--; }
+    else got += scrapValue(m);
+  }
+  return got;
+}
 
 export function repairQuote(f, cells) {
   let cost = 0, n = 0;

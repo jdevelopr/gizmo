@@ -1161,11 +1161,27 @@ export function stashMachine(f, i) {
   return yes('To the crate');
 }
 
+/**
+ * What scrapping this machine pays right now. Usually its scrap value — but a
+ * Market Depot that would leave no Depot standing pays nothing. With none
+ * standing the next one is free, so selling the last one for cash and getting a
+ * new one for nothing would be money out of thin air.
+ */
+export function scrapPay(f, m) {
+  if (!m) return 0;
+  if (m.kind === 'depot') {
+    const standing = countKind(f, 'depot');
+    const onMap = f.grid[m.at ?? -1] === m;
+    if (onMap ? standing <= 1 : standing === 0) return 0;
+  }
+  return scrapValue(m);
+}
+
 /** Sell one crated machine for what scrapping it on the map would have paid. */
 export function scrapFromCrate(f, key) {
   const at = f.crate.findIndex(m => crateKey(m) === key);
   if (at < 0) return no('Nothing like that in the crate');
-  const v = scrapValue(f.crate[at]);
+  const v = scrapPay(f, f.crate[at]);
   f.crate.splice(at, 1);
   f.cash += v;
   return yes(`+$${v}`, { refund: v });
@@ -1211,7 +1227,7 @@ export function moveMachine(f, from, to) {
 export function scrapMachine(f, i) {
   const m = f.grid[i];
   if (!m) return no('Nothing there');
-  const v = scrapValue(m);
+  const v = scrapPay(f, m);
   f.cash += v;
   vacate(f, m);
   rebuild(f);

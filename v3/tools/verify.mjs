@@ -569,6 +569,31 @@ console.log('\nTHE FREE DEPOT');
   ok(back.f.grid[M.cellOf(lo + 2, lo)]?.free === 1, 'and it is still the free one after a reload');
   sim.scrapMachine(f, M.cellOf(lo + 2, lo));
   ok(f.cash === 0 && M.buyCost({ kind: 'depot' }, sim.countKind(f, 'depot')) === 0, 'once it is gone, the next is free again');
+
+  // Selling the last Depot pays nothing, even one that was paid for.
+  f.cash = 1e6;
+  const a1 = M.cellOf(lo, lo + 2), a2 = M.cellOf(lo + 2, lo + 2);
+  sim.build(f, { kind: 'depot' }, a1);
+  sim.build(f, { kind: 'depot' }, a2);
+  const paid = f.grid[a2];
+  ok(!paid.free && M.scrapValue(paid) > 0, 'a second Depot is bought and has a scrap value');
+  const bp = await import('../js/blueprint.js');
+  ok(bp.scrapQuote(f, [a1, a2]) === M.scrapValue(paid) * 0 + (f.grid[a1].free ? 0 : M.scrapValue(f.grid[a1])),
+    'a box over every Depot quotes nothing for the last one');
+  let c0 = f.cash;
+  sim.scrapMachine(f, a1);
+  ok(f.cash === c0, 'scrapping the free one pays nothing');
+  c0 = f.cash;
+  sim.scrapMachine(f, a2);
+  ok(f.cash === c0, 'and scrapping the last Depot standing pays nothing, even a bought one');
+  sim.build(f, { kind: 'depot' }, a1);
+  sim.build(f, { kind: 'depot' }, a2);
+  sim.stashMachine(f, a2);
+  sim.stashMachine(f, a1);
+  c0 = f.cash;
+  const key = sim.crateKey(f.crate.find(m => m.kind === 'depot' && !m.free));
+  sim.scrapFromCrate(f, key);
+  ok(f.cash === c0, 'nor does selling a crated Depot while none is standing');
 }
 
 console.log(fails ? `\n${fails} invariant(s) broken.` : '\nEvery invariant holds.');

@@ -12,7 +12,7 @@
 import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
-  levelCap, techById, techOpen, unlockedBy, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
+  levelCap, techById, techOpen, unlockedBy, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
   cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
@@ -1321,7 +1321,7 @@ export class Panel {
 
     if (m.kind === 'solar') {
       const net = m.net >= 0 ? f.nets[m.net] : null;
-      addRow(rows, 'Output', `${SOLAR_OUTPUT[(m.level || 1) - 1]} kW, always`, 'good');
+      addRow(rows, 'Output', `${Math.round(solarOutput(m, f.done))} kW, always`, 'good');
       addRow(rows, 'Reach', `${SOLAR_REACH[(m.level || 1) - 1]} machines`);
       addRow(rows, 'Fuel', 'none — it never runs dry');
       if (net) addRow(rows, 'This grid', `${Math.round(net.demand)} / ${Math.round(net.supply)} kW`,
@@ -1329,7 +1329,7 @@ export class Panel {
       return rows;
     }
     if (m.kind === 'pylon') {
-      const gap = PYLON_GAP[(m.level || 1) - 1];
+      const gap = pylonGap(m, f.done);
       const from = (m.wires || []).filter(j => j !== m.wireTo);
       addRow(rows, 'Sends to', m.wireTo >= 0 ? `${cx(m.wireTo)}, ${cy(m.wireTo)}`
         : `nothing — put a Pylon facing ${DIR_NAME[m.dir]} up to ${gap} slots beyond it`, m.wireTo >= 0 ? 'good' : 'warn');

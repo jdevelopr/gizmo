@@ -49,6 +49,14 @@ console.log('\nEvery card can be written');
     try { T.techEffect(t, r); } catch (e) { bad = bad || `${t.id} rank ${r}: ${e.message}`; }
   }
   ok(!bad, 'every node, every rank, has a description', bad || '');
+  ok(TECH.every(t => t.blurb && t.ranks), 'every node says what it does, and what its further ranks add');
+  const M = await import('../js/machines.js');
+  const r = (id, n) => Array(n).fill(id);
+  ok(M.genOutput({ level: 1 }, r('generators', 5)) > M.genOutput({ level: 1 }, r('generators', 1)) * 1.39, 'Generators ranks II–V really add power');
+  ok(M.solarOutput({ level: 1 }, r('solar', 5)) > M.solarOutput({ level: 1 }, r('solar', 1)) * 1.39, 'Solar Panels ranks II–V really add power');
+  ok(M.pylonGap({ level: 1 }, r('pylons', 5)) === M.pylonGap({ level: 1 }, r('pylons', 1)) + 4, 'Pylons ranks II–V really add reach');
+  ok(M.droneCycle({ level: 1 }, r('drones', 5)) < M.droneCycle({ level: 1 }, r('drones', 1)) / 1.39, 'Repair Drones ranks II–V really repair more often');
+  ok(M.unlockSpeed('drill', r('surveying', 5)) > 1.39, 'Surveying ranks II–V really speed up Mountain Drills');
   ok(TECH.every(t => !t.flat || /Generators|Balancers|Sorters|Fusers|Mutator|Overflow Splitters|Solar Panels/.test(t.name)),
     'every starter node is named after the machine it unlocks');
 }

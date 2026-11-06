@@ -48,7 +48,14 @@ export function techEffect(t, rank) {
   const parts = [];
   if (t.unlocks?.length) {
     parts.push('Unlocks ' + t.unlocks.map(u => label(specOf(u))).join(' and '));
-    if (rank > 1) parts.push(`which work ${Math.round((unlockSpeed(specOf(t.unlocks[0]).kind, d, specOf(t.unlocks[0]).mut) - 1) * 100)}% faster`);
+    if (rank > 1) {
+      const k = specOf(t.unlocks[0]).kind;
+      const sp = Math.round((unlockSpeed(k, d, specOf(t.unlocks[0]).mut) - 1) * 100);
+      if (k === 'gen' || k === 'solar') parts.push(`which make ${sp}% more power`);
+      else if (k === 'pylon') parts.push(`which reach ${rank - 1} more slot${rank > 2 ? 's' : ''}`);
+      else if (k === 'drone') parts.push(`which repair ${sp}% more often`);
+      else parts.push(`which work ${sp}% faster`);
+    }
   }
   if (t.power === 'reach') parts.push(`Generators reach +${genReach({ level: 1 }, d) - GEN_REACH[0]} machines`);
   if (t.power === 'fuel') parts.push(`Fuel burns ${pct(energyOf(0, d) / fuelEnergy(0) - 1)} longer`);

@@ -42,7 +42,7 @@
 import {
   DIRS, cellOf, cx, cy, inWorld,
   drawOf, intake, genOutput, genReach, energyOf, powerMult, KINDS, broken, footprint,
-  SOLAR_OUTPUT, SOLAR_REACH,
+  SOLAR_OUTPUT, SOLAR_REACH, solarOutput,
 } from './machines.js';
 
 /** Is this a power source — a Generator, or a Solar Panel? */
@@ -50,7 +50,7 @@ const SOURCE = new Set(['gen', 'solar']);
 /** How many hops a source's power carries. */
 const sourceReach = (m, done) => (m.kind === 'solar' ? SOLAR_REACH[(m.level || 1) - 1] ?? 4 : genReach(m, done));
 /** What a source makes right now: a Generator only while burning, a panel always. */
-export const sourceOutput = (m, done) => (m.kind === 'solar' ? SOLAR_OUTPUT[(m.level || 1) - 1] ?? 15 : genOutput(m, done));
+export const sourceOutput = (m, done) => (m.kind === 'solar' ? solarOutput(m, done) : genOutput(m, done));
 
 /**
  * How fast a grid's satisfaction is allowed to move, in units per second. Demand

@@ -36,7 +36,7 @@ import {
   pickInputs, missingFor, canEverAccept, acceptsFrom, faceHit, ONE_MOUTH,
   cellOf, cx, cy, inClaim, claimed, claimCells, inWorld,
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
-  balDirs, REROUTES, wants, SCIENCE_RATE, sideDir, LEVEL_SPEED, PYLON_GAP, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, maxHp as hpMax, techById, techOpen, levelCap, rankOf, rankCost, TECH_RANKS, ROMAN,
+  balDirs, REROUTES, wants, SCIENCE_RATE, sideDir, LEVEL_SPEED, PYLON_GAP, pylonGap, droneCycle, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, maxHp as hpMax, techById, techOpen, levelCap, rankOf, rankCost, TECH_RANKS, ROMAN,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
   STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, footprint, frontOf, sizeKind, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, SPACE, bridgeSpan,
 } from './machines.js';
@@ -262,7 +262,7 @@ export function pairPylons(f) {
   }
   for (const i of pylons) {
     const m = f.grid[i], d = m.dir | 0;
-    const reach = (PYLON_GAP[(m.level || 1) - 1] ?? 3) + 1;
+    const reach = pylonGap(m, f.done) + 1;
     for (let k = 1; k <= reach; k++) {
       const x = cx(i) + DIRS[d][0] * k, y = cy(i) + DIRS[d][1] * k;
       if (!inWorld(x, y)) break;
@@ -606,7 +606,7 @@ function runDrone(f, m, i, dt) {
   t.hp = hpMax(t, f.done);
   t.flash = 1;
   m.flash = 1;
-  m.t = m.cyc = DRONE_CYCLE * (LEVEL_SPEED[(m.level || 1) - 1] ?? 1);
+  m.t = m.cyc = droneCycle(m, f.done);
   f.repaired = (f.repaired || 0) + 1;
   f.fx.push({ k: 'drone', from: i, cell: best });
 }

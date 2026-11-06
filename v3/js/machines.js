@@ -389,7 +389,7 @@ export const KINDS = {
     name: 'Solar Panel', short: 'SOLAR',
     desc: 'A little steady power with no fuel at all. Weak on its own; a field of them runs an '
       + 'early line with no ore going up a chimney.',
-    price: 60, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,
+    price: 600, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,   // 10x: free power is dear
     body: '#1a2440', trim: '#5a8fe0', lit: '#bfe0ff',
   },
 };
@@ -649,9 +649,12 @@ const add = (done, flag, a) => a * rankScale(flagRank(done, flag));
  */
 export function unlockSpeed(kind, done = [], mut = 0) {
   const key = unlockKey({ kind, mut });
-  const t = TECH.find(x => (x.unlocks || []).includes(key)) || (kind === 'drill' ? TECH.find(x => x.survey) : null);
+  const t = TECH.find(x => (x.unlocks || []).includes(key));
   const r = t ? rankOf(done, t.id) : 0;
-  return r > 1 ? 1 + 0.1 * (r - 1) : 1;
+  let s = r > 1 ? 1 + 0.1 * (r - 1) : 1;
+  // Surveying's ranks speed Mountain Drills too, on top of Deep Mining's.
+  if (kind === 'drill') { const v = flagRank(done, 'survey'); if (v > 1) s *= 1 + 0.1 * (v - 1); }
+  return s;
 }
 export const zapRange = (m, done = []) =>
   ZAP_RANGE[(m.level || 1) - 1] + add(done, 'focus', FOCUS_RANGE);
@@ -699,7 +702,8 @@ export const twoInput = m =>
 export const LADDERED = { ext: 1.22, depot: 1.55, lab: 1.7 };
 
 /** Mutators are priced by the tier they output. */
-export const MUT_PRICE = [0, 55, 80, 115, 155, 215, 300, 410];
+// Ten times what they first were: a Mutator skips whole Fuser chains, and is priced like it.
+export const MUT_PRICE = [0, 550, 800, 1150, 1550, 2150, 3000, 4100];
 
 /**
  * Mutator speed halves each tier while gizmo value roughly doubles, so every
@@ -1443,107 +1447,143 @@ export const TECH = [
 
   // ---- production: the starter unlocks
   { id: 'balancing', branch: 'economy', name: 'Balancers', cost: 30, flat: true, needs: [], unlocks: ['bal'],
-    blurb: 'Unlocks the Balancer: one line in, gizmos dealt out in turn to its front and its side. '
-      + 'The way to feed a Generator off a line that is also selling.' },
+    blurb: 'Unlocks the Balancer. It splits one line in two, sending gizmos alternately straight on and out one side.',
+    ranks: 'Ranks II–V: Balancers work 10% faster each (+40% at V).' },
   { id: 'sorting', branch: 'economy', name: 'Sorters', cost: 75, flat: true, needs: ['balancing'], unlocks: ['sort'],
-    blurb: 'Unlocks the Sorter, which pulls one type out of a mixed line and sends it down its side.' },
+    blurb: 'Unlocks the Sorter. It sends one type you choose out of its side and lets everything else go straight on.',
+    ranks: 'Ranks II–V: Sorters work 10% faster each (+40% at V).' },
   { id: 'mut1', branch: 'economy', name: 'Copper Mutator', cost: 45, flat: true, needs: [], unlocks: ['mut:1'],
-    blurb: 'Unlocks the Copper Mutator: raw ore in, Copper out. Copper sells for three times Scrap.' },
+    blurb: 'Unlocks the Copper Mutator: any gizmo in, Copper out. Copper sells for 3x Scrap.',
+    ranks: 'Ranks II–V: Copper Mutators work 10% faster each (+40% at V).' },
   { id: 'fusing', branch: 'economy', name: 'Fusers', cost: 125, flat: true, needs: ['mut1'], unlocks: ['fuse'],
-    blurb: 'Unlocks the Fuser: two gizmos of one type melt into one of the next rung up.' },
+    blurb: 'Unlocks the Fuser. Two gizmos of the same type melt into one of the next type up (two Scrap make one Copper).',
+    ranks: 'Ranks II–V: Fusers work 10% faster each (+40% at V).' },
   { id: 'mut2', branch: 'economy', name: 'Amber Mutator', cost: 200, flat: true, needs: ['mut1'], unlocks: ['mut:2'],
-    blurb: 'Unlocks the Amber Mutator: raw ore straight to Amber, no Fusers needed.' },
+    blurb: 'Unlocks the Amber Mutator: any gizmo in, Amber out. Skips two Fuser steps.',
+    ranks: 'Ranks II–V: Amber Mutators work 10% faster each (+40% at V).' },
   { id: 'mut3', branch: 'economy', name: 'Bloom Mutator', cost: 140, needs: ['mut2'], unlocks: ['mut:3'],
-    blurb: 'Unlocks the Bloom Mutator.' },
+    blurb: 'Unlocks the Bloom Mutator: any gizmo in, Bloom out.',
+    ranks: 'Ranks II–V: Bloom Mutators work 10% faster each (+40% at V).' },
   { id: 'mut4', branch: 'economy', name: 'Cobalt Mutator', cost: 300, needs: ['mut3'], unlocks: ['mut:4'],
-    blurb: 'Unlocks the Cobalt Mutator — half of every Turbine.' },
+    blurb: 'Unlocks the Cobalt Mutator: any gizmo in, Cobalt out. Turbines need Cobalt.',
+    ranks: 'Ranks II–V: Cobalt Mutators work 10% faster each (+40% at V).' },
   { id: 'mut5', branch: 'economy', name: 'Void Mutator', cost: 650, needs: ['mut4'], unlocks: ['mut:5'],
-    blurb: 'Unlocks the Void Mutator.' },
+    blurb: 'Unlocks the Void Mutator: any gizmo in, Void out.',
+    ranks: 'Ranks II–V: Void Mutators work 10% faster each (+40% at V).' },
   { id: 'mut6', branch: 'economy', name: 'Ember Mutator', cost: 1300, needs: ['mut5'], unlocks: ['mut:6'],
-    blurb: 'Unlocks the Ember Mutator — half of every Reactor.' },
+    blurb: 'Unlocks the Ember Mutator: any gizmo in, Ember out. Reactors need Ember.',
+    ranks: 'Ranks II–V: Ember Mutators work 10% faster each (+40% at V).' },
   { id: 'mut7', branch: 'economy', name: 'Prism Mutator', cost: 2600, needs: ['mut6'], unlocks: ['mut:7'],
-    blurb: 'Unlocks the Prism Mutator, the top of the ladder.' },
+    blurb: 'Unlocks the Prism Mutator: any gizmo in, Prism out. Prism is the most valuable alloy.',
+    ranks: 'Ranks II–V: Prism Mutators work 10% faster each (+40% at V).' },
 
   { id: 'overflow', branch: 'economy', name: 'Overflow Splitters', cost: 40, flat: true, needs: ['balancing'], unlocks: ['over'],
-    blurb: 'Unlocks the Overflow Splitter: everything straight ahead, and only the extra out of the side.' },
+    blurb: 'Unlocks the Overflow Splitter. Everything goes straight on; only when that line is full does the extra spill out the side.',
+    ranks: 'Ranks II–V: Overflow Splitters work 10% faster each (+40% at V).' },
   { id: 'recycling', branch: 'economy', name: 'Recyclers', cost: 220, needs: ['sorting'], unlocks: ['recyc'],
-    blurb: 'Unlocks the Recycler, which shreds anything into one Scrap. The clean-up crew for a messy line.' },
+    blurb: 'Unlocks the Recycler: anything in, one Scrap out. Use it to clear mixed or unwanted gizmos off a line.',
+    ranks: 'Ranks II–V: Recyclers work 10% faster each (+40% at V).' },
 
   // ---- production
   { id: 'storage', branch: 'economy', name: 'Warehousing', cost: 140, needs: ['balancing'], unlocks: ['store'],
-    blurb: 'Unlocks Storage — a belt with a deep buffer, and the cure for a line '
-      + 'that keeps backing up over a wobble in its ratios.' },
+    blurb: 'Unlocks Storage: a belt that holds up to 6 gizmos, so a line can absorb bursts without backing up.',
+    ranks: 'Ranks II–V: Storage moves gizmos 10% faster each (+40% at V).' },
   { id: 'express', branch: 'economy', name: 'Express Belts', cost: 480, needs: ['storage'], belt: 1,
-    blurb: `Conveyors, Storage and Bridges move gizmos ${Math.round((1 / TECH_BONUS.belt - 1) * 100)}% faster.` },
+    blurb: 'Conveyors, Storage and Bridges move gizmos 33% faster.',
+    ranks: 'Ranks II–V: faster again each rank — 137% faster at V.' },
   { id: 'assembly', branch: 'economy', name: 'Assembly', cost: 420, needs: ['fusing'], unlocks: ['asm:0'],
-    blurb: 'Unlocks the Engine Assembler, and with it recipes at all.' },
+    blurb: 'Unlocks the Engine Assembler: Cord + Amber → Engine.',
+    ranks: 'Ranks II–V: Engine Assemblers work 10% faster each (+40% at V).' },
   { id: 'overclock', branch: 'economy', name: 'Overclocking', cost: 820, needs: ['storage'], level: 3,
-    blurb: 'Raises every machine’s upgrade ceiling by a level, from 2 toward 5.' },
+    blurb: 'Raises the machine upgrade limit from level 2 to level 3.',
+    ranks: 'Ranks II–III: +1 level each (level 5 at III). Ranks IV–V: all upgrades 15% cheaper each.' },
   { id: 'market', branch: 'economy', name: 'Market Savvy', cost: 900, needs: ['assembly'], market: 1,
-    blurb: `Contracts pay ${Math.round((TECH_BONUS.market - 1) * 100)}% over market instead of 35%.` },
+    blurb: 'Contracts pay 60% above market price instead of 35%. (Endless mode only — story contracts pay nothing extra.)',
+    ranks: 'Ranks II–V: contracts pay more each rank — 180% above market at V.' },
   { id: 'assembly2', branch: 'economy', name: 'Assembly II', cost: 1150, needs: ['assembly'], unlocks: ['asm:1'],
-    blurb: 'Unlocks the Turbine Assembler.' },
+    blurb: 'Unlocks the Turbine Assembler: Frame + Cobalt → Turbine.',
+    ranks: 'Ranks II–V: Turbine Assemblers work 10% faster each (+40% at V).' },
   { id: 'replication', branch: 'economy', name: 'Replication', cost: 1900, needs: ['overclock'], unlocks: ['dup'],
-    blurb: 'Unlocks the Doubler. Copies are gizmos out of nothing and nothing else in '
-      + 'the game is, which is why it sits this deep and refuses to copy anything rich.' },
+    blurb: 'Unlocks the Doubler. It copies each gizmo it gets (up to Cobalt). A copy can never be copied again.',
+    ranks: 'Ranks II–V: Doublers work 10% faster each (+40% at V).' },
   { id: 'assembly3', branch: 'economy', name: 'Assembly III', cost: 2600, needs: ['assembly2'], unlocks: ['asm:2'],
-    blurb: 'Unlocks the Reactor Assembler, the richest recipe there is.' },
+    blurb: 'Unlocks the Reactor Assembler: Frame + Ember → Reactor, the most valuable product.',
+    ranks: 'Ranks II–V: Reactor Assemblers work 10% faster each (+40% at V).' },
   { id: 'trifurcation', branch: 'economy', name: 'Trifurcation', cost: 3400, needs: ['replication'],
-    unlocks: ['trident'], blurb: 'Unlocks the Trident: three exits, one job.' },
+    unlocks: ['trident'], blurb: 'Unlocks the Trident. It sends gizmos out of three sides, copying originals (up to Cobalt) to fill them.',
+    ranks: 'Ranks II–V: Tridents work 10% faster each (+40% at V).' },
 
   // ---- power
   { id: 'generators', branch: 'power', name: 'Generators', cost: 20, flat: true, needs: [], unlocks: ['gen'],
-    blurb: 'Unlocks the Generator. Feed it ore and it powers every machine it touches, and '
-      + 'everything those touch — an unpowered machine runs at a fifth of its speed.' },
+    blurb: 'Unlocks the Generator. It burns gizmos for power and powers every machine connected to it. Unpowered machines run at 1/5 speed.',
+    ranks: 'Ranks II–V: Generators make 10% more power each (+40% at V).' },
   { id: 'solar', branch: 'power', name: 'Solar Panels', cost: 35, flat: true, needs: ['generators'], unlocks: ['solar'],
-    blurb: 'Unlocks the Solar Panel: a little steady power with no fuel at all.' },
+    blurb: 'Unlocks the Solar Panel: 15 kW of steady power with no fuel.',
+    ranks: 'Ranks II–V: Solar Panels make 10% more power each (+40% at V).' },
   { id: 'pylons', branch: 'power', name: 'Pylons', cost: 300, needs: ['gridwork'], unlocks: ['pylon'],
-    blurb: 'Unlocks the Pylon. A pair facing the same way carries power across a gap — rock, valley or open space.' },
+    blurb: 'Unlocks the Pylon. Two facing the same way link with a wire that carries power (not gizmos) across a gap of up to 3 slots.',
+    ranks: 'Ranks II–V: Pylon links reach 1 slot further each (+4 at V).' },
   { id: 'gridwork', branch: 'power', name: 'Gridwork', cost: 180, needs: ['generators'], power: 'reach',
-    blurb: `Every generator's power reaches ${GRIDWORK_REACH} machines further.` },
+    blurb: 'Generator power reaches 4 more machines.',
+    ranks: 'Ranks II–V: +2 more machines each (+12 at V).' },
   { id: 'combustion', branch: 'power', name: 'Combustion', cost: 380, needs: ['gridwork'], power: 'fuel',
-    blurb: 'Every fuel burns 45% longer, so a generator eats a smaller share of your ore.' },
+    blurb: 'Fuel burns 45% longer, so Generators use less ore.',
+    ranks: 'Ranks II–V: longer still each rank — 135% longer at V.' },
   { id: 'prospecting', branch: 'power', name: 'Prospecting', cost: 700, needs: ['gridwork'], yield: 1.35,
-    blurb: 'Every Extractor pulls 35% more out of the ground.' },
+    blurb: 'Extractors mine 35% more.',
+    ranks: 'Ranks II–V: more each rank — 105% more at V.' },
   { id: 'voltage', branch: 'power', name: 'High Voltage', cost: 1500, needs: ['combustion'], power: 'output',
-    blurb: 'Every generator makes 60% more power from the same fuel line.' },
+    blurb: 'Generators make 60% more power from the same fuel.',
+    ranks: 'Ranks II–V: more each rank — 180% more at V.' },
   { id: 'motors', branch: 'power', name: 'Efficient Motors', cost: 2200, needs: ['voltage'], motor: 1,
-    blurb: `Every machine draws ${Math.round((1 - TECH_BONUS.motor) * 100)}% less power for the same work.` },
+    blurb: 'All machines use 25% less power.',
+    ranks: 'Ranks II–V: less each rank — 58% less at V.' },
 
   // ---- defence
   { id: 'defense', branch: 'defense', name: 'Pest Control', cost: 120, needs: [], unlocks: ['arm', 'zap'],
-    blurb: 'Unlocks the Armory and the Zapper. The first swarm comes a few minutes in; '
-      + 'research this before it arrives.' },
+    blurb: 'Unlocks the Armory (makes Ammo) and the Zapper (shoots creatures with it). Get it before the first swarm.',
+    ranks: 'Ranks II–V: Armories and Zappers work 10% faster each (+40% at V).' },
   { id: 'drones', branch: 'defense', name: 'Repair Drones', cost: 350, needs: ['defense'], unlocks: ['drone'],
-    blurb: 'Unlocks the Repair Drone Bay: fed Copper, it patches up damaged machines nearby on its own.' },
+    blurb: 'Unlocks the Repair Drone Bay. Feed it Copper and it fully repairs damaged machines nearby, 2 Copper per repair.',
+    ranks: 'Ranks II–V: drones repair 10% more often each (+40% at V).' },
   { id: 'focus', branch: 'defense', name: 'Focusing', cost: 260, needs: ['defense'], focus: 1,
-    blurb: `Every Zapper reaches ${FOCUS_RANGE} slots further.` },
+    blurb: 'Zappers reach 1.5 slots further.',
+    ranks: 'Ranks II–V: +0.75 slots each (+4.5 at V).' },
   { id: 'capacitor', branch: 'defense', name: 'Capacitors', cost: 600, needs: ['defense'], cap: 1,
-    blurb: `Every Zapper recharges ${Math.round((1 / TECH_BONUS.cap - 1) * 100)}% faster between shots.` },
+    blurb: 'Zappers recharge 43% faster between shots.',
+    ranks: 'Ranks II–V: faster each rank — 192% faster at V.' },
   { id: 'arc', branch: 'defense', name: 'Arc Discharge', cost: 900, needs: ['focus'], arc: 1,
-    blurb: `Every zap jumps on to ${ARC_CHAIN} more mites standing close to the first.` },
+    blurb: 'Each zap jumps to 2 more creatures nearby.',
+    ranks: 'Ranks II–V: +1 creature each (6 at V).' },
   { id: 'plating', branch: 'defense', name: 'Plating', cost: 1300, needs: ['arc'], hp: 1,
-    blurb: 'Every machine on the map takes 50% more chewing before it breaks.' },
+    blurb: 'All machines take 50% more damage before they break.',
+    ranks: 'Ranks II–V: tougher each rank — 150% more at V.' },
   { id: 'overcharge', branch: 'defense', name: 'Overcharge', cost: 1600, needs: ['capacitor'], over: 1,
-    blurb: `Every zap does ${Math.round((TECH_BONUS.over - 1) * 100)}% more damage.` },
+    blurb: 'Zaps do 25% more damage.',
+    ranks: 'Ranks II–V: more each rank — 75% more at V.' },
   { id: 'shield', branch: 'defense', name: 'Beacon Shielding', cost: 3200, needs: ['plating', 'overcharge'], shield: 1,
-    blurb: `The Launch Beacon takes ${TECH_BONUS.shield}x as much damage before it loses a delivered gizmo.` },
+    blurb: 'The Launch Beacon takes twice as much damage before it loses a delivered gizmo.',
+    ranks: 'Ranks II–V: tougher each rank — 4x as much at V.' },
 
   // ---- terrain
   { id: 'surveying', branch: 'terrain', name: 'Surveying', cost: 250, needs: [], survey: 1,
-    blurb: 'Reveals what is in every mountain — which mineral, and how much — on the map '
-      + 'and when you hover one.' },
+    blurb: 'Shows which ore is inside each mountain and how much is left.',
+    ranks: 'Ranks II–V: Mountain Drills dig 10% faster each (+40% at V).' },
   { id: 'bridging', branch: 'terrain', name: 'Bridging', cost: 300, needs: ['surveying'], unlocks: ['bridge'],
-    blurb: 'Unlocks the Bridge: a pair carries gizmos and power across a valley.' },
+    blurb: 'Unlocks the Bridge. Two facing the same way carry gizmos and power across a gap of up to 4 slots.',
+    ranks: 'Ranks II–V: Bridges move gizmos 10% faster each (+40% at V).' },
   { id: 'mining', branch: 'terrain', name: 'Deep Mining', cost: 650, needs: ['surveying'], unlocks: ['drill'],
-    blurb: 'Unlocks the Mountain Drill, which digs a mountain’s seam out — up to Cobalt. '
-      + 'Drilling wakes Beetles.' },
+    blurb: 'Unlocks the Mountain Drill. Set it facing a mountain and it digs out that mountain\'s ore. Drilling wakes Beetles.',
+    ranks: 'Ranks II–V: Mountain Drills dig 10% faster each (+40% at V).' },
   { id: 'longspan', branch: 'terrain', name: 'Long Spans', cost: 1200, needs: ['bridging'], span: 1,
-    blurb: `A pair of Bridges can be up to ${TECH_BONUS.span} slots further apart.` },
+    blurb: 'Bridge pairs can be 3 slots further apart.',
+    ranks: 'Ranks II–V: +1 slot each (+7 at V).' },
   { id: 'bits', branch: 'terrain', name: 'Hardened Bits', cost: 1400, needs: ['mining'], drill: 1,
-    blurb: `Every Mountain Drill digs ${Math.round((TECH_BONUS.drill - 1) * 100)}% faster.` },
+    blurb: 'Mountain Drills dig 40% faster.',
+    ranks: 'Ranks II–V: faster each rank — 120% faster at V.' },
   { id: 'dampers', branch: 'terrain', name: 'Dampers', cost: 1800, needs: ['mining'], damper: 1,
-    blurb: `Drilling makes half the tremor, so Beetles wake ${TECH_BONUS.damper}x less often.` },
+    blurb: 'Drilling wakes Beetles half as often.',
+    ranks: 'Ranks II–V: rarer each rank — 4x less often at V.' },
 ];
 
 export const techById = id => TECH.find(t => t.id === id) || null;
@@ -1584,6 +1624,7 @@ export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
 /** What one more rank of this node does, in a few words, for the card. */
 export function rankBlurb(t) {
+  if (t.ranks) return t.ranks;
   if (t.id === 'overclock') return 'Ranks I–III raise the ceiling a level each, to 5; IV and V make every upgrade 15% cheaper.';
   if (t.unlocks?.length) return 'Each rank after the first: what it unlocks works 10% faster.';
   if (t.survey) return 'Each rank after the first: Mountain Drills dig 10% faster.';
@@ -1611,7 +1652,17 @@ const powerRank = (done, what) => { const t = TECH.find(x => x.power === what); 
 
 /** Kilowatts a generator actually makes, after research. */
 export const genOutput = (m, done = []) =>
-  GEN_OUTPUT[(m.level || 1) - 1] * (1 + (VOLTAGE_BONUS - 1) * rankScale(powerRank(done, 'output')));
+  GEN_OUTPUT[(m.level || 1) - 1] * (1 + (VOLTAGE_BONUS - 1) * rankScale(powerRank(done, 'output')))
+  * unlockSpeed('gen', done);
+
+/** Kilowatts a Solar Panel makes, after research (each rank of Solar Panels past I: +10%). */
+export const solarOutput = (m, done = []) => SOLAR_OUTPUT[(m.level || 1) - 1] * unlockSpeed('solar', done);
+
+/** Slots a Pylon's link may cross, by its level, plus one for each rank of Pylons past I. */
+export const pylonGap = (m, done = []) => PYLON_GAP[(m.level || 1) - 1] + Math.max(0, rankOf(done, 'pylons') - 1);
+
+/** Seconds between a Drone Bay's repairs at full power. */
+export const droneCycle = (m, done = []) => DRONE_CYCLE * (LEVEL_SPEED[(m.level || 1) - 1] ?? 1) / unlockSpeed('drone', done);
 
 /** How many hops a generator's power carries, after research. */
 export const genReach = (m, done = []) =>

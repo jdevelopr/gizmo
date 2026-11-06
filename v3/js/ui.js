@@ -13,7 +13,7 @@ import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
   levelCap, techById, techOpen, unlockedBy, expandCost, money, num, clock,
-  cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS,
+  cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
   MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME, TUTORIAL, TUTORIAL_END,
@@ -34,7 +34,7 @@ import {
   progress as beaconProgress, beaconLines, beaconRepairCost, beaconHot, beaconReachable, mouthApproach,
 } from './beacon.js';
 import { upgradeQuote, scrapQuote, repairQuote } from './blueprint.js';
-import { HIST_STEP } from './game.js';
+import { HIST_STEP, goalProgress } from './game.js';
 import { bodyTile, frameCount, shade, px } from './render.js';
 import {
   kindCounts, countKind, diagnose, machineLoad, speedOf, reachesPayout,
@@ -120,7 +120,9 @@ export class Palette {
             if (on.has('asm:' + i)) this.addRow(g, { kind: 'asm', mut: i }, counts);
           });
         } else if (kind === 'mut') {
-          this.addRow(g, { kind: 'mut', mut: 1 }, counts, true);
+          let low = 1;
+          while (low < 7 && !on.has('mut:' + low)) low++;
+          this.addRow(g, { kind: 'mut', mut: low }, counts, true);
         } else {
           this.addRow(g, { kind }, counts);
         }
@@ -153,12 +155,16 @@ export class Palette {
       const strip = el('div', 'chips');
       strip.style.padding = '2px 6px 6px';
       strip.hidden = true;
+      const on = unlockedBy(g.f.done);
       for (let t = 1; t < 8; t++) {
+        // Only the rungs researched so far; the rest appear as they are unlocked.
+        if (!on.has('mut:' + t)) continue;
         const c = el('button', 'chip');
         const sw = el('i');
         sw.style.background = TYPES[t].color;
         c.appendChild(sw);
         c.appendChild(document.createTextNode(TYPES[t].name));
+        c.dataset.tier = t;
         c.onclick = ev => { ev.stopPropagation(); this.onPick({ kind: 'mut', mut: t }); };
         strip.appendChild(c);
       }
@@ -187,8 +193,8 @@ export class Palette {
       r.btn.classList.toggle('on', on);
       if (r.strip) {
         r.strip.hidden = !on;
-        [...r.strip.children].forEach((c, i) => {
-          c.classList.toggle('on', on && spec.mut === i + 1);
+        [...r.strip.children].forEach(c => {
+          c.classList.toggle('on', on && spec.mut === +c.dataset.tier);
         });
       }
     }
@@ -630,7 +636,9 @@ export class Hud {
         + `Shift H repairs everything for ${money(all.cost)}.`;
     } else if (!d.gens) {
       head = 'UNPOWERED';
-      body = `Every machine is running at ${Math.round(UNPOWERED * 100)}%. Build a Generator touching your line and feed it ore.`;
+      body = `Every machine is running at ${Math.round(UNPOWERED * 100)}%. ` + (unlockedBy(f.done).has('gen')
+        ? 'Build a Generator touching your line and feed it ore.'
+        : 'Feed a Research Lab, then research Generators in the TECH tab (Y).');
     } else if (d.dryGens) {
       head = 'OUT OF FUEL';
       target = first(m => m.kind === 'gen' && m.fuel <= 0 && !m.buf.length);
@@ -817,7 +825,7 @@ export class Panel {
     } else if (this.tab === 'tech') {
       key = 'tech|' + f.done.join(',') + '|' + Math.floor(f.science / 5);
     } else if (this.tab === 'orders') {
-      key = 'orders|' + (f.beacon ? Object.values(f.beacon.got).join('.') + ':' + Math.round(f.beacon.hp / 10) + ':' + f.claim : '') + '|'
+      key = 'orders|' + (g.story ? g.story.goals.map(s => (s.done ? 'd' : '') + Math.floor(s.held)).join(',') + Math.floor(f.earned / 50) + Array.from(f.shipped).map(Math.floor).join('.') : '') + (f.beacon ? Object.values(f.beacon.got).join('.') + ':' + Math.round(f.beacon.hp / 10) + ':' + f.claim : '') + '|'
         + g.contracts.map(c => c.id + ':' + c.done).join(',') +
         '|' + Array.from(g.done).join(',');
     } else {
@@ -1020,6 +1028,11 @@ export class Panel {
         + `of shots, and every few it takes a brood comes out — ${sk ? 'Skitters go for the belts feeding the Zapper' : 'Mites go for the Zapper itself'}. Park `
         + 'two or three Zappers together, keep the Ammo coming, and it pays well. Another '
         + 'nest digs in somewhere in the wilds a few minutes later.'));
+      return;
+    }
+    if (t === SPACE) {
+      host.appendChild(el('h3', null, 'OPEN SPACE'));
+      host.appendChild(el('p', 'blurb', 'The edge of the rock. Nothing can be built out here — there is nothing to build on.'));
       return;
     }
     host.appendChild(el('h3', null,
@@ -1511,12 +1524,46 @@ export class Panel {
 
   /* ---------------------------------------------------------------- orders --- */
 
+  /** Story mode's ORDERS tab: the one contract this world is for. */
+  storyCard(host, g) {
+    const lv = g.story.level, L = STORY_LEVELS[lv];
+    host.appendChild(el('h3', null, `${L.name}`));
+    host.appendChild(el('div', 'sub', `WORLD ${lv + 1} OF ${STORY_LEVELS.length} · ${L.kind.toUpperCase()}`));
+    host.appendChild(el('p', 'blurb', L.learn));
+    L.goals.forEach((goal, k) => {
+      const st = g.story.goals[k];
+      const card = el('div', 'card can');
+      const h = el('h4');
+      if (goal.ty != null) {
+        const sw = el('span');
+        sw.style.cssText = `display:inline-block;width:9px;height:9px;background:${TYPES[goal.ty].color};margin-right:6px`;
+        h.appendChild(sw);
+      }
+      h.appendChild(document.createTextNode(goalText(goal)));
+      if (st.done) h.appendChild(el('span', 'price', 'DONE'));
+      card.appendChild(h);
+      const pr = goalProgress(g, k);
+      if (pr) card.appendChild(el('p', null, pr.text));
+      const meter = el('div', 'meter');
+      const fill = el('span');
+      fill.style.width = Math.round((pr ? pr.p : st.done ? 1 : 0) * 100) + '%';
+      fill.style.background = st.done ? '#a7f070' : '#ffcd75';
+      meter.appendChild(fill);
+      card.appendChild(meter);
+      host.appendChild(card);
+    });
+    host.appendChild(el('p', 'blurb', g.story.complete
+      ? 'Contract fulfilled. Click the contract box on the map to move on to the next world.'
+      : 'Money and science start fresh on every world; research carries over to the next.'));
+  }
+
   /**
    * The contract board, and — underneath it, until it empties — the list of things
    * a new factory has not discovered yet.
    */
   orders(host, g) {
     const f = g.f;
+    if (g.story) { this.storyCard(host, g); return; }
     this.beaconCard(host, g, false);
     if (!g.contracts.length) {
       host.appendChild(el('div', 'blank',
@@ -1737,6 +1784,8 @@ export function drawMinimap(canvas, g, view) {
         else { r = own ? 47 : 24; gg = own ? 160 : 78; b = own ? 132 : 66; }
       } else if (f.terrain[i] === BEACON) {
         r = 255; gg = 205; b = 117;
+      } else if (f.terrain[i] === SPACE) {
+        r = 3; gg = 4; b = 10;
       } else if (f.terrain[i] === MOUNTAIN) {
         r = own ? 120 : 84; gg = own ? 104 : 72; b = own ? 88 : 60;
       } else if (f.terrain[i] === VALLEY) {

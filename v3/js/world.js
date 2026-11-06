@@ -26,8 +26,8 @@
  */
 
 import {
-  WORLD, CLAIM_START, DIRS, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, MOUNTAIN_ORE, BEACON, BEACON_SIZE,
-  cellOf, cx, cy, inWorld, claimMin, claimCells, rng, hashSeed,
+  WORLD, CLAIM_START, DIRS, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, MOUNTAIN_ORE, BEACON, BEACON_SIZE, SPACE,
+  STORY_LEVELS, cellOf, cx, cy, inWorld, claimMin, claimCells, rng, hashSeed,
 } from './machines.js';
 
 const SLAG = 0, SAP = 8;
@@ -286,6 +286,102 @@ export function placeBeacon(w) {
     }
   }
   w.beacon = { x0, y0, corner };
+  return w;
+}
+
+/* ------------------------------------------------------------- story worlds --- */
+
+/**
+ * A story-mode world: an ordinary world with everything outside one lumpy rock
+ * turned to open space, and the features this level does not use flattened away.
+ *
+ * The rock is a circle of radius `r` whose edge wobbles by a few harmonics, so it
+ * reads as an asteroid rather than a disc. Everything inside it is the endless
+ * generator's own work — the hand-made opening at the centre, ore richer toward the
+ * rim — so the two modes play the same game on different-sized pieces of ground.
+ */
+export function storyWorld(level, seed) {
+  const L = STORY_LEVELS[Math.max(0, Math.min(STORY_LEVELS.length - 1, level))];
+  const w = generateWorld(seed);
+  const rnd = rng(hashSeed((seed ^ 0x73746f72) >>> 0));
+  const n = WORLD * WORLD;
+  const c = (WORLD - 1) / 2;
+  const R = L.r;
+
+  // The outline: a radius for every angle, from a few random harmonics.
+  const waves = [2, 3, 5, 7].map(k => ({ k, a: (0.05 + rnd() * 0.07) * (k <= 3 ? 1 : 0.5), p: rnd() * Math.PI * 2 }));
+  const edge = ang => R * (1 + waves.reduce((t, h) => t + h.a * Math.cos(h.k * ang + h.p), 0));
+  const inside = new Uint8Array(n);
+  let reach = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = cx(i) - c, dy = cy(i) - c;
+    const d = Math.hypot(dx, dy);
+    if (d <= Math.max(3, edge(Math.atan2(dy, dx)))) {
+      inside[i] = 1;
+      reach = Math.max(reach, Math.abs(dx), Math.abs(dy));
+    }
+  }
+
+  // Flatten what this level does not use, before the space goes in.
+  for (let i = 0; i < n; i++) {
+    if (w.terrain[i] === BEACON) w.terrain[i] = OPEN;
+    if (!L.mountains && w.terrain[i] === MOUNTAIN) { w.terrain[i] = OPEN; w.mtn[i] = -1; }
+    if (!L.valleys && w.terrain[i] === VALLEY) w.terrain[i] = OPEN;
+    if (!L.sap && w.patch[i] === SAP) { w.patch[i] = -1; w.rich[i] = 0; }
+    if (!inside[i]) {
+      w.terrain[i] = SPACE;
+      w.patch[i] = -1;
+      w.rich[i] = 0;
+      w.mtn[i] = -1;
+    }
+  }
+  w.beacon = null;
+  if (!L.mountains) w.mountains = [];
+  else {
+    // Seams are graded by how far out on *this* rock a mountain stands, so a
+    // smaller world still holds the whole range.
+    for (const mt of w.mountains) {
+      mt.cells = mt.cells.filter(i => inside[i]);
+      if (!mt.cells.length) continue;
+      const m0 = mt.cells[0];
+      const ring = Math.max(Math.abs(cx(m0) - c), Math.abs(cy(m0) - c)) / Math.max(1, R);
+      const tier = Math.max(0, Math.min(MOUNTAIN_ORE.length - 1, Math.floor(ring * 4.2 + rnd() * 1.4) - 1));
+      mt.ty = MOUNTAIN_ORE[tier];
+    }
+  }
+
+  // Sap, if this level needs it and the rock happens not to hold any: a patch or
+  // two grown out toward the rim, as far from the opening as the rock allows.
+  if (L.sap) {
+    let sap = 0;
+    for (let i = 0; i < n; i++) if (w.patch[i] === SAP) sap++;
+    const want = R >= 24 ? 3 : R >= 18 ? 2 : 1;
+    for (let k = 0; sap < want * 10 && k < want + 2; k++) {
+      for (let guard = 0; guard < 200; guard++) {
+        const a = rnd() * Math.PI * 2, d = R * (0.55 + rnd() * 0.25);
+        const x = Math.round(c + Math.cos(a) * d), y = Math.round(c + Math.sin(a) * d);
+        if (!inWorld(x, y)) continue;
+        const i = cellOf(x, y);
+        if (!inside[i] || w.patch[i] >= 0 || w.terrain[i] !== OPEN) continue;
+        const p = growPatch(rnd, w.patch, w.rich, SAP, i, 14, 1.15, w.terrain);
+        // a patch must not spill out into space
+        p.cells = p.cells.filter(ci => { if (inside[ci]) return true; w.patch[ci] = -1; w.terrain[ci] = SPACE; return false; });
+        sap += p.cells.length;
+        w.patches.push(p);
+        break;
+      }
+    }
+  }
+  w.patches = w.patches.filter(p => p.cells.some(i => w.patch[i] === p.ty));
+
+  // The opening corridor stays clear whatever the outline did.
+  for (const i of [w.start.ext, w.start.depot, ...w.start.belts]) if (w.terrain[i] !== OPEN) w.terrain[i] = OPEN;
+
+  // The fence never needs to grow past the rock.
+  w.maxClaim = Math.min(WORLD, 2 * reach + 3);
+  w.story = {
+    level, bugs: !!L.bugs, skitters: !!L.skitters, nests: L.nests || 0,
+  };
   return w;
 }
 

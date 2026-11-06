@@ -508,13 +508,19 @@ console.log('\nTHE OPENING');
     `earned ${Math.round(g.f.earned)}`);
   ok(g.tut === 3, 'and the third step ticks on the first sale', `on step ${g.tut}`);
 
+  g.f.studied = 1;                       // a gizmo has gone into a Lab
+  stepTutorial(g);
+  ok(g.tut === 4, 'the fourth ticks on the first science', `on step ${g.tut}`);
+  g.f.done.push('generators');
+  stepTutorial(g);
+  ok(g.tut === 5, 'the fifth once Generators are researched', `on step ${g.tut}`);
   const gen = cellOf(cx(g.f.world.start.belts[0]), cy(g.f.world.start.belts[0]) + 1);
   build(g.f, { kind: 'gen' }, gen, {});
   stepTutorial(g);
-  ok(g.tut === 4, 'and the fourth on a Generator');
+  ok(g.tut === 6, 'and the sixth on a Generator');
   g.f.grid[gen].buf.push({ id: 1, ty: 0, cp: 0 });
   for (let i = 0; i < 30; i++) stepGame(g, 1 / 30);
-  ok(g.tut === 5, 'and the fifth once it is burning something', `on step ${g.tut}`);
+  ok(g.tut === 7, 'and the seventh once it is burning something', `on step ${g.tut}`);
   applyAction(g.f, { a: 'expand' });
   stepTutorial(g);
   ok(g.tut === TUTORIAL.length, 'and the last on a ring of land', `on step ${g.tut}`);

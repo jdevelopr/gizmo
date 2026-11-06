@@ -22,9 +22,9 @@
 import {
   TYPES, RAW, WORLD, CLAIM_START, MILESTONES, TUTORIAL, CONTRACT_SLOTS,
   CONTRACT_PREMIUM, contractPremium, CONTRACT_GRACE, CONTRACT_GAP, cellOf, cx, cy, rng, hashSeed,
-  money, makeMachine, techById, unlockedBy, OPEN, MOUNTAIN, VALLEY,
+  money, makeMachine, techById, unlockedBy, OPEN, MOUNTAIN, VALLEY, STORY_LEVELS,
 } from './machines.js';
-import { generateWorld } from './world.js';
+import { generateWorld, storyWorld } from './world.js';
 import { spawnMite, addMissingNests } from './bugs.js';
 import {
   createFactory, starterKit, stepFactory, rebuild, drainFx, diagnose, reachesPayout, occupy,
@@ -32,6 +32,8 @@ import {
 
 // v2: the 80x80 world. v3: machines bigger than one slot. Older saves cannot be read.
 const SAVE_KEY = 'gizmo3.save.v3';
+/** The story campaign is saved on its own, so it and an endless world can both be in progress. */
+const STORY_KEY = 'gizmo3.story.v1';
 /** Creature kinds by the number a save stores them as. Append only. */
 const BUG_KINDS = ['mite', 'skitter', 'beetle'];
 /** Set once the first game has been walked through, or the walk was skipped. */
@@ -62,6 +64,117 @@ export function createGame({ seed = null, cash = 650, teach = null } = {}) {
   const g = baseGame(f);
   g.tut = (teach == null ? !hasBeenTaught() : teach) ? 0 : -1;
   return g;
+}
+
+/**
+ * One world of the story campaign. Money and science start fresh — the level's own
+ * starting cash and no science at all — and the research in `done` carries over
+ * from the world before.
+ */
+export function createStoryGame(level, { done = [], seed = null, teach = null, stats = null } = {}) {
+  const L = STORY_LEVELS[level];
+  const s = seed == null ? (Math.floor(Math.random() * 1e9) | 0) : seed;
+  const world = storyWorld(level, s);
+  const f = createFactory({ seed: s, world, cash: L.cash });
+  f.done = done.slice();
+  rebuild(f);
+  const g = baseGame(f);
+  g.story = newStory(level);
+  if (stats) g.story.total = { ...stats };
+  // The walkthrough runs on the first rock only, and only for somebody new.
+  g.tut = level === 0 && (teach == null ? !hasBeenTaught() : teach) ? 0 : -1;
+  return g;
+}
+
+function newStory(level) {
+  return {
+    level,
+    goals: STORY_LEVELS[level].goals.map(() => ({ done: false, held: 0 })),
+    complete: false,
+    doneAt: 0,
+    // Running totals across the campaign so far, for the last screen.
+    total: { t: 0, earned: 0, shipped: 0, zapped: 0 },
+  };
+}
+
+/** How far along one goal is, 0 to 1, and a short line saying so. */
+export function goalProgress(g, k) {
+  const goal = STORY_LEVELS[g.story.level].goals[k];
+  const st = g.story.goals[k];
+  const f = g.f;
+  if (st.done) return { p: 1, text: 'done' };
+  if (goal.k === 'ship') {
+    const have = Math.floor(f.shipped[goal.ty] || 0);
+    return { p: Math.min(1, have / goal.n), text: `${have} / ${goal.n}` };
+  }
+  if (goal.k === 'cash') {
+    return { p: Math.min(1, f.earned / goal.n), text: `${money(f.earned)} / ${money(goal.n)}` };
+  }
+  const now = (g.rate[goal.ty] || 0) * 60;
+  return {
+    p: Math.min(1, st.held / goal.secs),
+    text: `${now.toFixed(1)}/min${st.held > 0 ? ` · held ${Math.floor(st.held)}s` : ''}`,
+    hot: now >= goal.per,
+  };
+}
+
+/**
+ * Tick the contract. A rate goal counts while the smoothed rate is at or over the
+ * target and starts again from nothing the moment it drops below — it is a test of
+ * a line that holds, not of a burst. Once a goal is met it stays met.
+ */
+function tickStory(g, dt) {
+  const s = g.story;
+  if (!s || s.complete) return;
+  const L = STORY_LEVELS[s.level];
+  const f = g.f;
+  L.goals.forEach((goal, k) => {
+    const st = s.goals[k];
+    if (st.done) return;
+    if (goal.k === 'ship') st.done = (f.shipped[goal.ty] || 0) >= goal.n;
+    else if (goal.k === 'cash') st.done = f.earned >= goal.n;
+    else {
+      st.held = (g.rate[goal.ty] || 0) * 60 >= goal.per ? st.held + dt : 0;
+      st.done = st.held >= goal.secs;
+    }
+    if (st.done) {
+      toast(g, `Contract: ${goalTextOf(goal)} — done`, '#a7f070');
+      f.fx.push({ k: 'goal' });
+    }
+  });
+  if (s.goals.every(st => st.done)) {
+    s.complete = true;
+    s.doneAt = f.t;
+    f.fx.push({ k: 'storyDone', level: s.level });
+  }
+}
+
+const goalTextOf = goal => {
+  const nm = TYPES[goal.ty]?.name || '';
+  return goal.k === 'ship' ? `${goal.n} ${nm}` : goal.k === 'rate' ? `${goal.per} ${nm}/min` : money(goal.n);
+};
+
+/** The numbers for the end-of-world card, this world's and the campaign's so far. */
+export function storyStats(g) {
+  const f = g.f;
+  let shipped = 0;
+  for (let ty = 0; ty < f.shipped.length; ty++) shipped += f.shipped[ty];
+  const here = { t: f.t, earned: f.earned, shipped, zapped: f.zapped || 0 };
+  const tot = g.story.total;
+  return {
+    here,
+    machines: f.cells.length,
+    claim: f.claim,
+    studied: f.studied,
+    research: f.done.length,
+    total: { t: tot.t + here.t, earned: tot.earned + here.earned, shipped: tot.shipped + here.shipped, zapped: tot.zapped + here.zapped },
+  };
+}
+
+/** The next world of the campaign, carrying the research and the running totals. */
+export function nextStoryGame(g) {
+  const st = storyStats(g);
+  return createStoryGame(g.story.level + 1, { done: g.f.done, stats: st.total, teach: false });
 }
 
 /** Has this browser already been walked through the opening once? */
@@ -112,7 +225,9 @@ export function stepGame(g, realDt) {
   while (g.acc >= STEP && guard++ < 12) {
     g.acc -= STEP;
     stepFactory(g.f, STEP);
-    tickContracts(g, STEP);
+    // The story has its own contract; the endless order board is not posted there.
+    if (g.story) tickStory(g, STEP);
+    else tickContracts(g, STEP);
   }
   // Ticked here rather than from the draw loop, so a headless run notices the
   // same things a played one does.
@@ -350,6 +465,7 @@ export function serialise(g) {
   const mtn = (f.mountains || []).filter(m => m.left < m.amount).map(m => [m.id, m.left]);
   return {
     v: 1,
+    tv: 2,               // tech version: 2 = Generators, Balancers, Sorters, Mutators and Fusers are research
     seed: f.seed,
     claim: f.claim,
     cash: Math.round(f.cash),
@@ -363,6 +479,10 @@ export function serialise(g) {
     shipped: Array.from(f.shipped).map(n => Math.round(n)),
     milestones: Array.from(g.done),
     tut: g.tut,
+    story: g.story ? {
+      level: g.story.level, complete: g.story.complete, doneAt: Math.round(g.story.doneAt),
+      goals: g.story.goals.map(st => [st.done ? 1 : 0, Math.round(st.held)]), total: g.story.total,
+    } : null,
     ground,
     mtn,
     beacon: f.beacon ? {
@@ -393,7 +513,7 @@ export function serialise(g) {
 
 export function deserialise(data) {
   if (!data || data.v !== 1) return null;
-  const world = generateWorld(data.seed);
+  const world = data.story ? storyWorld(data.story.level, data.seed) : generateWorld(data.seed);
   const f = createFactory({ seed: data.seed, world, cash: data.cash || 0 });
   f.claim = Math.max(CLAIM_START, Math.min(WORLD, data.claim || CLAIM_START));
   for (const i of data.cleared || []) f.terrain[i] = OPEN;        // saves before mountains
@@ -422,6 +542,11 @@ export function deserialise(data) {
   f.sold = data.sold || 0;
   f.t = data.t || 0;
   f.done = (data.done || []).filter(id => techById(id));
+  // A world saved before the starter machines became research already has them on
+  // the map. Give it the nodes, at rank I, so it can keep building what it built.
+  if (!(data.tv >= 2)) {
+    for (const id of OLD_FREE_TECH) if (!f.done.includes(id)) f.done.push(id);
+  }
   (data.shipped || []).forEach((n, ty) => { if (ty < f.shipped.length) f.shipped[ty] = n; });
 
   for (const [i, kind, dir, level, mut, mir, off, hp, charge, hot] of data.machines || []) {
@@ -480,12 +605,24 @@ export function deserialise(data) {
   for (let ty = 0; ty < f.shipped.length; ty++) g._units[ty] = f.shipped[ty];
   for (const id of data.milestones || []) g.done.add(id);
   g.tut = Number.isInteger(data.tut) ? data.tut : -1;
+  if (data.story) {
+    g.story = newStory(data.story.level);
+    g.story.complete = !!data.story.complete;
+    g.story.doneAt = data.story.doneAt || 0;
+    (data.story.goals || []).forEach(([d, held], k) => {
+      if (g.story.goals[k]) { g.story.goals[k].done = !!d; g.story.goals[k].held = held || 0; }
+    });
+    if (data.story.total) g.story.total = { ...g.story.total, ...data.story.total };
+  }
   return g;
 }
 
+/** What used to be on sale from the start, as the research that now unlocks it. */
+const OLD_FREE_TECH = ['generators', 'balancing', 'sorting', 'mut1', 'fusing', 'mut2', 'mut3', 'mut4', 'mut5', 'mut6', 'mut7'];
+
 export function saveGame(g) {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(serialise(g)));
+    localStorage.setItem(g.story ? STORY_KEY : SAVE_KEY, JSON.stringify(serialise(g)));
     return true;
   } catch (e) {
     return false;
@@ -513,6 +650,32 @@ export function hasSave() {
 
 export function clearSave() {
   try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nothing to do */ }
+}
+
+/** The saved campaign, or null. */
+export function loadStory() {
+  try {
+    const raw = localStorage.getItem(STORY_KEY);
+    if (!raw) return null;
+    const g = deserialise(JSON.parse(raw));
+    return g && g.story ? g : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Which world the saved campaign is on, or -1 if there is none. */
+export function storyLevelSaved() {
+  try {
+    const raw = localStorage.getItem(STORY_KEY);
+    return raw ? (JSON.parse(raw).story?.level ?? -1) : -1;
+  } catch (e) {
+    return -1;
+  }
+}
+
+export function clearStory() {
+  try { localStorage.removeItem(STORY_KEY); } catch (e) { /* nothing to do */ }
 }
 
 export { STEP, SAVE_KEY };

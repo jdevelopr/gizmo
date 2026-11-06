@@ -29,7 +29,7 @@
 
 import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
-  cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON,
+  cx, cy, cellOf, inWorld, claimMin, claimMax, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON, SPACE,
   BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP, surveyed, sizeKind, footprint,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
   ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
@@ -883,6 +883,7 @@ function paintGround(g, f) {
       }
 
       const t = f.terrain[i];
+      if (t === SPACE) { drawSpace(ctx, px0, py0, f, x, y); continue; }
       if (t === BEACON) { px(ctx, px0, py0, CELL, CELL, '#14110a'); px(ctx, px0 + 1, py0 + 1, CELL - 2, CELL - 2, '#1e1a10'); }
       else if (t === MOUNTAIN) drawMountain(ctx, px0, py0, f, i, !own);
       else if (t === VALLEY) drawValley(ctx, px0, py0, f, x, y, !own);
@@ -903,6 +904,29 @@ function paintGround(g, f) {
     px(ctx, fx - 2, fy + s, 2, 6, shade(FENCE, 1.5));
     px(ctx, fx + fw, fy + s, 2, 6, shade(FENCE, 1.5));
   }
+}
+
+/**
+ * Open space round a story-mode rock: black, with a scatter of stars that never
+ * tiles, and a lit rim of regolith wherever it meets the rock, so the edge of the
+ * world reads as the edge of an asteroid rather than of a map.
+ */
+function drawSpace(ctx, x, y, f, gx, gy) {
+  px(ctx, x, y, CELL, CELL, '#03040a');
+  let h = (gx * 73856093) ^ (gy * 19349663);
+  const rnd = () => { h = (h * 1103515245 + 12345) & 0x7fffffff; return h / 0x7fffffff; };
+  const n = rnd() < 0.5 ? 1 : rnd() < 0.5 ? 2 : 0;
+  for (let k = 0; k < n; k++) {
+    const sx = x + 2 + Math.floor(rnd() * (CELL - 4)), sy = y + 2 + Math.floor(rnd() * (CELL - 4));
+    const b = rnd();
+    px(ctx, sx, sy, b > 0.85 ? 2 : 1, b > 0.85 ? 2 : 1, b > 0.6 ? '#c8d0ff' : '#5a6290');
+  }
+  const land = (ax, ay) => inWorld(ax, ay) && f.terrain[cellOf(ax, ay)] !== SPACE;
+  const rim = '#3a3446', lit = '#5c5470';
+  if (land(gx, gy - 1)) { px(ctx, x, y, CELL, 4, rim); px(ctx, x, y + 4, CELL, 2, '#16141e'); }
+  if (land(gx, gy + 1)) { px(ctx, x, y + CELL - 5, CELL, 5, rim); px(ctx, x, y + CELL - 5, CELL, 1, lit); }
+  if (land(gx - 1, gy)) { px(ctx, x, y, 4, CELL, rim); px(ctx, x + 4, y, 2, CELL, '#16141e'); }
+  if (land(gx + 1, gy)) { px(ctx, x + CELL - 4, y, 4, CELL, rim); px(ctx, x + CELL - 4, y, 1, CELL, lit); }
 }
 
 /**

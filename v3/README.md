@@ -294,6 +294,51 @@ Once it has run once, this browser never sees it again unless it is asked for. E
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
 
+### Story mode
+
+A campaign of eight worlds, separate from the endless game and saved on its own
+(`gizmo3.story.v1`), so both can be in progress at once.
+
+| # | World | Kind | Radius | New here | Contract |
+|---|-------|------|--------|----------|----------|
+| 1 | Pebble | small asteroid | 7 | the basics, the Lab and the first unlocks | ship 120 Scrap |
+| 2 | Cinder | small asteroid | 9 | power, Copper Mutators | ship 150 Copper, earn $1,500 |
+| 3 | Shard | small asteroid | 11 | Fusers | ship 120 Amber, hold 30 Copper/min for 60s |
+| 4 | Hollow | large asteroid | 16 | Sap, Cord, Assembly | ship 60 Cord, ship 10 Engines |
+| 5 | Kessler | large asteroid | 20 | Mites, Zappers | hold 6 Engines/min for 60s, earn $10,000 |
+| 6 | Talus | large asteroid | 25 | mountains, drills, Beetles | ship 80 Cobalt, ship 15 Turbines |
+| 7 | Selka | moon | 31 | valleys, bridges, Skitters | hold 4 Turbines/min for 90s, ship 10 Reactors, earn $60,000 |
+| 8 | Orrin | moon | 39 | everything at full scale | 40 Reactors, 20 Prisms, hold 3 Reactors/min for 120s, earn $250,000 |
+
+Each world is the ordinary 80x80 grid with everything outside one lumpy rock turned
+to open **space** (terrain code 6), so the whole engine runs unchanged on it; the
+fence stops growing at the edge of the rock. Features a world has not introduced
+yet are flattened away, nests are capped per world, and Sap is guaranteed from
+Hollow on. Nothing is timed and nothing fails. A goal is `ship` (delivered to
+Depots), `rate` (held at or over a per-minute rate for a stretch, restarting if it
+drops) or `cash` (earned on this world); once met it stays met. When every goal is
+met a card shows the world's numbers and moves you on. **Money and science reset
+on every world; research carries over.** The endless order board is not posted in
+story mode — the ORDERS tab and a box at the top right show the contract instead.
+The levels live in `STORY_LEVELS` in machines.js, the rock in `storyWorld()` in
+world.js, the goals in game.js.
+
+### Only four machines at the start
+
+Every mode now opens with just the Extractor, Conveyor, Market Depot and Research
+Lab. Everything else is research. The new starter nodes are `flat` — their cost is
+not multiplied by `TECH_COST_SCALE` — so the first unlock is a minute of Scrap into
+a Lab:
+
+- **Power:** Generators (40) heads the branch; Gridwork now needs it.
+- **Production:** Balancing (60) → Sorting (150) and Warehousing; Copper Mutation
+  (90) → Fusing (250) → Assembly, and Amber Mutation (400) → Bloom → Cobalt → Void →
+  Ember → Prism Mutation, one node per rung (these deeper rungs use the normal x10).
+
+The walkthrough now has you feed a Lab and research Generators before building
+one. A world saved before this change is given the old free machines' nodes at
+rank I when it loads, so nothing on it stops working.
+
 ### Fusers and Mutators are two slots long
 
 Fusers and Mutators are **one by two**, laid along the flow: they are fed at the
@@ -808,6 +853,7 @@ node tools/terrain.mjs    # mountains, drills, valleys, bridges, beetles
 node tools/beacon.mjs     # the Launch Beacon: placing, feeding, damage, assaults, winning
 node tools/tech.mjs       # the research tree: shape, unlocks and every bonus
 node tools/sizes.mjs      # 1x2 machines: footprints, turning, flow, moving, power
+node tools/story.mjs      # story mode: the eight worlds, goals, carry-over and saving
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

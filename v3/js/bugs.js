@@ -58,6 +58,7 @@ const SKITTER_NESTS = 16;
  */
 export function placeNests(w) {
   if (!w || !w.seed) return [];              // the test bench is a peaceful place
+  if (w.story && !w.story.bugs) return [];   // and so are the first story worlds
   const rnd = rng(hashSeed((w.seed ^ 0x6d697465) >>> 0));
   const c = (WORLD - 1) / 2;
   const ring = (x, y) => Math.max(Math.abs(x - c), Math.abs(y - c));
@@ -94,6 +95,17 @@ export function placeNests(w) {
       const x = Math.floor(rnd() * WORLD), y = Math.floor(rnd() * WORLD);
       if (ring(x, y) >= NEST_MIN_RING + 3 && ok(x, y)) { add(x, y, 'skitter'); break; }
     }
+  }
+  // A story world has its own, smaller, number of nests, and Skitters only once
+  // the story has introduced them. Mite nests first, so the cut keeps those.
+  if (w.story) {
+    const pool = out.filter(n => n.kind === 'mite');
+    if (w.story.skitters) {
+      const sk = out.filter(n => n.kind === 'skitter');
+      const nSk = Math.min(sk.length, Math.round(w.story.nests / 3));
+      return [...pool.slice(0, w.story.nests - nSk), ...sk.slice(0, nSk)];
+    }
+    return pool.slice(0, w.story.nests);
   }
   return out;
 }

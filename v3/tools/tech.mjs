@@ -32,7 +32,7 @@ console.log('\nThe shape of the tree');
     for (const t of TECH) if (!done.includes(t.id) && techOpen(t, done)) done.push(t.id);
   }
   ok(done.length === TECH.length, 'every node can eventually be researched (no cycles, no orphans)');
-  ok(TECH.every(t => (t.needs || []).every(n => techById(n).cost <= t.cost)), 'nothing costs less than what it needs');
+  ok(TECH.every(t => (t.needs || []).every(n => rankCost(techById(n), []) <= rankCost(t, []))), 'nothing costs less than what it needs');
   for (const b of BRANCHES) {
     const n = TECH.filter(t => t.branch === b.id).length;
     ok(n >= 5, `${b.name} has ${n} nodes`);
@@ -47,10 +47,22 @@ console.log('\nDefence and Terrain have to be researched');
     const t = unlockerOf(k);
     ok(!!t && catalogue([t.id, ...(t.needs || [])]).some(c => c.kind === k), `${t?.name} unlocks it`);
   }
-  ok(TECH.every(t => rankCost(techById('defense'), []) <= rankCost(t, [])), 'Pest Control is the cheapest node in the tree');
+  ok(TECH.filter(t => !t.flat).every(t => rankCost(techById('defense'), []) <= rankCost(t, [])),
+    'Pest Control is the cheapest node past the starter unlocks');
   ok(rankCost(techById('gridwork'), []) === techById('gridwork').cost * TECH_COST_SCALE, 'every price is scaled by TECH_COST_SCALE');
-  ok(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse'].every(k => unlockedBy([]).has(k)),
-    'everything a factory needs to start is still unlocked');
+  ok(['pipe', 'ext', 'depot', 'lab'].every(k => unlockedBy([]).has(k))
+    && catalogue([]).length === 4, 'a new game starts with Extractor, Conveyor, Depot and Lab, and nothing else');
+  for (const k of ['gen', 'bal', 'sort', 'mut:1', 'fuse']) {
+    const t = unlockerOf(k);
+    ok(!unlockedBy([]).has(k) && t && t.flat && !(t.needs || []).length || (t && t.flat && t.needs.every(n => techById(n).flat)),
+      `${k} is a cheap starter unlock (${t?.name}, ${t ? rankCost(t, []) : '?'} science)`);
+  }
+  ok(rankCost(techById('generators'), []) <= 60, 'the first unlock is a minute of Scrap, not twenty');
+  for (let r = 1; r <= 7; r++) {
+    const t = unlockerOf('mut:' + r);
+    ok(!!t && catalogue([...(t.needs || []), t.id, 'mut1', 'mut2', 'mut3', 'mut4', 'mut5', 'mut6']).some(c => c.kind === 'mut' && c.mut === r),
+      `the ${r}${['st','nd','rd'][r-1] || 'th'} Mutator rung is its own research (${t?.name})`);
+  }
 }
 
 console.log('\nEvery bonus does what it says');
@@ -78,6 +90,7 @@ console.log('\nFive ranks of everything');
   const costs = [];
   for (let k = 0; k < TECH_RANKS; k++) {
     costs.push(rankCost(techById('gridwork'), f.done));
+    if (!f.done.includes('generators')) f.done.push('generators');
     ok(research(f, 'gridwork').ok, `Gridwork rank ${ROMAN[k + 1]} can be researched`);
   }
   ok(!research(f, 'gridwork').ok, 'and there is no rank VI');

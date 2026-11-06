@@ -38,7 +38,7 @@ import {
   CLAIM_START, CLAIM_STEP, expandCost, LADDERED, CRATE_CAP,
   balDirs, REROUTES, wants, SCIENCE_RATE, techById, techOpen, levelCap, rankOf, rankCost, TECH_RANKS, ROMAN,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
-  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, footprint, frontOf, sizeKind, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, bridgeSpan,
+  STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, footprint, frontOf, sizeKind, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, SPACE, bridgeSpan,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { initBugs, stepBugs, nestAt } from './bugs.js';
@@ -932,6 +932,7 @@ export function buildCheck(f, spec, i, dir = null) {
     if (f.terrain[c] === MOUNTAIN) return no(big ? 'It does not fit — a mountain is in the way' : 'A mountain — go round it, or drill it from beside');
     if (f.terrain[c] === VALLEY) return no(big ? 'It does not fit — a valley is in the way' : 'A valley — cross it with a pair of Bridges');
     if (f.terrain[c] === BEACON) return no('The Launch Beacon — feed it through the mouth on each side');
+    if (f.terrain[c] === SPACE) return no('Open space — there is nothing to build on');
     if (f.terrain[c] !== OPEN) return no(big ? 'It does not fit — bedrock in the way' : 'Bedrock will not move');
     if (nestAt(f, c)) return no('A nest — zap it out first');
   }
@@ -1346,14 +1347,15 @@ export function applyAction(f, a) {
      * at the new land starts working the instant you pay.
      */
     case 'expand': {
-      if (f.claim >= WORLD) return no('You own the whole world');
+      const top = f.world?.maxClaim || WORLD;
+      if (f.claim >= top) return no(top < WORLD ? 'You own the whole rock' : 'You own the whole world');
       const c = expandCost(f.claim);
       if (f.cash < c) return no(`Need $${c}`);
       f.cash -= c;
       f.spent += c;
       // The world is even and the claim starts odd, so the last step is a short
       // one rather than a ring that would hang off the edge.
-      f.claim = Math.min(WORLD, f.claim + CLAIM_STEP);
+      f.claim = Math.min(top, f.claim + CLAIM_STEP);
       f.mapRev++;
       f.fx.push({ k: 'grow', claim: f.claim });
       return yes(`Claim is now ${f.claim} x ${f.claim}`, { cost: c });

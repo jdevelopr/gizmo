@@ -11,8 +11,8 @@
 
 import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
-  expandCost, buyCost, label, PASSIVE, zapRange, unlockedBy, unlockerOf,
-  sizeKind, footprint,
+  expandCost, buyCost, label, PASSIVE, zapRange, unlockedBy, unlockerOf, unlockKey,
+  sizeKind, footprint, STORY_LEVELS, goalText,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
 import { repairBeacon, progress as beaconProgress } from './beacon.js';
@@ -31,6 +31,7 @@ import { reachFrom } from './power.js';
 import {
   createGame, stepGame, saveGame, loadGame, hasSave, hasOldSave, clearSave,
   ageToasts, toast, endTutorial, SPEEDS,
+  createStoryGame, nextStoryGame, loadStory, storyLevelSaved, clearStory, goalProgress, storyStats,
 } from './game.js';
 import { Palette, Crate, Hud, Panel, Tutorial, drawMinimap, howtoHtml, health, problems } from './ui.js';
 import { Input, makeState } from './input.js';
@@ -59,6 +60,11 @@ let prevSpeed = 1;
 function showTitle() {
   $('title').hidden = false;
   $('app').hidden = true;
+  const lv = storyLevelSaved();
+  $('btn-story').textContent = lv >= 0
+    ? `CONTINUE STORY · WORLD ${lv + 1} OF ${STORY_LEVELS.length}` : 'STORY MODE';
+  $('story-note').hidden = lv < 0;
+  if (lv >= 0) $('story-note').textContent = `The campaign is on ${STORY_LEVELS[lv].name}. Abandon it from the in-game menu to start again.`;
   const has = hasSave();
   $('btn-continue').hidden = !has;
   $('save-note').hidden = !has;
@@ -112,7 +118,7 @@ function wireChrome() {
   $('btn-expand').onclick = () => act('expand');
   $('btn-help').onclick = () => act('help');
   $('btn-menu').onclick = () => act('menu');
-  $('m-resume').onclick = () => { $('menu').hidden = true; resume(); };
+  $('m-resume').onclick = () => { $('menu').hidden = true; if (!storyCardUp()) resume(); };
   $('m-save').onclick = () => {
     $('m-note').textContent = saveGame(g) ? 'Saved.' : 'Could not save — storage is blocked.';
   };
@@ -120,7 +126,7 @@ function wireChrome() {
   $('m-tutorial').onclick = () => act('replayTutorial');
   $('m-quit').onclick = () => {
     if ($('m-quit').dataset.armed) {
-      clearSave();
+      if (g.story) clearStory(); else clearSave();
       $('menu').hidden = true;
       paused = false;
       showTitle();
@@ -143,6 +149,10 @@ function wireChrome() {
   for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, unlock, { passive: true });
   $('alert').onclick = () => { if (hud.target >= 0) act('focus', hud.target); };
   $('win-keep').onclick = () => { $('win').hidden = true; resume(); };
+  $('si-go').onclick = () => { $('story-intro').hidden = true; resume(); sfx('click'); };
+  $('sd-next').onclick = () => nextWorld();
+  $('sd-stay').onclick = () => { $('story-done').hidden = true; resume(); };
+  $('goals').onclick = () => { if (g?.story?.complete) showStoryDone(); };
   $('win-new').onclick = () => { $('win').hidden = true; clearSave(); paused = false; showTitle(); };
   for (const k of SHOW_KEYS) {
     $('show-' + k).checked = show[k];
@@ -227,6 +237,7 @@ function frame(now) {
   panel.update(g, S);
   if (tree?.open) tree.update(g);
   updateHint();
+  updateGoals();
 
   if ((saveTimer -= dt) <= 0) { saveTimer = 20; saveGame(g); }
   if ((S.miniTimer = (S.miniTimer || 0) - dt) <= 0) {
@@ -346,6 +357,13 @@ function playFx(fx) {
       case 'tech': sfx('tech'); view.pulse('#8f6cff'); break;
       case 'grow': sfx('grow'); view.pulse('#a7f070'); break;
       case 'contract': sfx('contract'); view.pulse('#ffcd75'); break;
+      case 'goal': sfx('contract'); view.pulse('#a7f070'); break;
+      case 'storyDone':
+        sfx('contract'); sfx('tech');
+        view.pulse('#ffffff');
+        saveGame(g);
+        showStoryDone();
+        break;
       default: break;
     }
     if (e.k === 'sell' && e.v >= 3) view.float(`+$${e.v}`, cx(e.cell) + 0.5, cy(e.cell), '#a7f070');
@@ -405,6 +423,104 @@ function showWin() {
   add('Swarms survived', num(f.waves || 0));
   $('win').hidden = false;
   paused = true;
+}
+
+/* ------------------------------------------------------------- story mode --- */
+
+/** Is a story card on screen? The game stays paused under it. */
+const storyCardUp = () => !$('story-intro').hidden || !$('story-done').hidden;
+
+/** The card that opens every story world: where you are, what is new, what is wanted. */
+function showIntro() {
+  const lv = g.story.level, L = STORY_LEVELS[lv];
+  $('si-kicker').textContent = `WORLD ${lv + 1} OF ${STORY_LEVELS.length} · ${L.kind.toUpperCase()}`;
+  $('si-name').textContent = L.name;
+  $('si-blurb').textContent = L.blurb;
+  $('si-learn').textContent = L.learn;
+  const rows = $('si-goals');
+  rows.textContent = '';
+  for (const goal of L.goals) {
+    const r = document.createElement('div');
+    r.className = 'row';
+    r.innerHTML = `<span>${goalText(goal)}</span>`;
+    rows.appendChild(r);
+  }
+  const ranks = g.f.done.length;
+  $('si-carry').textContent = lv === 0
+    ? 'Money and science start fresh on every world. Research is kept from one to the next.'
+    : `You start with ${money(L.cash)} and no science. Your ${ranks} rank${ranks === 1 ? '' : 's'} of research came with you.`;
+  $('story-intro').hidden = false;
+  paused = true;
+}
+
+/** The pop-up when a contract is met: this world's numbers, and the way on. */
+function showStoryDone() {
+  const lv = g.story.level, last = lv >= STORY_LEVELS.length - 1;
+  const st = storyStats(g);
+  const rows = $('sd-stats');
+  rows.textContent = '';
+  const add = (k, v) => {
+    const r = document.createElement('div');
+    r.className = 'row good';
+    r.innerHTML = `<span>${k}</span><b>${v}</b>`;
+    rows.appendChild(r);
+  };
+  const time = t => `${Math.floor(t / 3600) ? Math.floor(t / 3600) + 'h ' : ''}${Math.floor(t / 60) % 60}m ${Math.floor(t % 60)}s`;
+  const at = g.story.doneAt || g.f.t;
+  add('Time', time(at));
+  add('Earned', money(st.here.earned));
+  add('Gizmos shipped', num(Math.round(st.here.shipped)));
+  add('Science studied', num(Math.round(st.studied)));
+  add('Machines standing', num(st.machines));
+  add('Land claimed', `${st.claim} x ${st.claim}`);
+  if (STORY_LEVELS[lv].bugs) add('Creatures zapped', num(st.here.zapped));
+  add('Research ranks owned', num(st.research));
+  if (last) {
+    add('Campaign time', time(st.total.t));
+    add('Campaign earnings', money(st.total.earned));
+  }
+  $('sd-kicker').textContent = `WORLD ${lv + 1} OF ${STORY_LEVELS.length} · ${STORY_LEVELS[lv].name}`;
+  $('sd-title').textContent = last ? 'CAMPAIGN COMPLETE' : 'CONTRACT FULFILLED';
+  $('sd-note').textContent = last
+    ? 'Every contract from a pebble to a moon. The moon is yours to keep building on.'
+    : `Next: ${STORY_LEVELS[lv + 1].name}, a ${STORY_LEVELS[lv + 1].kind.toLowerCase()}. Your research comes with you; money and science start again.`;
+  $('sd-next').textContent = last ? 'START A NEW CAMPAIGN' : `ON TO ${STORY_LEVELS[lv + 1].name}`;
+  $('story-done').hidden = false;
+  paused = true;
+}
+
+function nextWorld() {
+  $('story-done').hidden = true;
+  paused = false;
+  const last = g.story.level >= STORY_LEVELS.length - 1;
+  const next = last ? createStoryGame(0, { teach: false }) : nextStoryGame(g);
+  saveGame(next);
+  boot(next);
+  showIntro();
+}
+
+/** The contract, top right, every few frames. */
+let goalsKey = '';
+function updateGoals() {
+  const box = $('goals');
+  if (!g.story) { box.hidden = true; goalsKey = ''; return; }
+  box.hidden = false;
+  const L = STORY_LEVELS[g.story.level];
+  const parts = L.goals.map((goal, k) => ({ goal, st: g.story.goals[k], pr: goalProgress(g, k) }));
+  const key = g.story.complete + '|' + parts.map(p => p.pr.text + (p.pr.hot ? '*' : '')).join('|');
+  if (key === goalsKey) return;
+  goalsKey = key;
+  box.classList.toggle('go', g.story.complete);
+  box.style.pointerEvents = g.story.complete ? 'auto' : 'none';
+  box.style.cursor = g.story.complete ? 'pointer' : '';
+  let html = `<div class="g-head">${L.name}<span>WORLD ${g.story.level + 1} / ${STORY_LEVELS.length}</span></div>`;
+  for (const p of parts) {
+    const cls = 'g-row' + (p.st.done ? ' done' : '') + (p.pr.hot && !p.st.done ? ' hot' : '');
+    html += `<div class="${cls}"><div class="g-top"><b>${goalText(p.goal)}</b><i>${p.st.done ? 'DONE' : p.pr.text}</i></div>`
+      + `<div class="g-bar"><span style="width:${Math.round(p.pr.p * 100)}%"></span></div></div>`;
+  }
+  if (g.story.complete) html += '<div class="g-row done"><div class="g-top"><b>Contract fulfilled — click to move on</b></div></div>';
+  box.innerHTML = html;
 }
 
 /** Which way a slot lies from the middle of the map, in words. */
@@ -557,9 +673,18 @@ function act(name, payload, extra) {
         $('stage').classList.remove('build');
         return;
       }
+      // A Mutator picked up by its key comes as the rung you last had in hand, or
+      // else the lowest rung researched.
+      if (payload.kind === 'mut' && payload.mut == null && !payload.crate) {
+        const on = unlockedBy(f.done);
+        const last = S.tool?.kind === 'mut' ? S.tool.mut : null;
+        let t = last && on.has('mut:' + last) ? last : 0;
+        for (let k = 1; !t && k <= 7; k++) if (on.has('mut:' + k)) t = k;
+        payload = { ...payload, mut: t || 1 };
+      }
       // A machine that still needs research cannot be picked up.
-      if (!payload.crate && !unlockedBy(f.done).has(payload.kind === 'asm' ? 'asm:' + (payload.mut ?? 0) : payload.kind)) {
-        const t = unlockerOf(payload.kind);
+      if (!payload.crate && !unlockedBy(f.done).has(unlockKey(payload))) {
+        const t = unlockerOf(unlockKey(payload));
         toast(g, t ? `Research ${t.name} first — it is in the TECH tab` : 'Not unlocked yet', '#ff8a6a');
         sfx('error');
         return;
@@ -986,7 +1111,7 @@ function act(name, payload, extra) {
     }
     case 'menu': {
       $('m-quit').dataset.armed = '';
-      $('m-quit').textContent = 'ABANDON THIS WORLD';
+      $('m-quit').textContent = g.story ? 'ABANDON THE CAMPAIGN' : 'ABANDON THIS WORLD';
       $('m-note').textContent = '';
       $('menu').hidden = false;
       paused = true;
@@ -1004,6 +1129,17 @@ $('btn-new').onclick = () => {
   const seed = raw ? (parseInt(raw, 10) || hashText(raw)) : null;
   clearSave();
   boot(createGame({ seed }));
+};
+$('btn-story').onclick = () => {
+  const saved = storyLevelSaved() >= 0 ? loadStory() : null;
+  if (saved) {
+    boot(saved);
+    if (saved.story.complete) showStoryDone();
+    return;
+  }
+  const g0 = createStoryGame(0);
+  boot(g0);
+  showIntro();
 };
 $('btn-continue').onclick = () => {
   const saved = loadGame();
@@ -1028,7 +1164,7 @@ function closeSheets() {
   const open = !$('howto').hidden || !$('menu').hidden;
   $('howto').hidden = true;
   $('menu').hidden = true;
-  if (g) resume();
+  if (g && !storyCardUp()) resume();
   return open;
 }
 

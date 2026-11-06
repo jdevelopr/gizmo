@@ -625,3 +625,36 @@ body.hide-tut #tutorial { display: none !important; }
 .tt-unlocks canvas { background: #0c0e18; border: 1px solid #242a3f; }
 #tt-pop button.big { width: 100%; margin-top: 4px; font-size: 12px; padding: 9px; }
 .tech-open { width: 100%; padding: 12px; font-size: 13px; margin: 6px 0 12px; }
+
+/* ------------------------------------------------------------ story mode --- */
+
+#goals {
+  position: absolute; top: calc(var(--hud) + 10px); right: 12px;
+  width: 250px;
+  background: rgba(11, 13, 22, 0.94); border: 2px solid var(--line);
+  padding: 8px 10px 9px; font-size: 11px;
+  pointer-events: none;
+}
+#goals .g-head { display: flex; justify-content: space-between; color: var(--gold); letter-spacing: 0.12em; font-size: 10px; margin-bottom: 6px; }
+#goals .g-head span { color: var(--dim); }
+#goals .g-row { margin-top: 6px; }
+#goals .g-top { display: flex; justify-content: space-between; gap: 8px; }
+#goals .g-top i { font-style: normal; color: var(--dim); white-space: nowrap; }
+#goals .g-row.done .g-top b { color: var(--green); font-weight: 400; }
+#goals .g-row .g-top b { font-weight: 400; }
+#goals .g-bar { height: 4px; background: #05070d; margin-top: 3px; }
+#goals .g-bar span { display: block; height: 100%; background: var(--gold); }
+#goals .g-row.done .g-bar span { background: var(--green); }
+#goals .g-row.hot .g-bar span { background: #7fe8ff; }
+body.hide-alert #goals { display: none; }
+
+.story-inner { text-align: left !important; position: relative; }
+.story-inner h2 { margin: 0; letter-spacing: 0.08em; }
+.story-kicker { font-size: 10px; letter-spacing: 0.18em; color: var(--gold); }
+.story-blurb { color: var(--dim); font-size: 12px; margin: 0; }
+.story-new { border: 2px solid var(--line); background: #10182c; padding: 8px 10px; font-size: 12px; }
+.story-new b { color: var(--gold); font-weight: 400; font-size: 10px; letter-spacing: 0.14em; }
+.story-new p { margin: 4px 0 0; }
+.story-sub { font-size: 10px; letter-spacing: 0.16em; color: var(--dim); margin-top: 4px; }
+.story-inner .rows { margin-bottom: 0; }
+.story-inner button { width: 100%; }

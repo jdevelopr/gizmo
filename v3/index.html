@@ -19,8 +19,9 @@
     <p class="tag">Eighty slots a side. One player. Light the Beacon.</p>
 
     <div class="title-buttons">
-      <button id="btn-continue" class="big" hidden>CONTINUE</button>
-      <button id="btn-new" class="big">NEW WORLD</button>
+      <button id="btn-story" class="big">STORY MODE</button>
+      <button id="btn-continue" class="big" hidden>CONTINUE ENDLESS</button>
+      <button id="btn-new" class="big">NEW ENDLESS WORLD</button>
       <button id="btn-howto" class="ghost">HOW TO PLAY</button>
     </div>
 
@@ -30,6 +31,7 @@
     </label>
 
     <p class="fine" id="save-note" hidden>A saved world is waiting. Starting a new one replaces it.</p>
+    <p class="fine" id="story-note" hidden></p>
   </div>
 </div>
 
@@ -93,6 +95,9 @@
 
     <div id="hint"></div>
     <div id="alert" hidden></div>
+
+    <!-- Story mode: this world's contract, always in view. -->
+    <div id="goals" hidden></div>
 
     <!-- The first-visit walkthrough. It sits where the alert does and takes its
          place while it is running, because the alert would only be saying a
@@ -162,6 +167,31 @@
     <div id="win-stats" class="rows"></div>
     <button id="win-keep" class="big">KEEP PLAYING</button>
     <button id="win-new" class="ghost">START A NEW WORLD</button>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------- story --- -->
+<div id="story-intro" class="screen sheet" hidden>
+  <div class="sheet-inner narrow story-inner">
+    <div class="story-kicker" id="si-kicker"></div>
+    <h2 id="si-name"></h2>
+    <p class="story-blurb" id="si-blurb"></p>
+    <div class="story-new"><b>NEW HERE</b><p id="si-learn"></p></div>
+    <div class="story-sub">THE CONTRACT</div>
+    <div id="si-goals" class="rows"></div>
+    <p class="fine" id="si-carry"></p>
+    <button id="si-go" class="big">BEGIN</button>
+  </div>
+</div>
+
+<div id="story-done" class="screen sheet" hidden>
+  <div class="sheet-inner narrow story-inner">
+    <div class="story-kicker" id="sd-kicker"></div>
+    <h2 id="sd-title">CONTRACT FULFILLED</h2>
+    <div id="sd-stats" class="rows"></div>
+    <p class="fine" id="sd-note"></p>
+    <button id="sd-next" class="big">NEXT WORLD</button>
+    <button id="sd-stay" class="ghost">STAY HERE A WHILE</button>
   </div>
 </div>
 

@@ -591,7 +591,7 @@ const add = (done, flag, a) => a * rankScale(flagRank(done, flag));
  * Surveying, which unlocks nothing, speeds Mountain Drills instead.
  */
 export function unlockSpeed(kind, done = [], mut = 0) {
-  const key = kind === 'asm' ? 'asm:' + mut : kind;
+  const key = unlockKey({ kind, mut });
   const t = TECH.find(x => (x.unlocks || []).includes(key)) || (kind === 'drill' ? TECH.find(x => x.survey) : null);
   const r = t ? rankOf(done, t.id) : 0;
   return r > 1 ? 1 + 0.1 * (r - 1) : 1;
@@ -1236,7 +1236,7 @@ export function claimCells(claim) {
 }
 
 /** Terrain codes. */
-export const OPEN = 0, RUBBLE = 1, BEDROCK = 2, MOUNTAIN = 3, VALLEY = 4, BEACON = 5;
+export const OPEN = 0, RUBBLE = 1, BEDROCK = 2, MOUNTAIN = 3, VALLEY = 4, BEACON = 5, SPACE = 6;
 
 /* ----------------------------------------------------------------- beacon --- */
 
@@ -1298,12 +1298,17 @@ export const SCIENCE_RATE = 1;
 /**
  * The tech tree.
  *
- * What starts unlocked is already a complete game: Extractors, Conveyors,
- * Balancers, Generators, Depots, Labs, Mutators and Fusers. Everything here makes
- * that game bigger, and every node is paid for out of production rather than out of
- * the bank — you cannot buy your way past a line that is not running.
+ * What starts unlocked is the smallest game there is: Extractors, Conveyors, Market
+ * Depots and Research Labs — dig, carry, sell, study. Everything else is research,
+ * and every node is paid for out of production rather than out of the bank — you
+ * cannot buy your way past a line that is not running.
  *
- * `unlocks` names machine kinds, or `asm:N` for one Assembler recipe. `level`
+ * The first few unlocks (Generator, Balancer, Copper Mutator, Sorter, Fuser, Amber
+ * Mutator) are marked `flat`: their cost is not multiplied by TECH_COST_SCALE, so the
+ * first one is a minute of Scrap into a Lab rather than twenty.
+ *
+ * `unlocks` names machine kinds, `asm:N` for one Assembler recipe, or `mut:N` for
+ * the Mutator that makes rung N of the alloy ladder. `level`
  * raises the ceiling every machine on the map can be upgraded to. `power` and
  * `yield` are flags the power solver and the extractors read.
  */
@@ -1347,13 +1352,36 @@ export const TECH = [
    * turns holding the line into winning the map.
    */
 
+  // ---- production: the starter unlocks
+  { id: 'balancing', branch: 'economy', name: 'Balancing', cost: 60, flat: true, needs: [], unlocks: ['bal'],
+    blurb: 'Unlocks the Balancer: one line in, gizmos dealt out in turn to its front and its side. '
+      + 'The way to feed a Generator off a line that is also selling.' },
+  { id: 'sorting', branch: 'economy', name: 'Sorting', cost: 150, flat: true, needs: ['balancing'], unlocks: ['sort'],
+    blurb: 'Unlocks the Sorter, which pulls one type out of a mixed line and sends it down its side.' },
+  { id: 'mut1', branch: 'economy', name: 'Copper Mutation', cost: 90, flat: true, needs: [], unlocks: ['mut:1'],
+    blurb: 'Unlocks the Copper Mutator: raw ore in, Copper out. Copper sells for three times Scrap.' },
+  { id: 'fusing', branch: 'economy', name: 'Fusing', cost: 250, flat: true, needs: ['mut1'], unlocks: ['fuse'],
+    blurb: 'Unlocks the Fuser: two gizmos of one type melt into one of the next rung up.' },
+  { id: 'mut2', branch: 'economy', name: 'Amber Mutation', cost: 400, flat: true, needs: ['mut1'], unlocks: ['mut:2'],
+    blurb: 'Unlocks the Amber Mutator: raw ore straight to Amber, no Fusers needed.' },
+  { id: 'mut3', branch: 'economy', name: 'Bloom Mutation', cost: 140, needs: ['mut2'], unlocks: ['mut:3'],
+    blurb: 'Unlocks the Bloom Mutator.' },
+  { id: 'mut4', branch: 'economy', name: 'Cobalt Mutation', cost: 300, needs: ['mut3'], unlocks: ['mut:4'],
+    blurb: 'Unlocks the Cobalt Mutator — half of every Turbine.' },
+  { id: 'mut5', branch: 'economy', name: 'Void Mutation', cost: 650, needs: ['mut4'], unlocks: ['mut:5'],
+    blurb: 'Unlocks the Void Mutator.' },
+  { id: 'mut6', branch: 'economy', name: 'Ember Mutation', cost: 1300, needs: ['mut5'], unlocks: ['mut:6'],
+    blurb: 'Unlocks the Ember Mutator — half of every Reactor.' },
+  { id: 'mut7', branch: 'economy', name: 'Prism Mutation', cost: 2600, needs: ['mut6'], unlocks: ['mut:7'],
+    blurb: 'Unlocks the Prism Mutator, the top of the ladder.' },
+
   // ---- production
-  { id: 'storage', branch: 'economy', name: 'Warehousing', cost: 140, needs: [], unlocks: ['store'],
+  { id: 'storage', branch: 'economy', name: 'Warehousing', cost: 140, needs: ['balancing'], unlocks: ['store'],
     blurb: 'Unlocks Storage — a belt with a deep buffer, and the cure for a line '
       + 'that keeps backing up over a wobble in its ratios.' },
   { id: 'express', branch: 'economy', name: 'Express Belts', cost: 480, needs: ['storage'], belt: 1,
     blurb: `Conveyors, Storage and Bridges move gizmos ${Math.round((1 / TECH_BONUS.belt - 1) * 100)}% faster.` },
-  { id: 'assembly', branch: 'economy', name: 'Assembly', cost: 420, needs: [], unlocks: ['asm:0'],
+  { id: 'assembly', branch: 'economy', name: 'Assembly', cost: 420, needs: ['fusing'], unlocks: ['asm:0'],
     blurb: 'Unlocks the Engine Assembler, and with it recipes at all.' },
   { id: 'overclock', branch: 'economy', name: 'Overclocking', cost: 820, needs: ['storage'], level: 3,
     blurb: 'Raises every machine’s upgrade ceiling by a level, from 2 toward 5.' },
@@ -1370,7 +1398,10 @@ export const TECH = [
     unlocks: ['trident'], blurb: 'Unlocks the Trident: three exits, one job.' },
 
   // ---- power
-  { id: 'gridwork', branch: 'power', name: 'Gridwork', cost: 180, needs: [], power: 'reach',
+  { id: 'generators', branch: 'power', name: 'Generators', cost: 40, flat: true, needs: [], unlocks: ['gen'],
+    blurb: 'Unlocks the Generator. Feed it ore and it powers every machine it touches, and '
+      + 'everything those touch — an unpowered machine runs at a fifth of its speed.' },
+  { id: 'gridwork', branch: 'power', name: 'Gridwork', cost: 180, needs: ['generators'], power: 'reach',
     blurb: `Every generator's power reaches ${GRIDWORK_REACH} machines further.` },
   { id: 'combustion', branch: 'power', name: 'Combustion', cost: 380, needs: ['gridwork'], power: 'fuel',
     blurb: 'Every fuel burns 45% longer, so a generator eats a smaller share of your ore.' },
@@ -1417,8 +1448,19 @@ export const TECH = [
 
 export const techById = id => TECH.find(t => t.id === id) || null;
 
-/** The research that unlocks a machine kind, or null if it is on sale from the start. */
-export const unlockerOf = kind => TECH.find(t => (t.unlocks || []).includes(kind)) || null;
+/**
+ * What a machine spec is unlocked as: its kind, or `asm:N` / `mut:N` for an
+ * Assembler recipe or a Mutator rung, which are researched one at a time.
+ */
+export const unlockKey = spec => spec.kind === 'asm' ? 'asm:' + (spec.mut ?? 0)
+  : spec.kind === 'mut' ? 'mut:' + (spec.mut ?? 1) : spec.kind;
+
+/** The research that unlocks a machine kind (or unlock key), or null if it is on sale from the start. */
+export const unlockerOf = key => TECH.find(t => (t.unlocks || []).includes(key))
+  || (key === 'mut' ? techById('mut1') : null);
+
+/** The machines on sale before any research at all. */
+export const STARTER_KINDS = ['pipe', 'ext', 'depot', 'lab'];
 
 /** Every node has five ranks. Each costs more than the last. */
 export const TECH_RANKS = 5;
@@ -1432,7 +1474,7 @@ export const TECH_COST_SCALE = 10;
 /** What the next rank of a node costs, or 0 if it is maxed. */
 export const rankCost = (t, done = []) => {
   const r = rankOf(done, t.id);
-  return r >= TECH_RANKS ? 0 : Math.round(t.cost * TECH_COST_SCALE * RANK_COST[r]);
+  return r >= TECH_RANKS ? 0 : Math.round(t.cost * (t.flat ? 1 : TECH_COST_SCALE) * RANK_COST[r]);
 };
 export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
@@ -1451,8 +1493,10 @@ export const techOpen = (t, done) => (t.needs || []).every(n => done.includes(n)
 
 /** Everything a set of finished research makes buildable. */
 export function unlockedBy(done = []) {
-  const out = new Set(['pipe', 'bal', 'sort', 'ext', 'gen', 'depot', 'lab', 'mut', 'fuse']);
+  const out = new Set(STARTER_KINDS);
   for (const id of done) for (const u of techById(id)?.unlocks || []) out.add(u);
+  // 'mut' on its own means "some Mutator is on sale", for the palette.
+  for (const u of out) if (u.startsWith('mut:')) { out.add('mut'); break; }
   return out;
 }
 
@@ -1486,15 +1530,15 @@ export function catalogue(done = [], counts = {}) {
   const add = spec => out.push({ ...spec, dir: 0, cost: buyCost(spec, counts[spec.kind] || 0) });
 
   add({ kind: 'pipe' });
-  add({ kind: 'bal' });
+  if (on.has('bal')) add({ kind: 'bal' });
   if (on.has('sort')) add({ kind: 'sort' });
   if (on.has('store')) add({ kind: 'store' });
   add({ kind: 'ext' });
-  add({ kind: 'gen' });
+  if (on.has('gen')) add({ kind: 'gen' });
   add({ kind: 'depot' });
   add({ kind: 'lab' });
-  for (let t = 1; t <= LADDER_MAX; t++) add({ kind: 'mut', mut: t });
-  add({ kind: 'fuse' });
+  for (let t = 1; t <= LADDER_MAX; t++) if (on.has('mut:' + t)) add({ kind: 'mut', mut: t });
+  if (on.has('fuse')) add({ kind: 'fuse' });
   RECIPES.forEach((r, i) => { if (on.has('asm:' + i)) add({ kind: 'asm', mut: i }); });
   if (on.has('dup')) add({ kind: 'dup' });
   if (on.has('trident')) add({ kind: 'trident' });
@@ -1503,6 +1547,70 @@ export function catalogue(done = [], counts = {}) {
   if (on.has('drill')) add({ kind: 'drill' });
   if (on.has('bridge')) add({ kind: 'bridge' });
   return out;
+}
+
+/* -------------------------------------------------------------- story mode --- */
+
+/**
+ * Story mode: eight worlds, from a pebble of an asteroid to a moon.
+ *
+ * Every world is the ordinary 80x80 grid with everything outside one lumpy rock
+ * turned to open space, so the whole engine runs unchanged on it. Each world is
+ * bigger than the last and switches on one more feature of the endless game —
+ * Sap, mites, mountains, valleys, skitters — and asks for one contract: a short
+ * list of goals, all of which have to be met. Nothing is timed and nothing fails.
+ *
+ * Money and science start fresh on every world. Research is kept: the tech tree
+ * you build up carries from rock to rock, which is the thread that ties it together.
+ *
+ * Goals: `ship` n of type ty to Depots; `rate` hold ty at `per` a minute for `secs`
+ * seconds; `cash` earn n on this world.
+ *
+ * Feature flags: `sap` makes sure Sap is on the rock; `bugs` lets Mite nests dig in
+ * (`nests` caps how many); `skitters` lets some of them be Skitter nests;
+ * `mountains`, `valleys` keep those features — without them the ground is flat.
+ */
+export const STORY_LEVELS = [
+  { name: 'PEBBLE', kind: 'Small asteroid', r: 7, cash: 650,
+    blurb: 'A lump of slag no bigger than a warehouse floor. A trading company wants scrap, and wants it now.',
+    learn: 'The basics. Dig ore, carry it on Conveyors, sell it at a Depot — and feed a Research Lab to unlock everything else.',
+    goals: [{ k: 'ship', ty: 0, n: 120 }] },
+  { name: 'CINDER', kind: 'Small asteroid', r: 9, cash: 650,
+    blurb: 'Bigger, and darker. Somebody out here pays for copper.',
+    learn: 'Power and the ladder. Generators run everything five times faster; a Copper Mutator turns raw ore into Copper.',
+    goals: [{ k: 'ship', ty: 1, n: 150 }, { k: 'cash', n: 1500 }] },
+  { name: 'SHARD', kind: 'Small asteroid', r: 11, cash: 700,
+    blurb: 'A splinter of an older world, rich all the way through.',
+    learn: 'Fusers. Two gizmos of a kind melt into one of the next rung up — climb the ladder past Copper.',
+    goals: [{ k: 'ship', ty: 2, n: 120 }, { k: 'rate', ty: 1, per: 30, secs: 60 }] },
+  { name: 'HOLLOW', kind: 'Large asteroid', r: 16, cash: 800, sap: true,
+    blurb: 'Half the rock is slag. The other half grows something.',
+    learn: 'Sap, the second ore, out at the far side of the rock. Fuse it into Cord, and research Assembly to marry Cord and Amber into Engines.',
+    goals: [{ k: 'ship', ty: 9, n: 60 }, { k: 'ship', ty: 11, n: 10 }] },
+  { name: 'KESSLER', kind: 'Large asteroid', r: 20, cash: 900, sap: true, bugs: true, nests: 4,
+    blurb: 'The survey missed something. The rock is inhabited.',
+    learn: 'Mites. Nests out in the wilds send swarms that chew machines; the noisier you are, the sooner. Research Pest Control for the Armory and the Zapper.',
+    goals: [{ k: 'rate', ty: 11, per: 6, secs: 60 }, { k: 'cash', n: 10000 }] },
+  { name: 'TALUS', kind: 'Large asteroid', r: 25, cash: 1000, sap: true, bugs: true, nests: 6, mountains: true,
+    blurb: 'Ridges of stone with seams of metal running through them.',
+    learn: 'Mountains. You cannot build on them, but a Mountain Drill beside one digs its seam out — and the drilling wakes Beetles.',
+    goals: [{ k: 'ship', ty: 4, n: 80 }, { k: 'ship', ty: 12, n: 15 }] },
+  { name: 'SELKA', kind: 'Moon', r: 31, cash: 1200, sap: true, bugs: true, nests: 9, skitters: true, mountains: true, valleys: true,
+    blurb: 'A small moon, split by chasms.',
+    learn: 'Valleys. Nothing stands in one; a pair of Bridges carries a belt and power across. And Skitters, fast and fragile, that go for your belts.',
+    goals: [{ k: 'rate', ty: 12, per: 4, secs: 90 }, { k: 'ship', ty: 13, n: 10 }, { k: 'cash', n: 60000 }] },
+  { name: 'ORRIN', kind: 'Moon', r: 39, cash: 1500, sap: true, bugs: true, nests: 16, skitters: true, mountains: true, valleys: true,
+    blurb: 'The last contract, and the biggest. A whole moon to work.',
+    learn: 'Everything you have learnt, at full scale. Reactors and Prisms, and the swarms that come for a factory this loud.',
+    goals: [{ k: 'ship', ty: 13, n: 40 }, { k: 'ship', ty: 7, n: 20 }, { k: 'rate', ty: 13, per: 3, secs: 120 }, { k: 'cash', n: 250000 }] },
+];
+
+/** One goal, in words. */
+export function goalText(goal) {
+  const nm = TYPES[goal.ty]?.name || '';
+  if (goal.k === 'ship') return `Ship ${num(goal.n)} ${nm}`;
+  if (goal.k === 'rate') return `Make ${goal.per} ${nm} a minute for ${goal.secs}s`;
+  return `Earn ${money(goal.n)}`;
 }
 
 /* --------------------------------------------------------------- contracts --- */
@@ -1573,20 +1681,35 @@ export const TUTORIAL = [
     done: f => f.sold > 0,
   },
   {
+    id: 'lab',
+    title: 'Feed a Research Lab',
+    body: 'Everything beyond these four machines is research. Put a second Extractor on ore '
+      + 'and run a belt from it into a <b>Research Lab</b> (press <b>8</b>). A Lab turns '
+      + 'gizmos into science instead of money — worth exactly what a Depot would have paid.',
+    done: f => f.studied > 0,
+  },
+  {
+    id: 'research',
+    title: 'Research Generators',
+    body: 'Notice how slow everything is: nothing is powered, so it all runs at a fifth of '
+      + 'its speed. Press <b>Y</b> for the tech tree and buy <b>Generators</b> — the first '
+      + 'unlocks cost only a few dozen science.',
+    done: f => rankOf(f.done, 'generators') > 0,
+  },
+  {
     id: 'gen',
     title: 'Build a Generator touching the line',
-    body: 'Notice how slow that is. Nothing is powering it, so everything runs at a fifth '
-      + 'speed. Press <b>6</b> and put a Generator against the side of your belt — power '
+    body: 'Press <b>6</b> and put a Generator against the side of your belt — power '
       + 'spreads outward through machines that touch each other.',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'gen'),
   },
   {
     id: 'fuel',
     title: 'Get ore into the firebox',
-    body: 'A Generator burns what you feed it. Press <b>2</b> and drop a <b>Balancer</b> into '
-      + 'the middle of your belt so its side exit points at the Generator — a Balancer sends '
-      + 'every other gizmo down its branch. The belt that carries the fuel is also the wire '
-      + 'that carries the power back.',
+    body: 'A Generator burns what you feed it. Research <b>Balancing</b>, press <b>2</b> and '
+      + 'drop a Balancer into the middle of your belt so its side exit points at the '
+      + 'Generator — a Balancer sends every other gizmo down its branch. The belt that '
+      + 'carries the fuel is also the wire that carries the power back.',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'gen' && f.grid[i].fuel > 0),
   },
   {
@@ -1602,8 +1725,9 @@ export const TUTORIAL = [
 /** What the card says once every step is ticked. */
 export const TUTORIAL_END = {
   title: 'That is the whole game',
-  body: 'Everything else is more of it. <b>Mutators</b> and <b>Fusers</b> turn cheap gizmos '
-    + 'into dear ones, the <b>Lab</b> turns them into research instead, and a dozen rings out '
+  body: 'Everything else is more of it. <b>Mutators</b> and <b>Fusers</b> — research them in '
+    + 'the tech tree — turn cheap gizmos into dear ones, the <b>Lab</b> keeps paying for more '
+    + 'unlocks, and a dozen rings out '
     + 'there is Sap — the second ore, and the one the Assembler recipes need. Press '
     + '<b>?</b> at any time for the manual.',
 };
@@ -1621,8 +1745,8 @@ export const TUTORIAL_END = {
  */
 export const MILESTONES = [
   { id: 'sell', name: 'Make a sale', hint: 'Push anything into a Market Depot.' },
-  { id: 'power', name: 'Power something', hint: 'Build a Generator touching your line, and feed it ore.' },
-  { id: 'mutate', name: 'Climb the ladder', hint: 'Build a Mutator and send it raw ore.' },
+  { id: 'power', name: 'Power something', hint: 'Research Generators, build one touching your line, and feed it ore.' },
+  { id: 'mutate', name: 'Climb the ladder', hint: 'Research Copper Mutation, then send a Mutator raw ore.' },
   { id: 'science', name: 'Run an experiment', hint: 'Push a gizmo into a Research Lab.' },
   { id: 'expand', name: 'Buy land', hint: 'Claim a ring, and reach the patches outside your fence.' },
   { id: 'recipe', name: 'Assemble a product', hint: 'Research Assembly, then feed an Assembler both halves.' },

@@ -314,6 +314,11 @@ WALKTHROUGH AND TIPS resets both, and the "Gus" checkbox (or T) hides him.
 Machine prices, upgrades and land cost half what they used to (`PRICE_SCALE`
 0.5, `EXPAND_PER_SLOT` 0.75), and so do the starter research nodes (Generators
 20, Balancing 30, Copper Mutation 45, Sorting 75, Fusing 125, Amber Mutation 200).
+Whenever no Market Depot is standing — at the start of every game, and any time
+after — the next Depot is **free**, so a factory that has spent itself to nothing
+can never be locked out of selling. A free Depot is marked (`m.free`, saved) and
+scraps for nothing, so it cannot be farmed for cash.
+
 An unpowered machine runs at 30% (was 20%) and a fully powered one at 1.75x its
 listed speed (`POWERED`, was 1x), so power is a nearly sixfold boost.
 

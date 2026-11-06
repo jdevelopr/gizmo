@@ -181,7 +181,7 @@ export class Palette {
     const counts = kindCounts(f);
     for (const r of this.rows) {
       const c = buyCost(r.spec, counts[r.spec.kind] || 0);
-      const txt = money(c);
+      const txt = c === 0 ? 'FREE' : money(c);
       if (r.cost.textContent !== txt) r.cost.textContent = txt;
       r.btn.classList.toggle('poor', f.cash < c);
     }
@@ -1022,8 +1022,10 @@ export class Panel {
     t.appendChild(el('h3', null, label(tool).toUpperCase()));
     t.appendChild(el('div', 'sub', tool.crate
       ? `Out of the crate — free, level ${tool.level || 1}`
-      : money(buyCost(tool, countKind(f, tool.kind)))
-        + (LADDERED[tool.kind] ? '  ·  the next one costs more' : '')));
+      : buyCost(tool, countKind(f, tool.kind)) === 0
+        ? 'FREE  ·  your first Depot is on the house'
+        : money(buyCost(tool, countKind(f, tool.kind)))
+          + (LADDERED[tool.kind] ? '  ·  the next one costs more' : '')));
     head.appendChild(t);
     host.appendChild(head);
     host.appendChild(el('p', 'body', describe(tool)));

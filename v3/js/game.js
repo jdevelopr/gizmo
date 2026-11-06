@@ -452,9 +452,9 @@ export function serialise(g) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
-    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.charge | 0, m.hot | 0]);
+    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.charge | 0, m.hot | 0, m.free | 0]);
   }
-  const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10]);
+  const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.free | 0]);
   // Every slot whose ground differs from what the seed made: rubble cleared, and
   // mountains worked out to rubble. Stored with what the ground is now.
   const ground = [];
@@ -549,10 +549,11 @@ export function deserialise(data) {
   }
   (data.shipped || []).forEach((n, ty) => { if (ty < f.shipped.length) f.shipped[ty] = n; });
 
-  for (const [i, kind, dir, level, mut, mir, off, hp, charge, hot] of data.machines || []) {
+  for (const [i, kind, dir, level, mut, mir, off, hp, charge, hot, free] of data.machines || []) {
     if (!Number.isInteger(i) || i < 0 || i >= f.grid.length) continue;
     const m = makeMachine({ kind, dir, mut, mir, level, off, hp: hp ?? undefined }, f.nid++);
     if (charge) m.charge = charge;
+    if (free) m.free = 1;
     if (hot) m.hot = hot;
     if (kind === 'ext') {
       // The world is rebuilt from its seed, so an Extractor whose ore is not
@@ -572,9 +573,11 @@ export function deserialise(data) {
     }
     occupy(f, m, i);
   }
-  for (const [kind, dir, level, mut, mir, off, hp] of data.crate || []) {
+  for (const [kind, dir, level, mut, mir, off, hp, free] of data.crate || []) {
     if (!kind) continue;
-    f.crate.push(makeMachine({ kind, dir, mut, mir, level, off, hp: hp ?? undefined }, f.nid++));
+    const cm = makeMachine({ kind, dir, mut, mir, level, off, hp: hp ?? undefined }, f.nid++);
+    if (free) cm.free = 1;
+    f.crate.push(cm);
   }
   const b = data.bugs;
   if (b) {

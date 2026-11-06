@@ -1033,6 +1033,8 @@ export function build(f, spec, i, opt = {}) {
   f.cash -= cost;
   f.spent += cost;
   const m = placeRaw(f, { ...spec, dir: dir0 ?? spec.dir ?? 0 }, i);
+  // Handed over at no charge (the free Depot): scrapping it must not pay out.
+  if (cost === 0 && !opt.free) m.free = 1;
   // Anything left pointing at nothing next door turns to feed the newcomer first,
   // so the newcomer's own facing is worked out with its feeders already in place.
   if (opt.dir == null || opt.adopt) adoptFeeders(f, i);

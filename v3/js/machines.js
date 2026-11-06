@@ -727,6 +727,10 @@ export function price(spec) {
 export const PRICE_SCALE = 0.5;
 
 export function buyCost(spec, owned = 0) {
+  // With no Market Depot standing, the next one is free — the first of every game,
+  // and any time after. A factory that has spent itself to nothing can always
+  // still sell, so it can never be locked out.
+  if (spec.kind === 'depot' && owned === 0) return 0;
   const step = LADDERED[spec.kind];
   const base = price(spec) * PRICE_SCALE;
   return Math.max(4, Math.round(step ? base * Math.pow(step, owned) : base));
@@ -808,13 +812,15 @@ export function upgradeCost(m, done = []) {
 
 /** Everything this machine has cost so far: the purchase plus every level bought. */
 export function investedIn(m) {
-  let paid = price(m) * PRICE_SCALE;
+  // A machine that was given away free is worth nothing at the scrapyard but its upgrades.
+  let paid = m.free ? 0 : price(m) * PRICE_SCALE;
   for (let l = 1; l < (m.level || 1); l++) paid += upgradeCost({ ...m, level: l });
   return paid;
 }
 
 export function scrapValue(m) {
-  return Math.max(2, Math.round(investedIn(m) * SCRAP_RATE));
+  const v = Math.round(investedIn(m) * SCRAP_RATE);
+  return m.free ? v : Math.max(2, v);
 }
 
 /** What a level buys, for every machine that sells speed. */
@@ -1679,7 +1685,8 @@ export const TUTORIAL = [
   {
     id: 'depot',
     title: 'Build a Market Depot',
-    body: 'Lovely! Now let\'s sell it. Press <b>7</b> and put a Market Depot a couple of slots away, '
+    body: 'Lovely! Now let\'s sell it. Press <b>7</b> and put a Market Depot a couple of slots away — '
+      + 'your first one\'s on the house! — '
       + 'the way your Extractor is facing. It buys anything pushed into it, instantly, at full '
       + 'price — but only through the one mouth on its front. It turns to face whatever feeds it, '
       + 'and <b>R</b> turns it by hand.',

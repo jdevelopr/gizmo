@@ -551,5 +551,25 @@ console.log('\nA WHOLE GAME, LEFT RUNNING');
   ok(g.f.cells.every(i => g.f.terrain[i] === OPEN), 'and nothing ends up standing on rock');
 }
 
+console.log('\nTHE FREE DEPOT');
+{
+  const M = await import('../js/machines.js');
+  const sim = await import('../js/sim.js');
+  const gm = await import('../js/game.js');
+  const g = gm.createGame({ seed: 31, teach: false });
+  const f = g.f;
+  const lo = M.claimMin(f.claim);
+  ok(M.buyCost({ kind: 'depot' }, 0) === 0, 'with no Depot standing, the next one is free');
+  ok(M.buyCost({ kind: 'depot' }, 1) > 0, 'the second one is not');
+  f.cash = 0;
+  const r = sim.build(f, { kind: 'depot' }, M.cellOf(lo + 2, lo));
+  ok(r.ok && f.cash === 0, 'a broke factory can still put a Depot down');
+  ok(M.scrapValue(f.grid[M.cellOf(lo + 2, lo)]) === 0, 'and scrapping a free Depot pays nothing, so it cannot be farmed');
+  const back = gm.deserialise(JSON.parse(JSON.stringify(gm.serialise(g))));
+  ok(back.f.grid[M.cellOf(lo + 2, lo)]?.free === 1, 'and it is still the free one after a reload');
+  sim.scrapMachine(f, M.cellOf(lo + 2, lo));
+  ok(f.cash === 0 && M.buyCost({ kind: 'depot' }, sim.countKind(f, 'depot')) === 0, 'once it is gone, the next is free again');
+}
+
 console.log(fails ? `\n${fails} invariant(s) broken.` : '\nEvery invariant holds.');
 process.exit(fails ? 1 : 0);

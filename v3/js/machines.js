@@ -701,7 +701,7 @@ export const twoInput = m =>
   (m?.kind === 'asm' ? recipeOf(m) : m?.kind === 'arm' ? ARMORY : null);
 
 /** Machines you may only own so many of cheaply — each costs more than the last. */
-export const LADDERED = { ext: 1.22, depot: 1.55, lab: 1.7, gen: 1.2, solar: 1.2 };
+export const LADDERED = { ext: 1.22, depot: 3, lab: 3, gen: 1.2, solar: 1.2 };
 
 /** Mutators are priced by the tier they output. */
 /**

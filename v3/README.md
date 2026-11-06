@@ -307,7 +307,7 @@ rubble in it shows just that, and **X** clears it.
 
 Each rung of Mutator costs 2.2x the one below it: Copper $275, Amber $605, Bloom
 $1,331, Cobalt $2,928, Void $6,442, Ember $14,173, Prism $31,180 (`MUT_BASE`,
-`MUT_STEP`). The first Solar Panel costs $500 and the first Generator $100. Defence machines cost ten times their old prices: Armory $750, Zapper $1,100, Repair Drone Bay $900. Generators and Solar Panels now climb a price ladder like Extractors, Depots and Labs: each one you own makes the next 1.2x dearer (Generator $100, $120, $144…; Solar Panel $500, $600, $720…).
+`MUT_STEP`). The first Solar Panel costs $500 and the first Generator $100. Defence machines cost ten times their old prices: Armory $750, Zapper $1,100, Repair Drone Bay $900. Generators and Solar Panels now climb a price ladder like Extractors, Depots and Labs: each one you own makes the next 1.2x dearer (Generator $100, $120, $144…; Solar Panel $500, $600, $720…). Each new Market Depot and Research Lab costs 3x the last (Depot: first free while none stands, then $360, $1,080, $3,240…; Lab: $150, $450, $1,350…).
 
 ### Five more machines
 

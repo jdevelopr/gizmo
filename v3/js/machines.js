@@ -270,7 +270,7 @@ export const KINDS = {
     // Passive: it has a mouth and never a job. power.js drains its buffer.
     desc: 'Burns whatever you feed it and pushes power out through touching machines, '
       + 'for a limited number of hops. Raw ore is by far the cheapest thing to burn.',
-    price: 140, cycle: 0, cap: 0, hold: 8, travel: 0, draw: 0, passive: true,
+    price: 200, cycle: 0, cap: 0, hold: 8, travel: 0, draw: 0, passive: true,
     body: '#6e1f14', trim: '#ff7a3a', lit: '#ffd08a',
   },
   depot: {
@@ -389,7 +389,7 @@ export const KINDS = {
     name: 'Solar Panel', short: 'SOLAR',
     desc: 'A little steady power with no fuel at all. Weak on its own; a field of them runs an '
       + 'early line with no ore going up a chimney.',
-    price: 600, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,   // 10x: free power is dear
+    price: 1000, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,   // free power is dear
     body: '#1a2440', trim: '#5a8fe0', lit: '#bfe0ff',
   },
 };

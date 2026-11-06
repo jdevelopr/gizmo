@@ -26,7 +26,7 @@
  *   in the game.
  *
  *   **Nothing switches off.** A machine no generator reaches runs at UNPOWERED
- *   speed — under a third — forever. That is not a failure state, it is the state a
+ *   speed — a fifth — forever. That is not a failure state, it is the state a
  *   brand new factory is in, and it is what makes power a thing you *discover* is
  *   worth building rather than a gate you have to pass. What hurts is a brownout:
  *   speed falls with the *square* of how satisfied the grid is, so a grid at 70%

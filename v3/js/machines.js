@@ -153,13 +153,9 @@ export const sizeOf = ty => (RAW.includes(ty) ? 0.5 : 1);
  */
 
 /** What a machine off every grid still manages. Never zero: nothing powers off. */
-export const UNPOWERED = 0.3;
-/**
- * Speed at full power, relative to a machine's listed cycle. Above one on purpose:
- * power is the first big upgrade a new factory makes, and it should feel like one —
- * a powered line runs nearly six times as fast as an unpowered one.
- */
-export const POWERED = 1.75;
+export const UNPOWERED = 0.2;
+/** Speed at full power, relative to a machine's listed cycle: five times unpowered. */
+export const POWERED = 1;
 
 /**
  * Speed multiplier for a machine on a grid that is `sat` satisfied, 0..1.
@@ -1371,26 +1367,26 @@ export const TECH = [
    */
 
   // ---- production: the starter unlocks
-  { id: 'balancing', branch: 'economy', name: 'Balancing', cost: 30, flat: true, needs: [], unlocks: ['bal'],
+  { id: 'balancing', branch: 'economy', name: 'Balancers', cost: 30, flat: true, needs: [], unlocks: ['bal'],
     blurb: 'Unlocks the Balancer: one line in, gizmos dealt out in turn to its front and its side. '
       + 'The way to feed a Generator off a line that is also selling.' },
-  { id: 'sorting', branch: 'economy', name: 'Sorting', cost: 75, flat: true, needs: ['balancing'], unlocks: ['sort'],
+  { id: 'sorting', branch: 'economy', name: 'Sorters', cost: 75, flat: true, needs: ['balancing'], unlocks: ['sort'],
     blurb: 'Unlocks the Sorter, which pulls one type out of a mixed line and sends it down its side.' },
-  { id: 'mut1', branch: 'economy', name: 'Copper Mutation', cost: 45, flat: true, needs: [], unlocks: ['mut:1'],
+  { id: 'mut1', branch: 'economy', name: 'Copper Mutator', cost: 45, flat: true, needs: [], unlocks: ['mut:1'],
     blurb: 'Unlocks the Copper Mutator: raw ore in, Copper out. Copper sells for three times Scrap.' },
-  { id: 'fusing', branch: 'economy', name: 'Fusing', cost: 125, flat: true, needs: ['mut1'], unlocks: ['fuse'],
+  { id: 'fusing', branch: 'economy', name: 'Fusers', cost: 125, flat: true, needs: ['mut1'], unlocks: ['fuse'],
     blurb: 'Unlocks the Fuser: two gizmos of one type melt into one of the next rung up.' },
-  { id: 'mut2', branch: 'economy', name: 'Amber Mutation', cost: 200, flat: true, needs: ['mut1'], unlocks: ['mut:2'],
+  { id: 'mut2', branch: 'economy', name: 'Amber Mutator', cost: 200, flat: true, needs: ['mut1'], unlocks: ['mut:2'],
     blurb: 'Unlocks the Amber Mutator: raw ore straight to Amber, no Fusers needed.' },
-  { id: 'mut3', branch: 'economy', name: 'Bloom Mutation', cost: 140, needs: ['mut2'], unlocks: ['mut:3'],
+  { id: 'mut3', branch: 'economy', name: 'Bloom Mutator', cost: 140, needs: ['mut2'], unlocks: ['mut:3'],
     blurb: 'Unlocks the Bloom Mutator.' },
-  { id: 'mut4', branch: 'economy', name: 'Cobalt Mutation', cost: 300, needs: ['mut3'], unlocks: ['mut:4'],
+  { id: 'mut4', branch: 'economy', name: 'Cobalt Mutator', cost: 300, needs: ['mut3'], unlocks: ['mut:4'],
     blurb: 'Unlocks the Cobalt Mutator — half of every Turbine.' },
-  { id: 'mut5', branch: 'economy', name: 'Void Mutation', cost: 650, needs: ['mut4'], unlocks: ['mut:5'],
+  { id: 'mut5', branch: 'economy', name: 'Void Mutator', cost: 650, needs: ['mut4'], unlocks: ['mut:5'],
     blurb: 'Unlocks the Void Mutator.' },
-  { id: 'mut6', branch: 'economy', name: 'Ember Mutation', cost: 1300, needs: ['mut5'], unlocks: ['mut:6'],
+  { id: 'mut6', branch: 'economy', name: 'Ember Mutator', cost: 1300, needs: ['mut5'], unlocks: ['mut:6'],
     blurb: 'Unlocks the Ember Mutator — half of every Reactor.' },
-  { id: 'mut7', branch: 'economy', name: 'Prism Mutation', cost: 2600, needs: ['mut6'], unlocks: ['mut:7'],
+  { id: 'mut7', branch: 'economy', name: 'Prism Mutator', cost: 2600, needs: ['mut6'], unlocks: ['mut:7'],
     blurb: 'Unlocks the Prism Mutator, the top of the ladder.' },
 
   // ---- production
@@ -1418,7 +1414,7 @@ export const TECH = [
   // ---- power
   { id: 'generators', branch: 'power', name: 'Generators', cost: 20, flat: true, needs: [], unlocks: ['gen'],
     blurb: 'Unlocks the Generator. Feed it ore and it powers every machine it touches, and '
-      + 'everything those touch — a powered machine runs nearly six times as fast as an unpowered one.' },
+      + 'everything those touch — an unpowered machine runs at a fifth of its speed.' },
   { id: 'gridwork', branch: 'power', name: 'Gridwork', cost: 180, needs: ['generators'], power: 'reach',
     blurb: `Every generator's power reaches ${GRIDWORK_REACH} machines further.` },
   { id: 'combustion', branch: 'power', name: 'Combustion', cost: 380, needs: ['gridwork'], power: 'fuel',
@@ -1472,6 +1468,10 @@ export const techById = id => TECH.find(t => t.id === id) || null;
  */
 export const unlockKey = spec => spec.kind === 'asm' ? 'asm:' + (spec.mut ?? 0)
   : spec.kind === 'mut' ? 'mut:' + (spec.mut ?? 1) : spec.kind;
+
+/** The machine an unlock key stands for: `asm:N` and `mut:N` carry their setting. */
+export const specOfKey = u => (u.startsWith('asm:') ? { kind: 'asm', mut: +u.slice(4) }
+  : u.startsWith('mut:') ? { kind: 'mut', mut: +u.slice(4) } : { kind: u });
 
 /** The research that unlocks a machine kind (or unlock key), or null if it is on sale from the start. */
 export const unlockerOf = key => TECH.find(t => (t.unlocks || []).includes(key))
@@ -1711,8 +1711,8 @@ export const TUTORIAL = [
   {
     id: 'research',
     title: 'Research Generators',
-    body: 'Science! Now, notice how slow things are? Nothing\'s powered, so it\'s all crawling — '
-      + 'power makes it nearly six times faster! Press <b>Y</b> for the tech tree and grab <b>Generators</b> — the first '
+    body: 'Science! Now, notice how slow things are? Nothing\'s powered, so it all runs at a fifth '
+      + 'of its speed. Press <b>Y</b> for the tech tree and grab <b>Generators</b> — the first '
       + 'unlocks only cost a few dozen science!',
     done: f => rankOf(f.done, 'generators') > 0,
   },
@@ -1726,7 +1726,7 @@ export const TUTORIAL = [
   {
     id: 'fuel',
     title: 'Get ore into the firebox',
-    body: 'A Generator\'s a hungry fella — it burns whatever you feed it! Research <b>Balancing</b>, '
+    body: 'A Generator\'s a hungry fella — it burns whatever you feed it! Research <b>Balancers</b>, '
       + 'press <b>2</b> and drop a Balancer in the middle of your belt so its side exit points at '
       + 'the Generator. It sends every other gizmo down the branch, and the belt carrying the fuel '
       + 'carries the power back too. Neat, huh?',

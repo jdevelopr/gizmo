@@ -313,7 +313,7 @@ WALKTHROUGH AND TIPS resets both, and the "Gus" checkbox (or T) hides him.
 
 Machine prices, upgrades and land cost half what they used to (`PRICE_SCALE`
 0.5, `EXPAND_PER_SLOT` 0.75), and so do the starter research nodes (Generators
-20, Balancing 30, Copper Mutation 45, Sorting 75, Fusing 125, Amber Mutation 200).
+20, Balancers 30, Copper Mutator 45, Sorters 75, Fusers 125, Amber Mutator 200).
 Whenever no Market Depot is standing — at the start of every game, and any time
 after — the next Depot is **free**, so a factory that has spent itself to nothing
 can never be locked out of selling. A free Depot is marked (`m.free`, saved) and
@@ -321,8 +321,8 @@ scraps for nothing, so it cannot be farmed for cash. Selling the **last** Depot
 standing pays nothing either, bought or free — nor does selling a crated Depot
 while none is standing — since the next one would be free (`scrapPay` in sim.js).
 
-An unpowered machine runs at 30% (was 20%) and a fully powered one at 1.75x its
-listed speed (`POWERED`, was 1x), so power is a nearly sixfold boost.
+Machine speeds are unchanged: an unpowered machine runs at 20% and a fully powered
+one at its listed speed (`UNPOWERED` 0.2, `POWERED` 1).
 
 ### Story mode
 
@@ -361,9 +361,15 @@ not multiplied by `TECH_COST_SCALE` — so the first unlock is a minute of Scrap
 a Lab:
 
 - **Power:** Generators (40) heads the branch; Gridwork now needs it.
-- **Production:** Balancing (60) → Sorting (150) and Warehousing; Copper Mutation
-  (90) → Fusing (250) → Assembly, and Amber Mutation (400) → Bloom → Cobalt → Void →
-  Ember → Prism Mutation, one node per rung (these deeper rungs use the normal x10).
+- **Production:** Balancers → Sorters and Warehousing; Copper Mutator → Fusers →
+  Assembly, and Amber Mutator → Bloom → Cobalt → Void → Ember → Prism Mutator, one
+  node per rung (these deeper rungs use the normal x10). Each starter node is named
+  after the machine it unlocks.
+
+Locked machines still show in the build bar, greyed out, with what they cost in
+science. Clicking one researches it on the spot if you can afford it, or opens the
+tech tree on that node if you cannot yet. A selected Mutator's colour strip ends
+with the next rung, which can be researched the same way.
 
 The walkthrough now has you feed a Lab and research Generators before building
 one. A world saved before this change is given the old free machines' nodes at
@@ -411,6 +417,14 @@ outer third a ring is tens of thousands. The whole world is about $350,000.
 Everything outside your fence is exactly as fatal as the edge of the world: you
 cannot build on it and a belt aimed at it throws away what it carries. That rule is
 inherited unchanged, and on a map this size it is the mistake you will make most.
+
+### Ore is sparse
+
+A world holds 14 scattered Slag patches and 5 Sap patches (plus the opening blob
+and one guaranteed Sap patch), each 5–14 slots, with at least 7 slots between two
+patches of the same ore. A patch is something you go out to find and run a belt
+home from, not a carpet you can build anywhere on. The opening 3x3 is still all
+Slag, and the opening blob grows to 14 slots.
 
 ### Slag and Sap are kept a long way apart
 

@@ -33,8 +33,10 @@ import {
 const SLAG = 0, SAP = 8;
 
 /** How many patches of each ore the world holds. */
-const SLAG_PATCHES = 36;
-const SAP_PATCHES = 12;
+// Kept sparse on purpose: ore is something you go out and find, and a patch is
+// worth a long belt home, rather than a carpet you can build anywhere on.
+const SLAG_PATCHES = 14;
+const SAP_PATCHES = 5;
 
 /** Richness at the middle of the map and out at the rim. */
 const RICH_MIN = 0.8;
@@ -56,7 +58,7 @@ const RICH_MAX = 2.6;
  * this game asks anybody to build.
  */
 const ORE_GAP = 10;         // between patches of different ore
-const SAME_GAP = 3;         // between patches of the same ore
+const SAME_GAP = 7;         // between patches of the same ore
 const SAP_MIN_RING = 12;    // no Sap closer than this to the centre
 
 /**
@@ -132,12 +134,12 @@ export function generateWorld(seed = 1) {
     rich[i] = 0.92 + rnd() * 0.18;
     terrain[i] = OPEN;
   }
-  patches.push(growPatch(rnd, patch, rich, SLAG, start.ext, 30, 1.0, terrain, home, opening));
+  patches.push(growPatch(rnd, patch, rich, SLAG, start.ext, 14, 1.0, terrain, home, opening));
 
   // One guaranteed Sap patch, out past the ring where Sap is allowed to exist at
   // all, so every world has a Part line in it somewhere findable.
   const sapSeed = ringSlot(rnd, patch, SAP_MIN_RING + 2, SAP);
-  if (sapSeed >= 0) patches.push(growPatch(rnd, patch, rich, SAP, sapSeed, 16, 1.25, terrain));
+  if (sapSeed >= 0) patches.push(growPatch(rnd, patch, rich, SAP, sapSeed, 10, 1.25, terrain));
 
   // Sap is scattered *first*, and this matters. Slag is the commoner ore and gets
   // the whole map to spread over; if it goes down first it takes all the room and
@@ -363,7 +365,7 @@ export function storyWorld(level, seed) {
         if (!inWorld(x, y)) continue;
         const i = cellOf(x, y);
         if (!inside[i] || w.patch[i] >= 0 || w.terrain[i] !== OPEN) continue;
-        const p = growPatch(rnd, w.patch, w.rich, SAP, i, 14, 1.15, w.terrain);
+        const p = growPatch(rnd, w.patch, w.rich, SAP, i, 9, 1.15, w.terrain);
         // a patch must not spill out into space
         p.cells = p.cells.filter(ci => { if (inside[ci]) return true; w.patch[ci] = -1; w.terrain[ci] = SPACE; return false; });
         sap += p.cells.length;
@@ -561,7 +563,7 @@ function scatterPatches(rnd, patch, rich, patches, terrain, ty, count) {
     }
     if (seedCell < 0) continue;
     const ring = Math.max(Math.abs(cx(seedCell) - c), Math.abs(cy(seedCell) - c)) / c;
-    const size = Math.round((ty === SLAG ? 10 : 8) + rnd() * (ty === SLAG ? 20 : 12));
+    const size = Math.round((ty === SLAG ? 6 : 5) + rnd() * (ty === SLAG ? 8 : 6));
     patches.push(growPatch(rnd, patch, rich, ty, seedCell, size, richAt(ring), terrain));
   }
 }

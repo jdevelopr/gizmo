@@ -118,7 +118,7 @@ console.log('\nSUPPLY, DEMAND AND THE BROWNOUT');
   ok(powerMult(0.5) < POWERED / 2, 'a half-fed grid runs at less than half its powered speed',
     `${powerMult(0.5).toFixed(2)} of ${POWERED}`);
   ok(powerMult(1) === POWERED, `a fully fed grid runs at full speed (${POWERED}x)`);
-  ok(POWERED / UNPOWERED > 5, `power makes a machine ${(POWERED / UNPOWERED).toFixed(1)}x faster`);
+  ok(POWERED / UNPOWERED >= 5, `power makes a machine ${(POWERED / UNPOWERED).toFixed(1)}x faster`);
 }
 
 console.log('\nNOTHING SWITCHES OFF');

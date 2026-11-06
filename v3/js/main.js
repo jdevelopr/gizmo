@@ -12,7 +12,7 @@
 import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
   expandCost, buyCost, label, PASSIVE, zapRange, unlockedBy, unlockerOf, unlockKey,
-  sizeKind, footprint, STORY_LEVELS, goalText,
+  sizeKind, footprint, STORY_LEVELS, goalText, techById, techOpen, rankCost, rankOf,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
 import { repairBeacon, progress as beaconProgress } from './beacon.js';
@@ -86,7 +86,7 @@ function boot(game) {
 
   if (!view) {
     view = new View($('px'), $('tx'));
-    palette = new Palette($('palette'), spec => act('tool', spec));
+    palette = new Palette($('palette'), spec => act('tool', spec), id => act('researchFromBar', id));
     crate = new Crate($('crate'), st => act('takeFromCrate', st), key => act('scrapCrate', key));
     tutorial = new Tutorial(() => act('endTutorial'), () => { tips.dismiss(); sfx('click'); });
     hud = new Hud();
@@ -1050,6 +1050,23 @@ function act(name, payload, extra) {
     }
 
     /* --- the tech tree page --- */
+    case 'researchFromBar': {
+      // A locked machine in the build bar: research it now if it can be had,
+      // otherwise open the tree on it and say what is missing.
+      const t = techById(payload);
+      if (!t) return;
+      if (techOpen(t, f.done) && f.science >= rankCost(t, f.done)) {
+        const r = act('research', t.id);
+        if (r?.ok) { sfx('tech'); toast(g, `${t.name} researched`, '#a8dcff'); }
+        return r;
+      }
+      tree.show(g);
+      tree.select(t.id);
+      const missing = (t.needs || []).filter(n => !rankOf(f.done, n)).map(n => techById(n)?.name);
+      toast(g, missing.length ? `Research ${missing.join(' and ')} first`
+        : `${t.name} needs ${num(rankCost(t, f.done))} science — feed a Research Lab`, '#ffcd75');
+      return;
+    }
     case 'openTree':
       if (tree.open) tree.close(); else tree.show(g);
       return;

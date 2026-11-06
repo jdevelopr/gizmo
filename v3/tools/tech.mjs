@@ -39,6 +39,20 @@ console.log('\nThe shape of the tree');
   }
 }
 
+console.log('\nEvery card can be written');
+{
+  // The tree's detail card describes every node at every rank; a node that
+  // unlocks something the card cannot name used to crash the whole page.
+  const T = await import('../js/techtree.js');
+  let bad = null;
+  for (const t of TECH) for (let r = 1; r <= TECH_RANKS; r++) {
+    try { T.techEffect(t, r); } catch (e) { bad = bad || `${t.id} rank ${r}: ${e.message}`; }
+  }
+  ok(!bad, 'every node, every rank, has a description', bad || '');
+  ok(TECH.every(t => !t.flat || /Generators|Balancers|Sorters|Fusers|Mutator/.test(t.name)),
+    'every starter node is named after the machine it unlocks');
+}
+
 console.log('\nDefence and Terrain have to be researched');
 {
   const start = catalogue([]).map(c => c.kind);

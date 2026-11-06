@@ -18,7 +18,7 @@ import {
   label, money, num, genReach, genOutput, energyOf, fuelEnergy, yieldBonus, levelCap, upgradeCost,
   travelTime, contractPremium, drawOf, zapRange, zapCool, zapDamage, zapChain, maxHp, beaconLoss,
   bridgeSpan, tremorCost, cycleTime, unlockSpeed, GEN_REACH, GEN_OUTPUT, ZAP_RANGE, ZAP_COOL,
-  ZAP_DAMAGE, BEACON_LOSS, TREMOR_COST, MAX_HP,
+  ZAP_DAMAGE, BEACON_LOSS, TREMOR_COST, MAX_HP, specOfKey,
 } from './machines.js';
 import { icon } from './ui.js';
 
@@ -35,7 +35,7 @@ const VIEW_KEY = 'gizmo3.tree.v1';
 const ZOOMS = [0.4, 0.5, 0.6, 0.7, 0.8, 1, 1.2, 1.45];
 
 const pct = x => `${Math.round(x * 100)}%`;
-const specOf = u => (u.startsWith('asm:') ? { kind: 'asm', mut: +u.slice(4) } : { kind: u });
+const specOf = specOfKey;
 
 /**
  * What a node does, in total, at a given rank — worked out from the very functions

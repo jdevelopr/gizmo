@@ -22,7 +22,7 @@
  *   **Power scales time, not existence.** A machine's cycle is counted down at
  *   `powerMult(sat)` rather than at one second per second, so a brownout slows
  *   every machine on a grid smoothly and instantly, and a machine no generator
- *   reaches crawls at its unpowered speed rather than stopping.
+ *   reaches crawls at a fifth speed rather than stopping.
  *
  *   **The renderer reads this directly.** There is no wire format, because there
  *   is no wire: one process owns the whole game, so `viewOf` and its rounding are

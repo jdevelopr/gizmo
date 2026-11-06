@@ -12,7 +12,7 @@
  */
 
 import {
-  cellOf, cx, cy, inWorld, claimed, OPEN, buyCost, upgradeCost, levelCap, scrapValue,
+  cellOf, cx, cy, inWorld, claimed, OPEN, RUBBLE, buyCost, upgradeCost, levelCap, scrapValue,
   repairCost, maxHp, CRATE_CAP, footprint, sizeKind,
 } from './machines.js';
 import { build, buildCheck, replaceMode, countKind, rebuild, toCrate, scrapMachine, occupy, vacate } from './sim.js';
@@ -29,6 +29,18 @@ export function areaCells(f, a, b) {
     if (m) out.add(m.at ?? cellOf(x, y));
   }
   return [...out];
+}
+
+/** Every rubble slot on your own land inside the box from `a` to `b`. */
+export function rubbleIn(f, a, b) {
+  const x0 = Math.min(cx(a), cx(b)), x1 = Math.max(cx(a), cx(b));
+  const y0 = Math.min(cy(a), cy(b)), y1 = Math.max(cy(a), cy(b));
+  const out = [];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const i = cellOf(x, y);
+    if (f.terrain[i] === RUBBLE && claimed(i, f.claim)) out.push(i);
+  }
+  return out;
 }
 
 /** The box round every slot these machines cover. */

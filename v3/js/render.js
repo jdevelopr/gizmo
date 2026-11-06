@@ -1400,6 +1400,7 @@ export class View {
       }
     }
     if (ui.area?.length) for (const c of ui.area) this.outline(ctx, c, z, '#7fe8ff', 1);
+    if (ui.rubble?.length) for (const c of ui.rubble) this.outline(ctx, c, z, '#ffcd75', 1);
     if (ui.box) this.drawBox(ctx, ui.box, z);
     if (ui.bpPlan) this.drawBlueprint(ctx, ui.bpPlan, z);
     if (ui.dragPath?.length) this.drawDragPath(ctx, f, ui, z);

@@ -11,14 +11,14 @@
 
 import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
-  expandCost, buyCost, label, PASSIVE, zapRange, unlockedBy, unlockerOf, unlockKey,
+  expandCost, buyCost, label, PASSIVE, zapRange, CRATE_CAP, RUBBLE, RUBBLE_COST, unlockedBy, unlockerOf, unlockKey,
   sizeKind, footprint, STORY_LEVELS, goalText, DRONE_RANGE, techById, techOpen, rankCost, rankOf,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
 import { repairBeacon, progress as beaconProgress } from './beacon.js';
 import { sfx, unlock, soundOn, setSound, volume, setVolume } from './sound.js';
 import {
-  areaCells, capture, rotateBp, plan, paste, lift, drop, putBack,
+  areaCells, rubbleIn, capture, rotateBp, plan, paste, lift, drop, putBack,
   upgradeAll, scrapAll, repairArea, toggleArea,
 } from './blueprint.js';
 import { View, ZOOMS, DEFAULT_ZOOM } from './render.js';
@@ -224,6 +224,7 @@ function frame(now) {
   updateBlueprint();
   view.draw(g.f, {
     area: S.area,
+    rubble: S.rubble,
     box: S.drag?.mode === 'box' ? S.drag : null,
     bpPlan: S.bpPlan,
     dt,
@@ -653,7 +654,9 @@ function updateHint() {
       ? `<b>MOVING ${S.bp.held.length}</b>  ·  click where it goes  ·  <b>R</b> turn  <b>Esc</b> put it all back`
       : `<b>BLUEPRINT</b> ${money(S.bpCost || 0)}  ·  click to stamp  ·  <b>R</b> turn  <b>Esc</b> let go`;
   } else if (S.area?.length) {
-    txt = `<b>${S.area.length} SELECTED</b>  ·  <b>Ctrl C</b> copy  <b>M</b> move  <b>U</b> upgrade  <b>H</b> repair  <b>O</b> off  <b>X</b> scrap  <b>Esc</b> clear`;
+    txt = `<b>${S.area.length} SELECTED</b>  ·  <b>Ctrl C</b> copy  <b>M</b> move  <b>K</b> to crate  <b>U</b> upgrade  <b>H</b> repair  <b>O</b> off  <b>X</b> scrap  <b>Esc</b> clear`;
+  } else if (S.rubble?.length) {
+    txt = `<b>${S.rubble.length} RUBBLE SELECTED</b>  ·  <b>X</b> clear it all  <b>Esc</b> clear the selection`;
   } else if (S.hand >= 0) txt = 'Click where it goes. <b>Esc</b> to leave it where it was.';
   else if (S.tool) {
     const cost = buyCost(S.tool, countKind(g.f, S.tool.kind));
@@ -682,7 +685,7 @@ function act(name, payload, extra) {
     case 'tool': {
       S.hand = -1;
       if (S.bp) dropBlueprint();
-      S.area = null;
+      S.area = null; S.rubble = null;
       if (!payload) {
         S.tool = null;
         palette.select(null);
@@ -931,15 +934,53 @@ function act(name, payload, extra) {
     /* --- many machines at once --- */
     case 'areaSelect': {
       const cells = areaCells(f, payload.a, payload.b);
-      S.area = cells.length ? cells : null;
+      // Rubble on your own land inside the box is picked up too, so a patch of it
+      // can be cleared in one go.
+      const rubble = rubbleIn(f, payload.a, payload.b);
+      S.area = cells.length || rubble.length ? cells : null;
+      S.rubble = rubble.length ? rubble : null;
       S.selected = -1;
       panel.show('info');
       panel.key = '';
-      if (cells.length) sfx('click');
+      if (cells.length || rubble.length) sfx('click');
       return;
     }
+    case 'areaCrate': {
+      if (!S.area?.length) return;
+      let n = 0, left = 0;
+      for (const i of S.area) {
+        if (!f.grid[i]) continue;
+        if (f.crate.length >= CRATE_CAP) { left++; continue; }
+        if (stashMachine(f, i).ok) n++;
+      }
+      toast(g, left ? `${n} to the crate — ${left} did not fit (it holds ${CRATE_CAP})` : `${n} to the crate`,
+        left ? '#ffcd75' : '#a8dcff');
+      sfx('move');
+      crate.key = '';
+      palette.key = '';
+      S.area = null; S.rubble = null;
+      panel.key = '';
+      return { n, left };
+    }
+    case 'areaRubble': {
+      if (!S.rubble?.length) return;
+      let n = 0, spent = 0;
+      for (const i of S.rubble) {
+        if (f.terrain[i] !== RUBBLE) continue;
+        if (f.cash < RUBBLE_COST) break;
+        if (applyAction(f, { a: 'clear', i }).ok) { n++; spent += RUBBLE_COST; }
+      }
+      const left = S.rubble.filter(i => f.terrain[i] === RUBBLE);
+      toast(g, left.length ? `Cleared ${n} rubble for ${money(spent)} — ${left.length} left, not enough cash`
+        : `Cleared ${n} rubble for ${money(spent)}`, left.length ? '#ffcd75' : '#a7f070');
+      if (n) sfx('scrap');
+      S.rubble = left.length ? left : null;
+      if (!S.area?.length && !S.rubble) S.area = null;
+      panel.key = '';
+      return { n, spent };
+    }
     case 'areaClear':
-      S.area = null;
+      S.area = null; S.rubble = null;
       panel.key = '';
       return;
     case 'areaCopy': {
@@ -947,7 +988,7 @@ function act(name, payload, extra) {
       const bp = capture(f, S.area);
       if (!bp) return;
       S.clip = bp;
-      S.area = null;
+      S.area = null; S.rubble = null;
       S.tool = null;
       palette.select(null);
       S.bp = bp;
@@ -960,7 +1001,7 @@ function act(name, payload, extra) {
     case 'paste': {
       if (!S.clip) { toast(g, 'Nothing copied yet — shift-drag a box, then Ctrl C', '#ff8a6a'); return; }
       if (S.bp?.held) return;
-      S.tool = null; S.hand = -1; S.area = null;
+      S.tool = null; S.hand = -1; S.area = null; S.rubble = null;
       palette.select(null);
       S.bp = S.clip;
       $('stage').classList.add('build');
@@ -971,7 +1012,7 @@ function act(name, payload, extra) {
       if (!S.area?.length) return;
       const bp = lift(f, S.area);
       if (!bp) return;
-      S.area = null;
+      S.area = null; S.rubble = null;
       S.tool = null;
       palette.select(null);
       S.bp = bp;
@@ -1033,7 +1074,7 @@ function act(name, payload, extra) {
       const r = scrapAll(f, S.area);
       for (const i of S.area) sweepGround(f, i);
       toast(g, `${r.n} scrapped — +${money(r.got)}`, '#ffcd75');
-      S.area = null;
+      S.area = null; S.rubble = null;
       panel.key = '';
       return r;
     }
@@ -1069,7 +1110,7 @@ function act(name, payload, extra) {
       view.centreOn(payload);
       if (view.cam.zoom < 32) view.cam.zoom = 32;
       view.ping(payload);
-      S.area = null;
+      S.area = null; S.rubble = null;
       if (f.grid[payload]) { S.selected = payload; panel.show('info'); }
       sfx('click');
       return;

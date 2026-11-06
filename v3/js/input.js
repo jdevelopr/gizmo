@@ -357,8 +357,13 @@ export class Input {
 
     // A box selected: the single-machine verbs act on all of it.
     if (S.area?.length && !S.tool && !S.bp) {
-      const verb = { m: 'areaMove', u: 'areaUpgrade', o: 'areaToggle', h: 'areaRepair',
+      const verb = { m: 'areaMove', u: 'areaUpgrade', o: 'areaToggle', h: 'areaRepair', k: 'areaCrate',
         x: 'areaScrap', delete: 'areaScrap', backspace: 'areaScrap', escape: 'areaClear' }[low];
+      if (verb) { e.preventDefault(); this.act(verb); return; }
+    }
+    // Only rubble in the box: X clears it.
+    if (!S.area?.length && S.rubble?.length && !S.tool && !S.bp) {
+      const verb = { x: 'areaRubble', delete: 'areaRubble', backspace: 'areaRubble', escape: 'areaClear' }[low];
       if (verb) { e.preventDefault(); this.act(verb); return; }
     }
 

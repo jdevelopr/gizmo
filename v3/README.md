@@ -294,6 +294,21 @@ Once it has run once, this browser never sees it again unless it is asked for. E
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
 
+### Box selections: to the crate, and rubble
+
+Shift-drag a box and, alongside copy, move, upgrade, repair, switch off and scrap,
+there is **TO CRATE** (key **K**): every machine in the box goes into the crate, as
+many as fit. The crate now holds 200 (was 40). The same box also picks up any
+**rubble** on your land inside it; **CLEAR RUBBLE** clears it all at $50 a slot,
+stopping when the money runs out and leaving the rest selected. A box with only
+rubble in it shows just that, and **X** clears it.
+
+### Mutator prices
+
+Each rung of Mutator costs 2.2x the one below it: Copper $275, Amber $605, Bloom
+$1,331, Cobalt $2,928, Void $6,442, Ember $14,173, Prism $31,180 (`MUT_BASE`,
+`MUT_STEP`). Solar Panels cost $300.
+
 ### Five more machines
 
 All five are research, spread across the branches, and each has its own card in

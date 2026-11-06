@@ -702,8 +702,14 @@ export const twoInput = m =>
 export const LADDERED = { ext: 1.22, depot: 1.55, lab: 1.7 };
 
 /** Mutators are priced by the tier they output. */
-// Ten times what they first were: a Mutator skips whole Fuser chains, and is priced like it.
-export const MUT_PRICE = [0, 550, 800, 1150, 1550, 2150, 3000, 4100];
+/**
+ * Mutator prices climb exponentially with the rung they make: each one costs
+ * MUT_STEP times the one below it. A Copper Mutator is an early purchase; a Prism
+ * Mutator skips six Fuser steps and is priced like a late-game prize.
+ */
+export const MUT_BASE = 550;
+export const MUT_STEP = 2.2;
+export const MUT_PRICE = [0, 1, 2, 3, 4, 5, 6, 7].map(t => (t ? Math.round(MUT_BASE * Math.pow(MUT_STEP, t - 1)) : 0));
 
 /**
  * Mutator speed halves each tier while gizmo value roughly doubles, so every
@@ -958,7 +964,7 @@ export const EMPTY_HOLD = 2;
  * Forty is far more than a session will ever displace at once, because the common
  * case — laying a belt across a belt — replaces in place and never touches it.
  */
-export const CRATE_CAP = 40;
+export const CRATE_CAP = 200;
 
 /**
  * How many of one ingredient a two-input machine will queue up.

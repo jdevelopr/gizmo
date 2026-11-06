@@ -10,7 +10,7 @@
  */
 import {
   WORLD, cellOf, cx, cy, TYPES, KINDS, RECIPES, claimMin, claimMax, OPEN,
-  CLAIM_START, expandCost, copyable, COPY_MAX_VALUE, famOf, PRODUCT,
+  CLAIM_START, expandCost, copyable, COPY_MAX_VALUE, famOf, PRODUCT, CRATE_CAP,
 } from '../js/machines.js';
 import {
   createFactory, starterKit, stepFactory, build, buildCheck, moveMachine,
@@ -444,7 +444,7 @@ console.log('\nBUILDING OVER THINGS');
     'and the one underneath goes to the crate rather than being destroyed');
 
   // The crate has a ceiling, and says so rather than quietly eating things.
-  while (f.crate.length < 40) f.crate.push({ ...bal, kind: 'pipe', buf: [], work: [] });
+  while (f.crate.length < CRATE_CAP) f.crate.push({ ...bal, kind: 'pipe', buf: [], work: [] });
   build(f, { kind: 'store' }, cellOf(40, 40), { dir: 0 });
   ok(!buildCheck(f, { kind: 'mut', mut: 1 }, cellOf(40, 40)).ok,
     'a full crate stops a replacement instead of losing the machine');

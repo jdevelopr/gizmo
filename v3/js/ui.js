@@ -13,7 +13,7 @@ import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
   levelCap, techById, techOpen, unlockedBy, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
-  cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText,
+  cellOf, cx, cy, claimMin, claimMax, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
   MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME, TUTORIAL, TUTORIAL_END,
@@ -874,8 +874,8 @@ export class Panel {
     if (this.tab === 'info') {
       const m = S.selected >= 0 ? f.grid[S.selected] : null;
       const multi = S.bp ? `bp|${S.bp.parts.length}|${S.bp.held ? 1 : 0}|${S.bpCost ?? 0}`
-        : S.area?.length ? `area|${S.area.length}|${S.area.filter(i => f.grid[i]).length}|${Math.round(f.cash / 25)}`
-          + `|${repairQuote(f, S.area).cost}` : '';
+        : S.area?.length || S.rubble?.length ? `area|${S.area?.length || 0}|${S.area?.filter(i => f.grid[i]).length || 0}|${Math.round(f.cash / 25)}`
+          + `|${repairQuote(f, S.area || []).cost}|r${S.rubble?.length || 0}|${f.crate.length}` : '';
       key = `info|${multi}|${S.selected}|${m ? m.kind + m.dir + m.level + m.mut + m.mir + '|' + repairCost(m, f.done) : 'x'}` +
         `|${S.tool ? S.tool.kind + S.tool.mut : ''}|${Math.round(f.cash / 10)}` +
         `|${m || S.selected < 0 ? '' : looseTypes(f, S.selected).length}`
@@ -914,7 +914,7 @@ export class Panel {
   info(host, g, S) {
     const f = g.f;
     if (S.bp) return this.bpInfo(host, g, S);
-    if (S.area?.length) return this.areaInfo(host, g, S);
+    if (S.area?.length || S.rubble?.length) return this.areaInfo(host, g, S);
     if (S.selected < 0) {
       if (S.tool) return this.toolInfo(host, g, S.tool);
       host.appendChild(el('div', 'blank',
@@ -991,7 +991,24 @@ export class Panel {
   /** A box of machines, and everything you can do to all of them at once. */
   areaInfo(host, g, S) {
     const f = g.f;
-    const cells = S.area.filter(i => f.grid[i]);
+    const cells = (S.area || []).filter(i => f.grid[i]);
+    const rubble = S.rubble || [];
+    if (!cells.length) {
+      // A box with only rubble in it.
+      host.appendChild(el('h3', null, `${rubble.length} RUBBLE SELECTED`));
+      const rows = el('div', 'rows');
+      addRow(rows, 'To clear it all', money(rubble.length * RUBBLE_COST), f.cash >= rubble.length * RUBBLE_COST ? 'good' : 'warn');
+      addRow(rows, 'Each', money(RUBBLE_COST));
+      host.appendChild(rows);
+      const b = el('button', 'full', `CLEAR RUBBLE  ${money(rubble.length * RUBBLE_COST)} <span class="k">X</span>`);
+      b.style.width = '100%';
+      b.disabled = f.cash < RUBBLE_COST;
+      b.onclick = () => this.act('areaRubble');
+      host.appendChild(b);
+      host.appendChild(el('div', 'blank', 'Clears as much as you can afford, and leaves the rest selected. '
+        + '<b style="color:#8b96b8">Esc</b> clears the selection.'));
+      return;
+    }
     host.appendChild(el('h3', null, `${cells.length} MACHINES SELECTED`));
     const kinds = {};
     for (const i of cells) { const n = label(f.grid[i]); kinds[n] = (kinds[n] || 0) + 1; }
@@ -1008,6 +1025,12 @@ export class Panel {
     };
     add('COPY <span class="k">Ctrl C</span>', () => this.act('areaCopy'));
     add('MOVE <span class="k">M</span>', () => this.act('areaMove'));
+    const room = CRATE_CAP - f.crate.length;
+    add(room >= cells.length ? `TO CRATE <span class="k">K</span>` : `TO CRATE  ${Math.max(0, room)} FIT <span class="k">K</span>`,
+      () => this.act('areaCrate'), true, room <= 0);
+    if (rubble.length) {
+      add(`CLEAR ${rubble.length} RUBBLE  ${money(rubble.length * RUBBLE_COST)}`, () => this.act('areaRubble'), true, f.cash < RUBBLE_COST);
+    }
     const rq = repairQuote(f, cells);
     if (rq.n) add(`REPAIR ${rq.n}  ${money(rq.cost)} <span class="k">H</span>`, () => this.act('areaRepair'), true, f.cash < 1);
     const uq = upgradeQuote(f, cells);

@@ -184,13 +184,6 @@ h1 span { color: var(--gold); }
 .pal:hover:not(:disabled) { background: var(--plate2); border-color: var(--line); }
 .pal.on { background: #2b3350; border-color: var(--gold); }
 .pal.poor .cost { color: var(--red); }
-.pal.locked canvas { opacity: 0.35; filter: grayscale(1); }
-.pal.locked .nm { color: var(--dim); }
-.pal.locked .cost { color: #7fe8ff; }
-.pal.locked.poor .cost { color: var(--dimmer); }
-.pal.locked .key { color: #7fe8ff; }
-.pal.locked.poor .key { color: var(--dimmer); }
-.chip.locked { border-style: dashed; color: #7fe8ff; }
 .pal canvas { width: 28px; height: 28px; image-rendering: pixelated; display: block; }
 .pal .nm { font-size: 11px; letter-spacing: 0.02em; }
 .pal .cost { font-size: 11px; color: var(--gold); }

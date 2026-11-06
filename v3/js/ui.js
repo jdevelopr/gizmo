@@ -93,10 +93,9 @@ export function icon(spec, size = 28) {
 }
 
 export class Palette {
-  constructor(host, onPick, onLocked = null) {
+  constructor(host, onPick) {
     this.host = host;
     this.onPick = onPick;
-    this.onLocked = onLocked;
     this.rows = [];
     this.key = '';
   }
@@ -115,18 +114,8 @@ export class Palette {
 
     for (const grp of GROUPS) {
       const kinds = grp.kinds.filter(k => on.has(k) || (k === 'asm' && anyRecipe(on)));
-      // Machines still behind research are listed too, greyed out, so you can see
-      // what is coming and research it from right here.
-      const locked = [];
-      for (const k of grp.kinds) {
-        if (k === 'asm') {
-          const i = RECIPES.findIndex((_, n) => !on.has('asm:' + n));
-          if (i >= 0) locked.push({ kind: 'asm', mut: i });
-        } else if (k === 'mut') {
-          if (!on.has('mut')) locked.push({ kind: 'mut', mut: 1 });
-        } else if (!on.has(k)) locked.push({ kind: k });
-      }
-      if (!kinds.length && !locked.length) continue;
+      // Machines still behind research are not shown until they are unlocked.
+      if (!kinds.length) continue;
       this.host.appendChild(el('div', 'pal-group', grp.name));
       for (const kind of kinds) {
         if (kind === 'asm') {
@@ -141,28 +130,8 @@ export class Palette {
           this.addRow(g, { kind }, counts);
         }
       }
-      for (const spec of locked) this.addLocked(g, spec);
     }
     this.price(g);
-  }
-
-  /** A machine that still needs research: what it costs in science, and a way to get it. */
-  addLocked(g, spec) {
-    const t = unlockerOf(unlockKey(spec));
-    if (!t) return;
-    const btn = el('button', 'pal locked');
-    btn.appendChild(icon(spec));
-    const mid = el('div');
-    mid.appendChild(el('div', 'nm', (spec.kind === 'sort' ? KINDS.sort.name : label(spec)).toUpperCase()));
-    const missing = (t.needs || []).filter(n => !rankOf(g.f.done, n)).map(n => techById(n)?.name);
-    mid.appendChild(el('span', 'key', missing.length ? `NEEDS ${missing.join(', ').toUpperCase()}` : 'CLICK TO RESEARCH'));
-    btn.appendChild(mid);
-    const cost = el('div', 'cost');
-    btn.appendChild(cost);
-    btn.title = `Research ${t.name} to unlock this`;
-    btn.onclick = () => this.onLocked?.(t.id);
-    this.host.appendChild(btn);
-    this.rows.push({ btn, cost, spec, tech: t });
   }
 
   addRow(g, spec, counts, tiers = false) {
@@ -202,19 +171,6 @@ export class Palette {
         c.onclick = ev => { ev.stopPropagation(); this.onPick({ kind: 'mut', mut: t }); };
         strip.appendChild(c);
       }
-      // ...and the next rung, which is one research away.
-      const next = [1, 2, 3, 4, 5, 6, 7].find(k => !on.has('mut:' + k));
-      const nt = next && unlockerOf('mut:' + next);
-      if (nt) {
-        const c = el('button', 'chip locked');
-        const sw = el('i');
-        sw.style.background = TYPES[next].color;
-        c.appendChild(sw);
-        c.appendChild(document.createTextNode(`+ ${TYPES[next].name}  ${num(rankCost(nt, g.f.done))} SCI`));
-        c.title = `Research ${nt.name}`;
-        c.onclick = ev => { ev.stopPropagation(); this.onLocked?.(nt.id); };
-        strip.appendChild(c);
-      }
       this.host.appendChild(strip);
       this.rows[this.rows.length - 1].strip = strip;
     }
@@ -225,15 +181,6 @@ export class Palette {
     const f = g.f;
     const counts = kindCounts(f);
     for (const r of this.rows) {
-      if (r.tech) {
-        // A locked row is priced in science, and greyed when it cannot be had yet.
-        const sc = rankCost(r.tech, f.done);
-        const can = techOpen(r.tech, f.done) && f.science >= sc;
-        const txt = `${num(sc)} SCI`;
-        if (r.cost.textContent !== txt) r.cost.textContent = txt;
-        r.btn.classList.toggle('poor', !can);
-        continue;
-      }
       const c = buyCost(r.spec, counts[r.spec.kind] || 0);
       const txt = c === 0 ? 'FREE' : money(c);
       if (r.cost.textContent !== txt) r.cost.textContent = txt;

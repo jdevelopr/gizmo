@@ -366,10 +366,7 @@ a Lab:
   node per rung (these deeper rungs use the normal x10). Each starter node is named
   after the machine it unlocks.
 
-Locked machines still show in the build bar, greyed out, with what they cost in
-science. Clicking one researches it on the spot if you can afford it, or opens the
-tech tree on that node if you cannot yet. A selected Mutator's colour strip ends
-with the next rung, which can be researched the same way.
+Locked machines are hidden from the build bar until they are researched.
 
 The walkthrough now has you feed a Lab and research Generators before building
 one. A world saved before this change is given the old free machines' nodes at

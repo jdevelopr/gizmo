@@ -327,7 +327,7 @@ export const KINDS = {
     desc: 'Presses one Scrap and one Copper into one Ammo, from any side and off one mixed '
       + 'belt. Short of one half, it makes do: three Scrap, or two Copper, do the same job. '
       + 'Ammo is what a Zapper fires.',
-    price: 150, cycle: 1.0, cap: 2, hold: 8, travel: 0.52, draw: 8,
+    price: 1500, cycle: 1.0, cap: 2, hold: 8, travel: 0.52, draw: 8,
     body: '#4a4416', trim: '#c9c23f', lit: '#fbffb8',
   },
   drill: {
@@ -354,7 +354,7 @@ export const KINDS = {
     desc: 'A laser turret. Feed it Ammo on a belt — every Ammo is several shots — and it '
       + 'zaps any mite that comes within range. Draws power while it recharges between '
       + 'shots, so a big swarm is a big spike on its grid.',
-    price: 220, cycle: 0, cap: 0, hold: 4, travel: 0, draw: 12, passive: true,
+    price: 2200, cycle: 0, cap: 0, hold: 4, travel: 0, draw: 12, passive: true,
     body: '#2a1f4a', trim: '#8f6cff', lit: '#e0d4ff',
   },
   over: {
@@ -382,7 +382,7 @@ export const KINDS = {
     name: 'Repair Drone Bay', short: 'DRONE BAY',
     desc: 'Feed it Copper and it keeps a drone flying: every few seconds it spends two Copper to '
       + 'fully patch up the most damaged machine nearby. Holds six Copper.',
-    price: 180, cycle: 0, cap: 0, hold: 6, travel: 0, draw: 6, passive: true,
+    price: 1800, cycle: 0, cap: 0, hold: 6, travel: 0, draw: 6, passive: true,
     body: '#1f3d44', trim: '#4fd8d0', lit: '#b6fff6',
   },
   solar: {
@@ -394,6 +394,8 @@ export const KINDS = {
   },
 };
 
+// Defence machines (Armory, Zapper, Repair Drone Bay) are priced at ten times their
+// first prices: holding the line is a real investment, not an afterthought.
 export const KIND_LIST = Object.keys(KINDS);
 
 /* --------------------------------------------------------------- footprints --- */
@@ -699,7 +701,7 @@ export const twoInput = m =>
   (m?.kind === 'asm' ? recipeOf(m) : m?.kind === 'arm' ? ARMORY : null);
 
 /** Machines you may only own so many of cheaply — each costs more than the last. */
-export const LADDERED = { ext: 1.22, depot: 1.55, lab: 1.7 };
+export const LADDERED = { ext: 1.22, depot: 1.55, lab: 1.7, gen: 1.2, solar: 1.2 };
 
 /** Mutators are priced by the tier they output. */
 /**
@@ -773,10 +775,10 @@ export function price(spec) {
 }
 
 /**
- * What one costs to buy right now. Extractors, Depots and Labs climb a ladder in
- * the number you already own: they are the three machines that make money, science
- * and raw material out of nothing but a slot, so owning the twentieth has to be a
- * decision. Everything else is a stable price you can plan around, in minute one
+ * What one costs to buy right now. Extractors, Depots, Labs, Generators and Solar
+ * Panels climb a ladder in the number you already own: they make money, science,
+ * raw material and power out of nothing but a slot, so owning the twentieth has to
+ * be a decision (Generators and Solar Panels: 1.2x each). Everything else is a stable price you can plan around, in minute one
  * and in hour three alike — growth in GIZMO 3 already costs more the further you
  * go, because land does, and inflation on top of that only taxes a plan you made
  * an hour ago and are finally able to pay for.

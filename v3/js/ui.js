@@ -41,6 +41,8 @@ import {
   crateStacks, crateKey, jams, heldTypes, looseTypes,
 } from './sim.js';
 import { powerSummary } from './power.js';
+import { Gus, Typewriter } from './teacher.js';
+import { sfx } from './sound.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => {
@@ -463,38 +465,68 @@ export function insideOf(m) {
  * than the mouse, so it never blocks anything and never insists on an order — a
  * player who builds the Depot first simply sees two steps tick together.
  */
+/**
+ * Gus's card: the walkthrough while it runs, and after that a tip whenever one is
+ * waiting. Gus bobs and blinks beside it, and his lines type out with a blip; a
+ * click on the text finishes the line at once.
+ */
 export class Tutorial {
-  constructor(onSkip) {
+  constructor(onSkip, onTipDone) {
     this.box = $('tutorial');
     this.count = $('tut-count');
     this.title = $('tut-title');
     this.body = $('tut-body');
     this.dots = $('tut-dots');
     this.key = '';
-    $('tut-skip').onclick = onSkip;
+    this.mode = '';
+    this.gus = new Gus($('gus'));
+    this.type = new Typewriter(this.body, () => sfx('blip'));
+    $('tut-skip').onclick = () => (this.mode === 'tip' ? onTipDone() : onSkip());
+    this.box.querySelector('.tut-main').onclick = e => {
+      if (e.target.id !== 'tut-skip' && this.type.typing) this.type.finish();
+    };
     for (let i = 0; i < TUTORIAL.length; i++) this.dots.appendChild(el('i'));
   }
 
   /** @returns {boolean} whether the card is on screen, so the alert can stand down */
-  update(g) {
+  update(g, tip = null) {
     const step = g.tut;
-    if (step < 0) { this.box.hidden = true; return false; }
+    if (step < 0 && !tip) { this.box.hidden = true; this.key = ''; this.mode = ''; return false; }
     this.box.hidden = false;
-    const key = String(step);
+    const key = step >= 0 ? String(step) : 'tip:' + tip.id;
     if (key === this.key) return true;
     this.key = key;
 
+    if (step < 0) {
+      this.mode = 'tip';
+      this.box.classList.remove('done');
+      this.box.classList.add('tip');
+      this.count.textContent = 'A TIP FROM GUS';
+      $('tut-skip').textContent = 'GOT IT';
+      this.title.textContent = tip.title;
+      this.type.start(tip.body);
+      return true;
+    }
+    this.mode = 'tut';
     const done = step >= TUTORIAL.length;
     const card = done ? TUTORIAL_END : TUTORIAL[step];
+    this.box.classList.remove('tip');
     this.box.classList.toggle('done', done);
     this.count.textContent = done ? 'ALL DONE' : `STEP ${step + 1} OF ${TUTORIAL.length}`;
     $('tut-skip').textContent = done ? 'CLOSE' : 'SKIP';
     this.title.textContent = card.title;
-    this.body.innerHTML = card.body;
+    this.type.start(card.body);
     [...this.dots.children].forEach((d, i) => {
       d.className = i < step ? 'on' : (i === step ? 'now' : '');
     });
     return true;
+  }
+
+  /** Every frame: type the line on, and animate Gus. */
+  tick(dt) {
+    if (this.box.hidden) return;
+    const talking = this.type.tick(dt);
+    this.gus.tick(dt, talking);
   }
 }
 

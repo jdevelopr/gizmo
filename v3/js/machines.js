@@ -153,7 +153,13 @@ export const sizeOf = ty => (RAW.includes(ty) ? 0.5 : 1);
  */
 
 /** What a machine off every grid still manages. Never zero: nothing powers off. */
-export const UNPOWERED = 0.2;
+export const UNPOWERED = 0.3;
+/**
+ * Speed at full power, relative to a machine's listed cycle. Above one on purpose:
+ * power is the first big upgrade a new factory makes, and it should feel like one —
+ * a powered line runs nearly six times as fast as an unpowered one.
+ */
+export const POWERED = 1.75;
 
 /**
  * Speed multiplier for a machine on a grid that is `sat` satisfied, 0..1.
@@ -161,7 +167,7 @@ export const UNPOWERED = 0.2;
  */
 export function powerMult(sat) {
   const s = Math.max(0, Math.min(1, sat || 0));
-  return UNPOWERED + (1 - UNPOWERED) * s * s;
+  return UNPOWERED + (POWERED - UNPOWERED) * s * s;
 }
 
 /** Kilowatts a generator makes at each level. */
@@ -714,9 +720,15 @@ export function price(spec) {
  * go, because land does, and inflation on top of that only taxes a plan you made
  * an hour ago and are finally able to pay for.
  */
+/**
+ * Every machine's price is its listed price times this. Halved to take the grind
+ * out of the opening: the first rock should be about building, not about waiting.
+ */
+export const PRICE_SCALE = 0.5;
+
 export function buyCost(spec, owned = 0) {
   const step = LADDERED[spec.kind];
-  const base = price(spec);
+  const base = price(spec) * PRICE_SCALE;
   return Math.max(4, Math.round(step ? base * Math.pow(step, owned) : base));
 }
 
@@ -776,7 +788,7 @@ export const SCRAP_RATE = 0.5;
  * which against a mature factory's income is a real commitment and against an
  * immature one is out of reach.
  */
-export const EXPAND_PER_SLOT = 1.5;
+export const EXPAND_PER_SLOT = 0.75;   // halved with machine prices
 export const EXPAND_STEP = 1.13;
 
 export function expandCost(claim) {
@@ -791,12 +803,12 @@ export const RUBBLE_COST = 50;
 export function upgradeCost(m, done = []) {
   // Overclocking past rank III makes every upgrade 15% cheaper a rank.
   const disc = Math.pow(0.85, Math.max(0, flagRank(done, 'level') - 3));
-  return Math.round(price(m) * Math.pow(UP_STEP, (m.level || 1) - 1) * disc);
+  return Math.round(price(m) * PRICE_SCALE * Math.pow(UP_STEP, (m.level || 1) - 1) * disc);
 }
 
 /** Everything this machine has cost so far: the purchase plus every level bought. */
 export function investedIn(m) {
-  let paid = price(m);
+  let paid = price(m) * PRICE_SCALE;
   for (let l = 1; l < (m.level || 1); l++) paid += upgradeCost({ ...m, level: l });
   return paid;
 }
@@ -1353,16 +1365,16 @@ export const TECH = [
    */
 
   // ---- production: the starter unlocks
-  { id: 'balancing', branch: 'economy', name: 'Balancing', cost: 60, flat: true, needs: [], unlocks: ['bal'],
+  { id: 'balancing', branch: 'economy', name: 'Balancing', cost: 30, flat: true, needs: [], unlocks: ['bal'],
     blurb: 'Unlocks the Balancer: one line in, gizmos dealt out in turn to its front and its side. '
       + 'The way to feed a Generator off a line that is also selling.' },
-  { id: 'sorting', branch: 'economy', name: 'Sorting', cost: 150, flat: true, needs: ['balancing'], unlocks: ['sort'],
+  { id: 'sorting', branch: 'economy', name: 'Sorting', cost: 75, flat: true, needs: ['balancing'], unlocks: ['sort'],
     blurb: 'Unlocks the Sorter, which pulls one type out of a mixed line and sends it down its side.' },
-  { id: 'mut1', branch: 'economy', name: 'Copper Mutation', cost: 90, flat: true, needs: [], unlocks: ['mut:1'],
+  { id: 'mut1', branch: 'economy', name: 'Copper Mutation', cost: 45, flat: true, needs: [], unlocks: ['mut:1'],
     blurb: 'Unlocks the Copper Mutator: raw ore in, Copper out. Copper sells for three times Scrap.' },
-  { id: 'fusing', branch: 'economy', name: 'Fusing', cost: 250, flat: true, needs: ['mut1'], unlocks: ['fuse'],
+  { id: 'fusing', branch: 'economy', name: 'Fusing', cost: 125, flat: true, needs: ['mut1'], unlocks: ['fuse'],
     blurb: 'Unlocks the Fuser: two gizmos of one type melt into one of the next rung up.' },
-  { id: 'mut2', branch: 'economy', name: 'Amber Mutation', cost: 400, flat: true, needs: ['mut1'], unlocks: ['mut:2'],
+  { id: 'mut2', branch: 'economy', name: 'Amber Mutation', cost: 200, flat: true, needs: ['mut1'], unlocks: ['mut:2'],
     blurb: 'Unlocks the Amber Mutator: raw ore straight to Amber, no Fusers needed.' },
   { id: 'mut3', branch: 'economy', name: 'Bloom Mutation', cost: 140, needs: ['mut2'], unlocks: ['mut:3'],
     blurb: 'Unlocks the Bloom Mutator.' },
@@ -1398,9 +1410,9 @@ export const TECH = [
     unlocks: ['trident'], blurb: 'Unlocks the Trident: three exits, one job.' },
 
   // ---- power
-  { id: 'generators', branch: 'power', name: 'Generators', cost: 40, flat: true, needs: [], unlocks: ['gen'],
+  { id: 'generators', branch: 'power', name: 'Generators', cost: 20, flat: true, needs: [], unlocks: ['gen'],
     blurb: 'Unlocks the Generator. Feed it ore and it powers every machine it touches, and '
-      + 'everything those touch — an unpowered machine runs at a fifth of its speed.' },
+      + 'everything those touch — a powered machine runs nearly six times as fast as an unpowered one.' },
   { id: 'gridwork', branch: 'power', name: 'Gridwork', cost: 180, needs: ['generators'], power: 'reach',
     blurb: `Every generator's power reaches ${GRIDWORK_REACH} machines further.` },
   { id: 'combustion', branch: 'power', name: 'Combustion', cost: 380, needs: ['gridwork'], power: 'fuel',
@@ -1659,77 +1671,76 @@ export const TUTORIAL = [
   {
     id: 'ext',
     title: 'Put an Extractor on ore',
-    body: 'Press <b>5</b>, then click any slot inside your fence — all nine are Slag. '
-      + 'An Extractor pulls ore out of the ground underneath it and pushes it out of its front.',
+    body: 'Howdy, rookie! I\'m Gus, foreman of this here rock, and I\'ll show you the ropes. '
+      + 'Press <b>5</b>, then click any slot inside your fence — all nine are Slag! An Extractor '
+      + 'pulls ore out of the ground under it and pushes it out of its front.',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'ext'),
   },
   {
     id: 'depot',
     title: 'Build a Market Depot',
-    body: 'Press <b>7</b> and put it down a couple of slots away, in the direction the '
-      + 'Extractor is facing. A Depot buys anything pushed into it, instantly, at full '
-      + 'price — but only through the one mouth on its front. It aims itself at whatever '
-      + 'feeds it, and <b>R</b> turns it by hand.',
+    body: 'Lovely! Now let\'s sell it. Press <b>7</b> and put a Market Depot a couple of slots away, '
+      + 'the way your Extractor is facing. It buys anything pushed into it, instantly, at full '
+      + 'price — but only through the one mouth on its front. It turns to face whatever feeds it, '
+      + 'and <b>R</b> turns it by hand.',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'depot'),
   },
   {
     id: 'belt',
     title: 'Join them with a Conveyor',
-    body: 'Press <b>1</b> and <b>drag</b> from the Extractor to the Depot — a drag lays the '
-      + 'whole run and aims every belt along it. Money starts arriving the moment the first '
-      + 'ore reaches the other end.',
+    body: 'Now hook \'em up! Press <b>1</b> and <b>drag</b> from the Extractor to the Depot — one '
+      + 'drag lays the whole run and aims every belt. Money starts rolling in the moment the '
+      + 'first ore gets there. Ooh, I love that sound!',
     done: f => f.sold > 0,
   },
   {
     id: 'lab',
     title: 'Feed a Research Lab',
-    body: 'Everything beyond these four machines is research. Put a second Extractor on ore '
-      + 'and run a belt from it into a <b>Research Lab</b> (press <b>8</b>). A Lab turns '
-      + 'gizmos into science instead of money — worth exactly what a Depot would have paid.',
+    body: 'Here\'s the fun part — everything else is research! Put a second Extractor on ore and '
+      + 'run a belt into a <b>Research Lab</b> (press <b>8</b>). A Lab turns gizmos into science '
+      + 'instead of money, worth exactly what a Depot would have paid.',
     done: f => f.studied > 0,
   },
   {
     id: 'research',
     title: 'Research Generators',
-    body: 'Notice how slow everything is: nothing is powered, so it all runs at a fifth of '
-      + 'its speed. Press <b>Y</b> for the tech tree and buy <b>Generators</b> — the first '
-      + 'unlocks cost only a few dozen science.',
+    body: 'Science! Now, notice how slow things are? Nothing\'s powered, so it\'s all crawling — '
+      + 'power makes it nearly six times faster! Press <b>Y</b> for the tech tree and grab <b>Generators</b> — the first '
+      + 'unlocks only cost a few dozen science!',
     done: f => rankOf(f.done, 'generators') > 0,
   },
   {
     id: 'gen',
     title: 'Build a Generator touching the line',
-    body: 'Press <b>6</b> and put a Generator against the side of your belt — power '
-      + 'spreads outward through machines that touch each other.',
+    body: 'Press <b>6</b> and set a Generator right up against the side of your belt. Power spreads '
+      + 'from machine to machine wherever they touch.',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'gen'),
   },
   {
     id: 'fuel',
     title: 'Get ore into the firebox',
-    body: 'A Generator burns what you feed it. Research <b>Balancing</b>, press <b>2</b> and '
-      + 'drop a Balancer into the middle of your belt so its side exit points at the '
-      + 'Generator — a Balancer sends every other gizmo down its branch. The belt that '
-      + 'carries the fuel is also the wire that carries the power back.',
+    body: 'A Generator\'s a hungry fella — it burns whatever you feed it! Research <b>Balancing</b>, '
+      + 'press <b>2</b> and drop a Balancer in the middle of your belt so its side exit points at '
+      + 'the Generator. It sends every other gizmo down the branch, and the belt carrying the fuel '
+      + 'carries the power back too. Neat, huh?',
     done: f => f.cells.some(i => f.grid[i]?.kind === 'gen' && f.grid[i].fuel > 0),
   },
   {
     id: 'land',
     title: 'Buy a ring of land',
-    body: 'Nine slots is not a factory. Press <b>C</b>, or the EXPAND button up top. Land is '
-      + 'cheap to begin with and gets steeply dearer, and the ore out there is richer than '
-      + 'the ore under your feet.',
+    body: 'Nine slots won\'t make you rich! Press <b>C</b>, or EXPAND up top, to buy a ring of land. '
+      + 'It starts cheap and gets pricier, but the ore out there is richer than what\'s under your boots.',
     done: f => f.claim > CLAIM_START,
   },
 ];
 
 /** What the card says once every step is ticked. */
 export const TUTORIAL_END = {
-  title: 'That is the whole game',
-  body: 'Everything else is more of it. <b>Mutators</b> and <b>Fusers</b> — research them in '
-    + 'the tech tree — turn cheap gizmos into dear ones, the <b>Lab</b> keeps paying for more '
-    + 'unlocks, and a dozen rings out '
-    + 'there is Sap — the second ore, and the one the Assembler recipes need. Press '
-    + '<b>?</b> at any time for the manual.',
+  title: 'You\'re a natural!',
+  body: 'That\'s the whole job, rookie — the rest is more of it! <b>Mutators</b> and <b>Fusers</b> '
+    + '(unlock \'em in the tech tree) turn cheap gizmos into pricey ones, your <b>Lab</b> keeps paying '
+    + 'for new toys, and out past a dozen rings there\'s Sap, the second ore the Assembler recipes need. '
+    + 'I\'ll pop back up when something new turns up. Press <b>?</b> any time for the manual. Happy mining!',
 };
 
 /* -------------------------------------------------------------- milestones --- */

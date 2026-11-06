@@ -9,7 +9,7 @@
  */
 import {
   WORLD, cellOf, GEN_OUTPUT, GEN_REACH, GRIDWORK_REACH, VOLTAGE_BONUS,
-  COMBUSTION_BONUS, UNPOWERED, powerMult, fuelEnergy, drawOf, genReach, genOutput,
+  COMBUSTION_BONUS, UNPOWERED, POWERED, powerMult, fuelEnergy, drawOf, genReach, genOutput,
   energyOf, KINDS,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild } from '../js/sim.js';
@@ -115,9 +115,10 @@ console.log('\nSUPPLY, DEMAND AND THE BROWNOUT');
     `sat ${net.sat.toFixed(3)} vs ${(net.supply / net.demand).toFixed(3)}`);
   const m = f.grid[cellOf(21, 20)];
   ok(near(powerMult(m.sat), powerMult(net.sat)), 'and every machine on it reads the same number');
-  ok(powerMult(0.5) < 0.5, 'a half-fed grid runs at less than half speed',
-    `${powerMult(0.5).toFixed(2)}`);
-  ok(powerMult(1) === 1, 'a fully fed grid runs at full speed');
+  ok(powerMult(0.5) < POWERED / 2, 'a half-fed grid runs at less than half its powered speed',
+    `${powerMult(0.5).toFixed(2)} of ${POWERED}`);
+  ok(powerMult(1) === POWERED, `a fully fed grid runs at full speed (${POWERED}x)`);
+  ok(POWERED / UNPOWERED > 5, `power makes a machine ${(POWERED / UNPOWERED).toFixed(1)}x faster`);
 }
 
 console.log('\nNOTHING SWITCHES OFF');

@@ -12,7 +12,7 @@
  */
 import {
   WORLD, CLAIM_START, CLAIM_STEP, TYPES, KINDS, MUT_PRICE, MUT_CYCLE, RECIPES,
-  TECH, TECH_COST_SCALE, GEN_OUTPUT, GEN_REACH, UNPOWERED, LEVEL_SPEED, LEVEL_DRAW,
+  TECH, TECH_COST_SCALE, GEN_OUTPUT, GEN_REACH, UNPOWERED, powerMult, LEVEL_SPEED, LEVEL_DRAW,
   cellOf, cx, cy, money, num, expandCost, buyCost, upgradeCost, price,
   fuelEnergy, drawOf, cycleTime, label, LADDERED, EXPAND_PER_SLOT, EXPAND_STEP,
 } from '../js/machines.js';
@@ -90,7 +90,7 @@ console.log('\nPOWER\n');
   console.log('');
   console.log('  ' + pad('OFF GRID', 12) + rpad(`${Math.round(UNPOWERED * 100)}% speed`, 12));
   for (const s of [0.5, 0.7, 0.85, 0.95]) {
-    const mult = UNPOWERED + (1 - UNPOWERED) * s * s;
+    const mult = powerMult(s);
     console.log('  ' + pad(`${Math.round(s * 100)}% supplied`, 12)
       + rpad(`${Math.round(mult * 100)}% speed`, 12));
   }

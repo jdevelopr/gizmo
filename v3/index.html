@@ -103,13 +103,20 @@
          place while it is running, because the alert would only be saying a
          terser version of the same thing. -->
     <div id="tutorial" hidden>
-      <div class="tut-head">
-        <span id="tut-count"></span>
-        <button id="tut-skip">SKIP</button>
+      <div class="tut-face">
+        <canvas id="gus" width="32" height="34"></canvas>
+        <span class="gus-name">GUS</span>
+        <span class="gus-role">FOREMAN</span>
       </div>
-      <h4 id="tut-title"></h4>
-      <p id="tut-body"></p>
-      <div id="tut-dots" class="tut-dots"></div>
+      <div class="tut-main">
+        <div class="tut-head">
+          <span id="tut-count"></span>
+          <button id="tut-skip">SKIP</button>
+        </div>
+        <h4 id="tut-title"></h4>
+        <p id="tut-body"></p>
+        <div id="tut-dots" class="tut-dots"></div>
+      </div>
     </div>
   </main>
 
@@ -202,14 +209,14 @@
     <button id="m-resume" class="big">RESUME</button>
     <button id="m-save" class="ghost">SAVE NOW</button>
     <button id="m-howto" class="ghost">HOW TO PLAY</button>
-    <button id="m-tutorial" class="ghost">REPLAY THE WALKTHROUGH</button>
+    <button id="m-tutorial" class="ghost">REPLAY THE WALKTHROUGH AND TIPS</button>
     <label class="vol-row"><span>VOLUME</span><input id="m-volume" type="range" min="0" max="100" step="5"></label>
     <div class="show-box">
       <div class="show-head">ON SCREEN  <span>T toggles all</span></div>
       <label class="chk"><input type="checkbox" id="show-alert"><span>Warning box</span></label>
       <label class="chk"><input type="checkbox" id="show-hint"><span>Key hints along the bottom</span></label>
       <label class="chk"><input type="checkbox" id="show-toasts"><span>Pop-up messages</span></label>
-      <label class="chk"><input type="checkbox" id="show-tut"><span>Walkthrough card</span></label>
+      <label class="chk"><input type="checkbox" id="show-tut"><span>Gus (walkthrough and tips)</span></label>
     </div>
     <button id="m-quit" class="ghost danger">ABANDON THIS WORLD</button>
     <p class="fine" id="m-note"></p>

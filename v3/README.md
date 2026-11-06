@@ -294,6 +294,29 @@ Once it has run once, this browser never sees it again unless it is asked for. E
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
 
+### Gus, the foreman
+
+First-time players are taught by **Gus**, a cheerful veteran prospector in a
+scuffed space helmet with a lamp on top, drawn as 32x32 pixel art in
+`js/teacher.js` (no image files: every frame is painted in code and cached). He
+bobs, blinks and moves his mouth while his lines type out letter by letter with a
+soft synthesized blip (muted with the rest of the sound); a click finishes a line.
+
+He runs the walkthrough card, and after it is over he pops up **once** the first
+time something new happens — spare science to spend, a brownout, a jammed line,
+Sap, a mountain or a valley near the fence, the first Mite swarm, the first Skitters,
+the first machine chewed through, the first Beetle. Those live in `js/tips.js`;
+which ones you have seen is kept in `gizmo3.tips.v1`. The menu's REPLAY THE
+WALKTHROUGH AND TIPS resets both, and the "Gus" checkbox (or T) hides him.
+
+### A faster opening
+
+Machine prices, upgrades and land cost half what they used to (`PRICE_SCALE`
+0.5, `EXPAND_PER_SLOT` 0.75), and so do the starter research nodes (Generators
+20, Balancing 30, Copper Mutation 45, Sorting 75, Fusing 125, Amber Mutation 200).
+An unpowered machine runs at 30% (was 20%) and a fully powered one at 1.75x its
+listed speed (`POWERED`, was 1x), so power is a nearly sixfold boost.
+
 ### Story mode
 
 A campaign of eight worlds, separate from the endless game and saved on its own
@@ -854,6 +877,7 @@ node tools/beacon.mjs     # the Launch Beacon: placing, feeding, damage, assault
 node tools/tech.mjs       # the research tree: shape, unlocks and every bonus
 node tools/sizes.mjs      # 1x2 machines: footprints, turning, flow, moving, power
 node tools/story.mjs      # story mode: the eight worlds, goals, carry-over and saving
+node tools/tips.mjs       # Gus's one-time tips fire when they should, and only once
 ```
 
 `lint.mjs` does two things `node --check` cannot. It copies each file to `.mjs`

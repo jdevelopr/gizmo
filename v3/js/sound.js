@@ -95,6 +95,8 @@ export function sfx(name, strength = 1) {
     case 'rot': tone(500, 520, 0.03, 'square', 0.04); break;
     case 'move': tone(300, 450, 0.08, 'triangle', 0.07); break;
     case 'click': tone(1000, 1000, 0.02, 'square', 0.03); break;
+    // Gus talking: a short, soft, slightly random-pitched blip per few letters.
+    case 'blip': { const f0 = 300 + Math.random() * 120; tone(f0, f0 * 1.08, 0.035, 'square', 0.025); break; }
     case 'error': tone(180, 140, 0.14, 'square', 0.07); break;
     case 'swarm':
       for (let k = 0; k < 3; k++) { tone(392, 330, 0.18, 'sawtooth', 0.09, k * 0.24); }

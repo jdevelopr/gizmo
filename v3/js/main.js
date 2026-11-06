@@ -36,6 +36,7 @@ import {
 import { Palette, Crate, Hud, Panel, Tutorial, drawMinimap, howtoHtml, health, problems } from './ui.js';
 import { Input, makeState } from './input.js';
 import { TechTree } from './techtree.js';
+import { Tips, resetTips } from './tips.js';
 
 const $ = id => document.getElementById(id);
 
@@ -49,6 +50,7 @@ let panel = null;
 let input = null;
 let tree = null;
 const S = makeState();
+const tips = new Tips();             // Gus's one-time tips, waiting their turn
 
 let lastFrame = 0;
 let saveTimer = 0;
@@ -86,7 +88,7 @@ function boot(game) {
     view = new View($('px'), $('tx'));
     palette = new Palette($('palette'), spec => act('tool', spec));
     crate = new Crate($('crate'), st => act('takeFromCrate', st), key => act('scrapCrate', key));
-    tutorial = new Tutorial(() => act('endTutorial'));
+    tutorial = new Tutorial(() => act('endTutorial'), () => { tips.dismiss(); sfx('click'); });
     hud = new Hud();
     panel = new Panel(g, act);
     input = new Input(view, S, act, () => g);
@@ -95,6 +97,7 @@ function boot(game) {
     window.addEventListener('resize', () => view.resize());
   }
   panel.g = g;
+  tips.clear();
   view.resize();
   // Every game opens at the same zoom, not at whatever the last one was left on:
   // the View outlives a single world, so without this a second game would inherit
@@ -208,7 +211,11 @@ function frame(now) {
   if (!g || $('app').hidden) return;
 
   if (!paused) {
-    playFx(stepGame(g, dt));
+    const fx = stepGame(g, dt);
+    playFx(fx);
+    tips.fx(fx);
+    // Gus only chimes in once the walkthrough is over.
+    if (g.tut < 0) tips.tick(g, dt);
   }
   ageToasts(g, dt);
   input.panTick(dt);
@@ -230,7 +237,8 @@ function frame(now) {
   });
 
   // With the walkthrough card hidden, the warning box gets its corner back.
-  hud.update(g, tutorial.update(g) && show.tut);
+  hud.update(g, tutorial.update(g, g.tut < 0 && show.tut ? tips.current : null) && show.tut);
+  tutorial.tick(dt);
   updateZoom();
   palette.price(g);
   crate.update(g, S);
@@ -1097,6 +1105,8 @@ function act(name, payload, extra) {
     }
     case 'replayTutorial': {
       g.tut = 0;
+      resetTips();
+      tips.clear();
       tutorial.key = '';
       $('menu').hidden = true;
       resume();

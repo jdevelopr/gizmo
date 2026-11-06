@@ -322,10 +322,24 @@ h1 span { color: var(--gold); }
  */
 #tutorial {
   position: absolute; top: calc(var(--hud) + 10px); left: 12px;
-  width: 320px;
+  width: 400px;
   background: #10182c; border: 2px solid var(--gold);
-  padding: 10px 12px 11px;
+  padding: 10px 12px 11px 10px;
+  display: flex; gap: 10px; align-items: flex-start;
 }
+#tutorial[hidden] { display: none; }
+.tut-face {
+  flex: 0 0 auto; display: grid; justify-items: center; gap: 2px;
+  background: #070b16; border: 2px solid var(--line); padding: 4px 4px 5px;
+}
+#gus { width: 72px; height: 76px; image-rendering: pixelated; display: block; }
+.gus-name { font-size: 11px; color: var(--gold); letter-spacing: 0.14em; }
+.gus-role { font-size: 8px; color: var(--dimmer); letter-spacing: 0.14em; }
+.tut-main { flex: 1 1 auto; min-width: 0; cursor: pointer; }
+#tutorial.tip { border-color: #7fe8ff; }
+#tutorial.tip .tut-head span { color: #7fe8ff; }
+#tutorial.tip #tut-skip { border-color: #7fe8ff; color: #7fe8ff; }
+#tutorial.tip .tut-dots { display: none; }
 .tut-head {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 5px;

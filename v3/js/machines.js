@@ -1525,7 +1525,7 @@ export const TECH = [
   { id: 'generators', branch: 'power', name: 'Generators', cost: 20, flat: true, needs: [], unlocks: ['gen'],
     blurb: 'Unlocks the Generator. It burns gizmos for power and powers every machine connected to it. Unpowered machines run at 1/5 speed.',
     ranks: 'Ranks II–V: Generators make 10% more power each (+40% at V).' },
-  { id: 'solar', branch: 'power', name: 'Solar Panels', cost: 35, flat: true, needs: ['generators'], unlocks: ['solar'],
+  { id: 'solar', branch: 'power', name: 'Solar Panels', cost: 500, flat: true, needs: ['generators'], unlocks: ['solar'],
     blurb: 'Unlocks the Solar Panel: 15 kW of steady power with no fuel.',
     ranks: 'Ranks II–V: Solar Panels make 10% more power each (+40% at V).' },
   { id: 'pylons', branch: 'power', name: 'Pylons', cost: 300, needs: ['gridwork'], unlocks: ['pylon'],

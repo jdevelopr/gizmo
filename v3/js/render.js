@@ -1538,10 +1538,6 @@ export class View {
       this.stats.drawn++;
     }
 
-    // 2b. night: the whole floor and every machine sink into a blue dark, and the
-    //     machines that are running show a light of their own through it.
-    this.drawNight(ctx, f, b, z);
-
     // 3. the gizmos
     this.drawGizmos(ctx, f, b, z);
 

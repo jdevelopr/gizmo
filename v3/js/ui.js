@@ -29,7 +29,7 @@ import {
   NEST_BROOD_MAX, NEST_ANGER, NEST_ANGER_MIN,
 } from './machines.js';
 import { damaged, mitesInside, swarmEta, nestAt } from './bugs.js';
-import { mountainAt, mountainAhead, scrapPay } from './sim.js';
+import { mountainAt, mountainAhead, scrapPay, crateMatch } from './sim.js';
 import {
   progress as beaconProgress, beaconLines, beaconRepairCost, beaconHot, beaconReachable, mouthApproach,
 } from './beacon.js';
@@ -244,9 +244,12 @@ export class Palette {
     const f = g.f;
     const counts = kindCounts(f);
     for (const r of this.rows) {
-      const c = buyCost(r.spec, counts[r.spec.kind] || 0);
-      const txt = c === 0 ? 'FREE' : money(c);
+      // One already in the crate is what you would get, and it costs nothing.
+      const boxed = !!crateMatch(f, r.spec);
+      const c = boxed ? 0 : buyCost(r.spec, counts[r.spec.kind] || 0);
+      const txt = boxed ? 'IN CRATE' : c === 0 ? 'FREE' : money(c);
       if (r.cost.textContent !== txt) r.cost.textContent = txt;
+      r.cost.classList.toggle('boxed', boxed);
       r.btn.classList.toggle('poor', f.cash < c);
     }
   }

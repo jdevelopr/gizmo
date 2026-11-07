@@ -352,7 +352,6 @@ At night:
 - **The nests are bolder:** they wake at noise **3** instead of 5, and Brutes come at
   **9** instead of 12. The Noise card's marks move to match.
 - **You see less:** the fog closes in to 1 slot past your fence instead of 3.
-- **The map goes dark blue**, and every running machine shows a lamp.
 
 Two new machines:
 

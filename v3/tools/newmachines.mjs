@@ -111,6 +111,25 @@ console.log('\nSorter with one way backed up');
   ok(!f.shipped[1], 'and no Copper is let through the wrong way');
 }
 
+console.log('\nBuilding from the shop uses the crate first');
+{
+  const f = bench();
+  f.cash = 1000;
+  build(f, { kind: 'gen' }, cellOf(10, 10), { dir: 0 });
+  const spent = 1000 - f.cash;
+  build(f, { kind: 'pipe' }, cellOf(10, 10), { dir: 0 });          // the Generator goes in the crate
+  ok(f.crate.length === 1 && f.crate[0].kind === 'gen', 'building over a Generator crates it');
+  const cash = f.cash;
+  const r = build(f, { kind: 'gen' }, cellOf(12, 12), { dir: 0 });
+  ok(r.ok && f.cash === cash && f.crate.length === 0 && at(f, 12, 12)?.kind === 'gen',
+    `buying a Generator from the shop takes the crated one, free (spent $${cash - f.cash}, first cost $${spent})`);
+  build(f, { kind: 'mut', mut: 1 }, cellOf(20, 20), { dir: 0 });
+  build(f, { kind: 'pipe' }, cellOf(20, 20), { dir: 0 });
+  const c2 = f.cash;
+  build(f, { kind: 'mut', mut: 2 }, cellOf(30, 30), { dir: 0 });
+  ok(f.cash < c2 && f.crate.some(m => m.kind === 'mut' && m.mut === 1), 'a different Mutator rung is bought, not swapped for the crated one');
+}
+
 console.log('\nSolar Panel');
 {
   const f = bench();

@@ -1239,6 +1239,17 @@ export function build(f, spec, i, opt = {}) {
     return yes(null, { cost: 0, machine: m, mode });
   }
 
+  // One of these already in the crate? Then that is the one that goes down: it
+  // was paid for once, so building from the shop never buys a second while the
+  // first is sitting in a box.
+  if (!opt.free) {
+    const spare = crateMatch(f, spec);
+    if (spare) {
+      const r = placeFromCrate(f, crateKey(spare), i, { ...opt, mir: opt.mir ?? spare.mir });
+      if (r.ok) return { ...r, mode };
+    }
+  }
+
   const cost = opt.free ? 0 : buyCost(spec, countKind(f, spec.kind));
   if (f.cash < cost) return no(`Need $${cost}`);
 
@@ -1286,6 +1297,21 @@ export function toCrate(f, m) {
 /** Everything about a crated machine that decides whether two of them are alike. */
 export const crateKey = m =>
   `${m.kind}|${m.mut ?? 0}|${m.mir | 0}|${m.level || 1}`;
+
+/**
+ * The machine in the crate that a shop order for `spec` would take, if any: the
+ * same kind (and for a Mutator or an Assembler, the same rung or recipe), highest
+ * level first.
+ */
+export function crateMatch(f, spec) {
+  let best = null;
+  for (const m of f.crate || []) {
+    if (m.kind !== spec.kind) continue;
+    if ((m.kind === 'mut' || m.kind === 'asm') && (m.mut ?? 0) !== (spec.mut ?? (m.kind === 'mut' ? 1 : 0))) continue;
+    if (!best || (m.level || 1) > (best.level || 1)) best = m;
+  }
+  return best;
+}
 
 /** The crate, grouped into stacks of identical machines, for the build bar. */
 export function crateStacks(f) {

@@ -25,7 +25,7 @@ import { View, ZOOMS, DEFAULT_ZOOM } from './render.js';
 import {
   build, buildCheck, moveMachine, scrapMachine, applyAction, research,
   countKind, rebuild, replaceMode, placeFromCrate, scrapFromCrate, stashMachine,
-  sweepGround, looseAt, handoffDir, relink, smartDir,
+  sweepGround, looseAt, handoffDir, relink, smartDir, crateMatch,
 } from './sim.js';
 import { reachFrom } from './power.js';
 import {
@@ -795,9 +795,10 @@ function updateHint() {
     txt = `<b>${S.rubble.length} RUBBLE SELECTED</b>  ·  <b>X</b> clear it all  <b>Esc</b> clear the selection`;
   } else if (S.hand >= 0) txt = 'Click where it goes. <b>Esc</b> to leave it where it was.';
   else if (S.tool) {
-    const cost = buyCost(S.tool, countKind(g.f, S.tool.kind));
+    const boxed = !S.tool.crate && !!crateMatch(g.f, S.tool);
+    const cost = boxed ? 0 : buyCost(S.tool, countKind(g.f, S.tool.kind));
     const drag = S.tool.kind === 'pipe' || S.tool.kind === 'store' || S.tool.kind === 'wall';
-    txt = `<b>${label(S.tool).toUpperCase()}</b> ${money(cost)}  ·  ` +
+    txt = `<b>${label(S.tool).toUpperCase()}</b> ${boxed ? 'from the crate' : money(cost)}  ·  ` +
       (drag ? 'click, or drag to lay a run  ·  ' : '') +
       (S.tool.kind === 'wall' ? '<b>Esc</b> drop' : '<b>R</b> turn  <b>F</b> flip  <b>Esc</b> drop');
   } else if (S.selected >= 0 && g.f.grid[S.selected]) {

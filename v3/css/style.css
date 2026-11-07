@@ -189,6 +189,7 @@ h1 span { color: var(--gold); }
 .pal canvas { width: 34px; height: 34px; image-rendering: pixelated; display: block; }
 .pal .nm { font-size: 11px; letter-spacing: 0.02em; white-space: nowrap; }
 .pal .cost { font-size: 11px; color: var(--gold); white-space: nowrap; }
+.pal .cost.boxed { color: var(--green); }
 .pal .key { font-size: 9px; color: var(--dimmer); margin-left: 6px; }
 /* The Mutator's tiers sit beside it in the row while it is in your hand. */
 #palette .chips { flex: 0 0 auto; flex-wrap: nowrap; margin: 0; padding: 0 !important; gap: 3px; }

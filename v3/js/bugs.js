@@ -539,16 +539,19 @@ function steer(f, W, mt, tx, ty, id, sources, dt) {
     const nx = hx + DIRS[d][0], ny = hy + DIRS[d][1];
     if (nx < 0 || ny < 0 || nx >= WORLD || ny >= WORLD) continue;
     const ni = cellOf(nx, ny);
-    if (dist[ni] < bd) { bd = dist[ni]; best = ni; }
+    // What it costs to go that way: the slot's own distance, plus the step into it
+    // — and stepping into a standing Wall means chewing it.
+    const c = dist[ni] + (W.blocked[ni] ? WALL_DETOUR : 1);
+    if (c < bd) { bd = c; best = ni; }
   }
   for (const [ddx, ddy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
     const nx = hx + ddx, ny = hy + ddy;
     if (nx < 0 || ny < 0 || nx >= WORLD || ny >= WORLD) continue;
     if (W.blocked[cellOf(hx + ddx, hy)] || W.blocked[cellOf(hx, hy + ddy)]) continue;
     const ni = cellOf(nx, ny);
-    if (!W.blocked[ni] && dist[ni] < bd) { bd = dist[ni]; best = ni; }
+    if (!W.blocked[ni] && dist[ni] + 1.2 < bd) { bd = dist[ni] + 1.2; best = ni; }
   }
-  if (best < 0 || !(bd < dist[here] || W.blocked[here])) return false;
+  if (best < 0) return false;
   const wx = cx(best) + 0.5, wy = cy(best) + 0.5;
   const dx = wx - mt.x, dy = wy - mt.y, d = Math.hypot(dx, dy);
   mt.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);

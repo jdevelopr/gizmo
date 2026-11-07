@@ -180,9 +180,8 @@ export class Palette {
             if (on.has('asm:' + i)) this.addRow(g, { kind: 'asm', mut: i }, counts);
           });
         } else if (kind === 'mut') {
-          let low = 1;
-          while (low < 7 && !on.has('mut:' + low)) low++;
-          this.addRow(g, { kind: 'mut', mut: low }, counts, true);
+          // One tile per Mutator rung that has been researched.
+          for (let t = 1; t < 8; t++) if (on.has('mut:' + t)) this.addRow(g, { kind: 'mut', mut: t }, counts);
         } else {
           this.addRow(g, { kind }, counts);
         }
@@ -205,7 +204,8 @@ export class Palette {
     const foot = el('div');
     const cost = el('span', 'cost');
     foot.appendChild(cost);
-    const k = KEY_OF[spec.kind];
+    // The Mutator key (9) picks up the cheapest rung, so only that tile shows it.
+    const k = spec.kind === 'mut' && this.rows.some(r => r.spec.kind === 'mut') ? null : KEY_OF[spec.kind];
     if (k) foot.appendChild(el('span', 'key', k));
     btn.appendChild(foot);
     btn.title = label(spec) + (k ? `  (${k})` : '');
@@ -264,7 +264,7 @@ export class Palette {
     }
     for (const r of this.rows) {
       const on = !!spec && r.spec.kind === spec.kind
-        && (r.spec.kind !== 'asm' || r.spec.mut === spec.mut);
+        && ((r.spec.kind !== 'asm' && r.spec.kind !== 'mut') || r.spec.mut === spec.mut);
       r.btn.classList.toggle('on', on);
       if (r.strip) {
         r.strip.hidden = !on || r.grp !== this.tab;

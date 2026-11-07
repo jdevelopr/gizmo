@@ -241,7 +241,7 @@ export const KINDS = {
     name: 'Storage', short: 'STORAGE',
     desc: 'Carries a gizmo one slot along like a belt, but holds a crowd while it waits. '
       + 'The cure for a line that keeps backing up.',
-    price: 60, cycle: 0.35, cap: 1, hold: 6, travel: 0.26, draw: 1,
+    price: 180, cycle: 0.35, cap: 1, hold: 6, travel: 0.26, draw: 1,
     body: '#20443f', trim: '#5fc9ae', lit: '#a7f0dc',
   },
   bal: {
@@ -295,13 +295,13 @@ export const KINDS = {
     name: 'Doubler', short: 'DOUBLER',
     desc: 'Holds an original, copies it, and pushes both out front. Levels add exits, '
       + 'never speed. It will not copy anything above Cobalt, and a copy is never copied again.',
-    price: 260, cycle: 1.8, cap: 1, hold: 2, travel: 0.52, draw: 10,
+    price: 20000, cycle: 1.8, cap: 1, hold: 2, travel: 0.52, draw: 10,
     body: '#27552f', trim: '#5fbf6a', lit: '#a7f070',
   },
   trident: {
     name: 'Trident', short: 'TRIDENT',
     desc: 'Holds one, then fires the original three ways. Copies leave one at a time, in turn.',
-    price: 160, cycle: 1.7, cap: 1, hold: 2, travel: 0.52, draw: 12,
+    price: 50000, cycle: 1.7, cap: 1, hold: 2, travel: 0.52, draw: 12,
     body: '#5c2a49', trim: '#b55088', lit: '#ff9ad0',
   },
   mut: {
@@ -323,7 +323,7 @@ export const KINDS = {
     desc: 'Melts two gizmos of the same type into one of the next rung up. It queues two '
       + 'different types at once, so a belt carrying Scrap and Resin feeds one Fuser and '
       + 'gets Copper and Cord back. Two originals make an original.',
-    price: 110, cycle: 1.9, cap: 2, hold: 8, travel: 0.52, draw: 8,
+    price: 800, cycle: 1.9, cap: 2, hold: 8, travel: 0.52, draw: 8,
     body: '#63321f', trim: '#c05a34', lit: '#ff8a5c',
   },
   arm: {
@@ -341,7 +341,7 @@ export const KINDS = {
     desc: 'Set it beside a mountain, facing it, and it digs out the mineral in that '
       + 'mountain — up to Cobalt, straight out of the rock, no Mutator needed — and pushes '
       + 'it out of its back. Slow, and a mountain runs out. Drilling wakes Beetles.',
-    price: 260, cycle: 2.0, cap: 0, hold: 2, travel: 0.4, draw: 10,
+    price: 2000, cycle: 2.0, cap: 0, hold: 2, travel: 0.4, draw: 10,
     body: '#3a3a44', trim: '#9aa0b8', lit: '#e0e4f0',
   },
   bridge: {
@@ -349,7 +349,7 @@ export const KINDS = {
     desc: 'Comes in pairs. Two Bridges facing the same way, up to four slots apart, carry '
       + 'gizmos and power straight over whatever is between them — a valley, rock, another '
       + 'belt. A Bridge on its own is just a belt.',
-    price: 80, cycle: 0.3, cap: 1, hold: 1, travel: 0.3, draw: 1,
+    price: 500, cycle: 0.3, cap: 1, hold: 1, travel: 0.3, draw: 1,
     body: '#4a3a24', trim: '#c9a26a', lit: '#ffe0a8',
   },
   zap: {
@@ -373,7 +373,7 @@ export const KINDS = {
     desc: 'Shreds anything you feed it — a jammed mix, spare Ammo, the wrong rung — and '
       + 'pushes out one Scrap for each, or one Resin for Resin, Cord and Frame. The clean-up '
       + 'crew for a messy line.',
-    price: 90, cycle: 0.8, cap: 1, hold: 4, travel: 0.52, draw: 6,
+    price: 600, cycle: 0.8, cap: 1, hold: 4, travel: 0.52, draw: 6,
     body: '#2c3a2a', trim: '#7fae6a', lit: '#c8f0a0',
   },
   pylon: {
@@ -752,7 +752,11 @@ export const twoInput = m =>
   (m?.kind === 'asm' ? recipeOf(m) : m?.kind === 'arm' ? ARMORY : null);
 
 /** Machines you may only own so many of cheaply — each costs more than the last. */
-export const LADDERED = { ext: 1.22, depot: 3, lab: 3, gen: 1.2, solar: 1.2, wall: 1.1 };
+export const LADDERED = {
+  ext: 1.22, depot: 3, lab: 3, gen: 1.2, solar: 1.2, wall: 1.1,
+  // Advanced machinery: a steep first price, and each one after costs 1.2x more.
+  asm: 1.2, dup: 1.2, trident: 1.2, fuse: 1.2, drill: 1.2, bridge: 1.2, recyc: 1.2, store: 1.2,
+};
 
 /** Mutators are priced by the tier they output. */
 /**
@@ -773,9 +777,9 @@ export const MUT_CYCLE = [0, 0.84, 1.72, 3.52, 7.2, 14.8, 30.4, 62];
 
 /** Assembler recipes. `mut` on an Assembler is the index into this list. */
 export const RECIPES = [
-  { ins: [9, 2], out: 11, cycle: 2.4, price: 160 },    // Cord  + Amber  -> Engine
-  { ins: [10, 4], out: 12, cycle: 3.6, price: 350 },   // Frame + Cobalt -> Turbine
-  { ins: [10, 6], out: 13, cycle: 4.8, price: 700 },   // Frame + Ember  -> Reactor
+  { ins: [9, 2], out: 11, cycle: 2.4, price: 3000 },    // Cord  + Amber  -> Engine
+  { ins: [10, 4], out: 12, cycle: 3.6, price: 12000 },   // Frame + Cobalt -> Turbine
+  { ins: [10, 6], out: 13, cycle: 4.8, price: 40000 },   // Frame + Ember  -> Reactor
 ];
 
 export const recipeOf = m => RECIPES[m?.mut ?? 0] || RECIPES[0];
@@ -829,7 +833,8 @@ export function price(spec) {
  * What one costs to buy right now. Extractors, Depots, Labs, Generators and Solar
  * Panels climb a ladder in the number you already own: they make money, science,
  * raw material and power out of nothing but a slot, so owning the twentieth has to
- * be a decision (Generators and Solar Panels: 1.2x each). Everything else is a stable price you can plan around, in minute one
+ * be a decision (Generators and Solar Panels: 1.2x each). Advanced machinery — Assemblers,
+ * Duplicators, Tridents, Fusers, Drills, Bridges, Recyclers, Storage — climbs 1.2x too. Everything else is a stable price you can plan around, in minute one
  * and in hour three alike — growth in GIZMO 3 already costs more the further you
  * go, because land does, and inflation on top of that only taxes a plan you made
  * an hour ago and are finally able to pay for.

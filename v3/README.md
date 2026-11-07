@@ -317,6 +317,28 @@ the right — with a crowded HUD bar over the map. Now the map fills the window:
 The warning box, Gus and the toasts sit at the top centre. Which cards are open,
 and whether the pop-up is on MORE, is remembered in this browser.
 
+### Advanced machinery is priced like it
+
+Assemblers used to cost less than the Mutators that feed them. Now an Assembler is
+priced at about 45x the value of what it makes, the same ratio as the Mutators, and
+the rest of the advanced kit came up with it. Each of these also costs 1.2x more
+for every one you already own (the Assembler ladder counts all three recipes together):
+
+| Machine | Was | Now (first) |
+|---|---|---|
+| Engine Assembler | $80 | $1,500 |
+| Turbine Assembler | $175 | $6,000 |
+| Reactor Assembler | $350 | $20,000 |
+| Doubler | $130 | $10,000 |
+| Trident | $80 | $25,000 |
+| Fuser | $55 | $400 |
+| Mountain Drill | $130 | $1,000 |
+| Bridge | $40 | $250 |
+| Recycler | $45 | $300 |
+| Storage | $30 | $90 |
+
+Upgrades are priced off the purchase price, so they rose in step.
+
 ### Walls
 
 A Wall (Defence branch, **Walls** research, 60 science) is a block of plated stone:

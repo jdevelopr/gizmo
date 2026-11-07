@@ -339,6 +339,20 @@ for every one you already own (the Assembler ladder counts all three recipes tog
 
 Upgrades are priced off the purchase price, so they rose in step.
 
+### Creatures keep to open ground
+
+Bedrock, mountains, valleys and open space are solid to every creature. They walk
+round them using the same distance fields that route them round Walls, and they only
+pick a target on the same patch of open ground as themselves — a factory ringed by
+mountains or valleys cannot be reached at all. (A Wall, unlike rock, can be chewed.)
+
+### Sorters keep a queue for each way out
+
+A Sorter holds two of what it is filtering for and two of everything else, and sends
+on whichever it can. If the filtered side is backed up, everything else keeps going
+straight past it, and the other way round. A belt is still one queue, so once the
+stuck kind has filled its queue *and* reaches the front of the belt, the belt stops.
+
 ### Bridges point themselves the right way
 
 A Bridge pair only carries one way, and it was easy to end up with both facing back

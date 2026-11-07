@@ -24,7 +24,7 @@
  */
 
 import {
-  WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN,
+  WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN, BEDROCK, MOUNTAIN, VALLEY, SPACE,
   rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, NOISE_IDLE, noiseLevelMult, SWARM_THRESHOLD, SWARM_COST, PASSIVE,
   SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_POP_MIN, NEST_POP_MAX, CREATURES, SKITTER,
   skitterShare, nestSpec, bruteShare, price, WALL_DETOUR,
@@ -393,8 +393,11 @@ export function spawnMite(f, x, y, hp = null, kind = 'mite') {
  * The thing this mite should go and eat: the nearest machine that is not already
  * chewed through, with belts counted as a good deal nearer than they are.
  */
-function pickTarget(f, mt) {
+function pickTarget(f, mt, W = null) {
   let best = -1, score = Infinity;
+  // Only what is on the same patch of open ground: across a valley, over a
+  // mountain or past bedrock is out of reach (a Wall is not — that can be chewed).
+  const home = W ? regionAt(W, mt.x, mt.y) : -1;
   const beltsOnly = mt.kind === 'skitter';
   // A Brute goes for what is worth most, not what is nearest: dearer machines look
   // closer to it, and it ignores belts while there is anything better.
@@ -410,6 +413,7 @@ function pickTarget(f, mt) {
     if (beltsOnly && m.kind !== 'pipe' && m.kind !== 'store') continue;
     if (gensOnly && m.kind !== 'gen') continue;
     const [mx, my] = centreOf(m, i);
+    if (home >= 0 && W.region[m.front ?? i] !== home && !(m.cells || []).some(c => W.region[c] === home)) continue;
     const d = Math.hypot(mx - mt.x, my - mt.y);
     const s = brute ? (PLUMBING.has(m.kind) ? d * 50 : d / (1 + price(m) / 150)) : PLUMBING.has(m.kind) ? d * 0.7 : d;
     if (s < score) { score = s; best = i; }
@@ -430,27 +434,70 @@ function pickTarget(f, mt) {
  */
 const WALLS = new WeakMap();
 
+/** Ground no creature can cross: bedrock, mountains, valleys and open space. */
+const SOLID = new Set([BEDROCK, MOUNTAIN, VALLEY, SPACE]);
+
+/**
+ * What stands in a creature's way: `blocked` is 1 for a standing Wall (dear to
+ * cross, but it can be chewed) and 2 for solid ground (never crossed). `region`
+ * numbers the patches of open ground that connect, so a creature never sets its
+ * heart on something it could not reach.
+ */
 function wallState(f) {
-  let key = '';
+  let key = (f.mapRev | 0) + '|';
   for (const i of f.cells) {
     const m = f.grid[i];
     if (m?.kind === 'wall' && !broken(m)) key += i + ',';
   }
-  if (!key) { WALLS.delete(f); return null; }
   let W = WALLS.get(f);
   if (W && W.key === key) return W;
-  const blocked = new Uint8Array(WORLD * WORLD);
-  for (const s of key.split(',')) if (s) blocked[+s] = 1;
-  W = { key, blocked, fields: new Map() };
+  const n = WORLD * WORLD;
+  // The ground only changes with mapRev, so its half is kept between Wall changes.
+  let ground = W && W.rev === f.mapRev ? W.ground : null;
+  let region = W && W.rev === f.mapRev ? W.region : null;
+  if (!ground) {
+    ground = new Uint8Array(n);
+    for (let c = 0; c < n; c++) if (SOLID.has(f.terrain[c])) ground[c] = 2;
+    region = new Int32Array(n).fill(-1);
+    let id = 0;
+    const q = new Int32Array(n);
+    for (let c = 0; c < n; c++) {
+      if (ground[c] || region[c] >= 0) continue;
+      let h = 0, t = 0;
+      q[t++] = c; region[c] = id;
+      while (h < t) {
+        const at = q[h++], x = cx(at), y = cy(at);
+        for (let d = 0; d < 4; d++) {
+          const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+          if (nx < 0 || ny < 0 || nx >= WORLD || ny >= WORLD) continue;
+          const ni = cellOf(nx, ny);
+          if (ground[ni] || region[ni] >= 0) continue;
+          region[ni] = id; q[t++] = ni;
+        }
+      }
+      id++;
+    }
+  }
+  const blocked = ground.slice();
+  const walls = key.slice(key.indexOf('|') + 1);
+  for (const sc of walls.split(',')) if (sc) blocked[+sc] = 1;
+  W = { key, rev: f.mapRev, ground, region, blocked, fields: new Map() };
   WALLS.set(f, W);
   return W;
+}
+
+/** Which patch of open ground a point is on, or -1 for solid ground or off the map. */
+function regionAt(W, x, y) {
+  const hx = Math.floor(x), hy = Math.floor(y);
+  if (!W || hx < 0 || hy < 0 || hx >= WORLD || hy >= WORLD) return -1;
+  return W.region[cellOf(hx, hy)];
 }
 
 /** Distance (in slots, Walls counted dear) from every slot to the nearest of `sources`. */
 function wallField(W, id, sources) {
   let dist = W.fields.get(id);
   if (dist) return dist;
-  if (W.fields.size > 48) W.fields.clear();
+  if (W.fields.size > 96) W.fields.clear();
   const n = WORLD * WORLD;
   dist = new Float32Array(n).fill(Infinity);
   // a plain binary heap of [cost, cell]
@@ -489,8 +536,9 @@ function wallField(W, id, sources) {
       const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
       if (nx < 0 || ny < 0 || nx >= WORLD || ny >= WORLD) continue;
       const ni = cellOf(nx, ny);
+      if (W.blocked[ni] === 2) continue;           // solid ground: never
       // Walking *out of* a Wall slot is what costs: that is the slot being chewed.
-      const nc = c + (W.blocked[at] ? WALL_DETOUR : 1);
+      const nc = c + (W.blocked[at] === 1 ? WALL_DETOUR : 1);
       if (nc < dist[ni]) { dist[ni] = nc; push(nc, ni); }
     }
   }
@@ -519,6 +567,7 @@ function clearLine(W, x, y, tx, ty) {
 function steer(f, W, mt, tx, ty, id, sources, dt) {
   if (!W) return false;
   const hx = Math.floor(mt.x), hy = Math.floor(mt.y);
+  // Off the map (a creature that has not arrived yet), it walks straight in.
   if (hx < 0 || hy < 0 || hx >= WORLD || hy >= WORLD) return false;
   // Checking the line every frame for every creature is wasted work: it is asked
   // a few times a second, and whenever the Walls change.
@@ -541,6 +590,7 @@ function steer(f, W, mt, tx, ty, id, sources, dt) {
     const ni = cellOf(nx, ny);
     // What it costs to go that way: the slot's own distance, plus the step into it
     // — and stepping into a standing Wall means chewing it.
+    if (W.blocked[ni] === 2) continue;
     const c = dist[ni] + (W.blocked[ni] ? WALL_DETOUR : 1);
     if (c < bd) { bd = c; best = ni; }
   }
@@ -551,11 +601,13 @@ function steer(f, W, mt, tx, ty, id, sources, dt) {
     const ni = cellOf(nx, ny);
     if (!W.blocked[ni] && dist[ni] + 1.2 < bd) { bd = dist[ni] + 1.2; best = ni; }
   }
-  if (best < 0) return false;
+  // Nowhere to go from here that leads there: stand still rather than walk
+  // through the rock.
+  if (best < 0 || !isFinite(bd)) { mt.st = 'walk'; return true; }
   const wx = cx(best) + 0.5, wy = cy(best) + 0.5;
   const dx = wx - mt.x, dy = wy - mt.y, d = Math.hypot(dx, dy);
   mt.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
-  const wall = W.blocked[best] ? f.grid[best] : null;
+  const wall = W.blocked[best] === 1 ? f.grid[best] : null;
   if (wall && d < 0.8) {
     // Up against a Wall with no better way: chew.
     mt.st = 'chew';
@@ -616,6 +668,9 @@ function stepMites(f, dt) {
       const dx = tx - mt.x, dy = ty - mt.y, d = Math.hypot(dx, dy);
       mt.st = 'walk'; mt.tgt = -1; mt.home = 1;
       if (d < 0.4 || mt.x < -0.5 || mt.x > WORLD + 0.5) { mt.hp = 0; mt.gone = 1; continue; }
+      // Home the long way round, too — but a creature with no way home just goes.
+      if (home && regionAt(W, mt.x, mt.y) === W.region[home.cell]
+        && steer(f, W, mt, tx, ty, 'n' + home.cell, [home.cell], dt)) continue;
       const step = Math.min(d, mt.sp * dt);
       mt.x += dx / d * step; mt.y += dy / d * step;
       mt.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
@@ -624,7 +679,7 @@ function stepMites(f, dt) {
     mt.home = 0;
     let m = mt.tgt >= 0 ? f.grid[mt.tgt] : null;
     if (!m || broken(m) || m.kind === 'wall' || (mt.st === 'walk' && mt.rt <= 0)) {
-      mt.tgt = pickTarget(f, mt);
+      mt.tgt = pickTarget(f, mt, W);
       mt.rt = 1.5 + Math.random();
       m = mt.tgt >= 0 ? f.grid[mt.tgt] : null;
       if (!m) mt.st = 'walk';
@@ -633,6 +688,8 @@ function stepMites(f, dt) {
     const tx = m ? mx + mt.ox : c;
     const ty = m ? my + mt.oy : c;
     if (m && steer(f, W, mt, tx, ty, mt.tgt, m.cells || [mt.tgt], dt)) continue;
+    // Nothing it can reach: it waits where it is rather than walk through rock.
+    if (!m) { mt.st = 'walk'; continue; }
     const dx = tx - mt.x, dy = ty - mt.y;
     const d = Math.hypot(dx, dy);
     if (m && d < 0.12) {

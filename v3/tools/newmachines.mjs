@@ -5,7 +5,7 @@
  *   node tools/newmachines.mjs
  */
 import {
-  WORLD, cellOf, catalogue, unlockerOf, unlockedBy, SOLAR_OUTPUT, PYLON_GAP, DRONE_COST, maxHp,
+  WORLD, cellOf, catalogue, unlockerOf, unlockedBy, SOLAR_OUTPUT, PYLON_GAP, DRONE_COST, maxHp, wants, capacity,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild, applyAction } from '../js/sim.js';
 import { solveTopology, balancePower } from '../js/power.js';
@@ -86,6 +86,29 @@ console.log('\nRecycler');
   for (const ty of [8, 9, 10, 10]) at(h, 10, 10).buf.push({ id: ty, ty, cp: 0 });
   spin(h, 8);
   ok(h.shipped[8] === 4 && !h.shipped[0], `Resin, Cord and Frame each come out as one Resin (${h.shipped[8] | 0})`);
+}
+
+console.log('\nSorter with one way backed up');
+{
+  // Filtering for Copper; the Copper side is a switched-off belt, so it never moves.
+  const f = bench();
+  put(f, 'sort', 10, 10, { dir: 0, mut: 1 });
+  put(f, 'depot', 11, 10, { dir: 2 });
+  const side = cellOf(10, 11);
+  build(f, { kind: 'pipe' }, side, { free: true, dir: 1 });
+  f.grid[side].off = 1;
+  rebuild(f);
+  const s = at(f, 10, 10);
+  let fed = 0, k = 0;
+  for (let t = 0; t < 30 * 30; t++) {
+    const ty = k < 2 ? 1 : 0;      // two Copper first, which can never leave, then Scrap
+    if (wants(s, ty) && s.buf.length + (s.work?.length || 0) < capacity(s)) { s.buf.push({ id: 900 + k, ty, cp: 0 }); k++; fed++; }
+    for (const c of f.cells) { f.grid[c].net = 0; f.grid[c].sat = 1; }
+    f.nets = [{ id: 0, gens: [], cells: f.cells, supply: 1e6, demand: 0, sat: 1, hot: 1 }];
+    stepFactory(f, 1 / 30);
+  }
+  ok(f.shipped[0] > 20, `Scrap flows straight on past Copper stuck in front of it (${f.shipped[0] | 0} sold)`);
+  ok(!f.shipped[1], 'and no Copper is let through the wrong way');
 }
 
 console.log('\nSolar Panel');

@@ -683,7 +683,14 @@ function startJob(f, m, i) {
     mt.left--;
     if (mt.left <= 0) exhaust(f, mt);
   }
-  const take = pickInputs(m);
+  let take = pickInputs(m);
+  // A Sorter takes the first thing it can actually send on: if the way the front
+  // gizmo goes is backed up, something bound the other way goes past it.
+  if (m.kind === 'sort' && take && take.length) {
+    const k = m.buf.findIndex(g => sortExitFree(f, i, m, g.ty));
+    if (k < 0) { m.t = 0; m.out = null; m.blocked = 1; return; }
+    take = [k];
+  }
   if (!take) { m.t = 0; m.out = null; m.waiting = 1; return; }
   m.waiting = 0;
   // Highest index first, so removing one does not move the next.
@@ -728,6 +735,19 @@ function pickExit(f, i, m, o) {
   return null;
 }
 
+/** Could a Sorter at `i` send a gizmo of type `ty` on right now? No side effects. */
+function sortExitFree(f, i, m, ty) {
+  const d = m.dir | 0;
+  const dirs = ty !== (m.mut ?? 1) ? [d]
+    : (m.level || 1) >= 3 ? [(d + 1) % 4, (d + 3) % 4] : [sideDir(m)];
+  for (const e of dirs) {
+    if (beaconMouth(f, i, e) >= 0) { if (beaconWants(f, (e + 2) % 4, ty)) return true; continue; }
+    const to = landingOf(f, i, m, e);
+    if (to < 0 || canAccept(f, to, ty, faceHit(e))) return true;
+  }
+  return false;
+}
+
 function release(f, m, i, sp) {
   const outs = m.out || [];
   const stay = [];
@@ -756,6 +776,14 @@ function release(f, m, i, sp) {
   if (stay.length) {
     if (!m.blocked) f.fx.push({ k: 'clog', cell: i });
     m.blocked = 1;
+    // A Sorter puts a gizmo it cannot send back at the front of its queue, so the
+    // next job can be one bound the other way.
+    if (m.kind === 'sort' && !sent.length) {
+      m.buf.unshift(...m.work);
+      m.work = [];
+      m.out = null;
+      return;
+    }
     m.out = stay;
     return;
   }

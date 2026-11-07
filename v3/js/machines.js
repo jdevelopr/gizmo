@@ -1003,6 +1003,8 @@ export function capacity(m) {
   const lv = (m.level || 1) - 1;
   if (m.kind === 'store') return base + STORE_STEP * lv;
   if (m.kind === 'gen') return base + GEN_HOLD_STEP * lv;
+  // A Sorter keeps two queues, one per way out, so a full one never blocks the other.
+  if (m.kind === 'sort') return base * 2;
   return base;
 }
 
@@ -1203,6 +1205,15 @@ export function wants(m, ty, side = null) {
   if (m.kind === 'asm') {
     if (!twoInput(m).ins.includes(ty)) return false;
     return queued(m, ty) < LANE;
+  }
+  if (m.kind === 'sort') {
+    // Two lanes — what it is filtering for, and everything else — each as deep as
+    // the Sorter's hold. One lane being full turns away only what would join it.
+    const match = t => t === (m.mut ?? 1);
+    let n = 0;
+    for (const g of m.buf) if (match(g.ty) === match(ty)) n++;
+    for (const g of m.work || []) if (match(g.ty) === match(ty)) n++;
+    return n < (KINDS.sort.hold ?? 1);
   }
   if (m.kind === 'fuse') {
     if (!fusable(ty)) return false;               // products, and the top of a ladder, are terminal

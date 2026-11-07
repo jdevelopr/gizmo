@@ -7,7 +7,7 @@
  * gizmos, carries no power and makes no noise; creatures walk round it when they
  * can and chew through it when they cannot; and it grows tougher with level.
  */
-import { WORLD, cellOf, buyCost, acceptsFrom, maxHp, broken, NOISE, catalogue, unlockedBy } from '../js/machines.js';
+import { WORLD, cellOf, buyCost, acceptsFrom, maxHp, broken, NOISE, catalogue, unlockedBy, MOUNTAIN, VALLEY, BEDROCK } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild } from '../js/sim.js';
 import { plainWorld } from '../js/world.js';
 import { spawnMite } from '../js/bugs.js';
@@ -115,6 +115,40 @@ console.log('\nSkitters too');
   run(f, 6);
   const belt = f.grid[cellOf(40, 40)];
   ok(belt.hp == null || belt.hp >= maxHp(belt, f.done) - 0.01, 'a Skitter is held up by a Wall as well');
+}
+
+console.log('\nSolid ground');
+for (const [name, T] of [['a valley', VALLEY], ['a mountain', MOUNTAIN], ['bedrock', BEDROCK]]) {
+  // A line of it with a way round: the creature goes round and never stands on it.
+  const f = bench();
+  for (let y = 34; y <= 46; y++) f.terrain[cellOf(38, y)] = T;
+  f.mapRev++; rebuild(f);
+  put(f, 'pipe', 40, 40); rebuild(f);
+  const mt = spawnMite(f, 33.5, 40.5);
+  mt.ox = 0; mt.oy = 0;
+  let onIt = 0;
+  for (let i = 0; i < 60 * 30; i++) {
+    stepFactory(f, 1 / 30);
+    if (f.terrain[cellOf(Math.floor(mt.x), Math.floor(mt.y))] === T) onIt++;
+  }
+  const belt = f.grid[cellOf(40, 40)];
+  ok(onIt === 0 && belt.hp != null && belt.hp < maxHp(belt, f.done), `round ${name}, never over it, and still reaches the belt`, `frames on it ${onIt}`);
+
+  // Boxed in by it on every side: the belt inside is out of reach for good.
+  const g = bench();
+  for (let x = 37; x <= 43; x++) for (let y = 37; y <= 43; y++)
+    if (x === 37 || x === 43 || y === 37 || y === 43) g.terrain[cellOf(x, y)] = T;
+  g.mapRev++; rebuild(g);
+  put(g, 'pipe', 40, 40); rebuild(g);
+  const m2 = spawnMite(g, 30.5, 40.5);
+  let crossed = 0;
+  for (let i = 0; i < 40 * 30; i++) {
+    stepFactory(g, 1 / 30);
+    const x = Math.floor(m2.x), y = Math.floor(m2.y);
+    if (x >= 37 && x <= 43 && y >= 37 && y <= 43) crossed++;
+  }
+  const b2 = g.grid[cellOf(40, 40)];
+  ok(!crossed && (b2.hp == null || b2.hp >= maxHp(b2, g.done) - 0.01), `ringed by ${name}, a belt is safe`);
 }
 
 console.log(fails ? `\n${fails} FAILED\n` : '\nAll good.\n');

@@ -339,6 +339,14 @@ for every one you already own (the Assembler ladder counts all three recipes tog
 
 Upgrades are priced off the purchase price, so they rose in step.
 
+### Bridges point themselves the right way
+
+A Bridge pair only carries one way, and it was easy to end up with both facing back
+across the gap — build the far Bridge first and the near one lined up with it — so
+everything piled up at the first Bridge. Now a Bridge with something feeding into it
+turns itself and its nearest unfed Bridge in range to face from it to that one
+(`orientBridges` in sim.js). A Bridge you have turned by hand with R is left alone.
+
 ### Walls
 
 A Wall (Defence branch, **Walls** research, 60 science) is a block of plated stone:

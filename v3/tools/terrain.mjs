@@ -129,6 +129,24 @@ console.log('\nBridges');
     && at(h, 12, 10).bin === 2 && at(h, 14, 10).bin === 1, 'a line of four pairs off two by two');
   put(h, 'bridge', 40, 40);
   ok(at(h, 40, 40).pair === -1, 'and a lone Bridge is just a belt');
+
+  // Built the other way round: the far Bridge first, so the near one used to line
+  // up with it facing back across the valley, and everything stopped at the first.
+  for (const order of ['far first', 'facing each other', 'facing away']) {
+    const v = bench();
+    for (let y = 18; y <= 22; y++) { v.terrain[cellOf(21, y)] = VALLEY; v.terrain[cellOf(22, y)] = VALLEY; }
+    v.mapRev++;
+    v.patch[cellOf(17, 20)] = 0; v.rich[cellOf(17, 20)] = 1;
+    put(v, 'ext', 17, 20); put(v, 'pipe', 18, 20); put(v, 'pipe', 19, 20);
+    if (order === 'far first') { put(v, 'bridge', 23, 20, { auto: true }); put(v, 'bridge', 20, 20, { auto: true }); }
+    else if (order === 'facing each other') { put(v, 'bridge', 20, 20, { dir: 0 }); put(v, 'bridge', 23, 20, { dir: 2 }); }
+    else { put(v, 'bridge', 20, 20, { dir: 2 }); put(v, 'bridge', 23, 20, { dir: 0 }); }
+    put(v, 'pipe', 24, 20); put(v, 'depot', 25, 20);
+    rebuild(v);
+    run(v, 30);
+    ok(at(v, 20, 20).bin === 1 && at(v, 23, 20).bin === 2 && v.sold > 10,
+      `${order}: the fed Bridge turns to face its partner and gizmos cross (${v.sold} sold)`);
+  }
 }
 
 console.log('\nBeetles');

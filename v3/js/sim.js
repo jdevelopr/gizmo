@@ -195,6 +195,7 @@ export function rebuild(f) {
     if (m && (m.at ?? i) === i) { if (m.at == null) occupy(f, m, i); cells.push(i); }
   }
   f.cells = cells;
+  orientBridges(f);
   pairBridges(f);
   pairPylons(f);
   solveTopology(f);
@@ -202,6 +203,57 @@ export function rebuild(f) {
 }
 
 /* ---------------------------------------------------------------- bridges --- */
+
+/** Is anything other than a Bridge firing into the Bridge at `i`? */
+function fedBridge(f, i) {
+  const x = cx(i), y = cy(i);
+  for (let d = 0; d < 4; d++) {
+    const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+    if (!inWorld(nx, ny)) continue;
+    const n = f.grid[cellOf(nx, ny)];
+    if (!n || n.kind === 'bridge') continue;
+    if (exitDirs(n).includes((d + 2) % 4)) return true;
+  }
+  return false;
+}
+
+/**
+ * Point each fed Bridge at its partner. A pair only carries one way — from the
+ * end something is feeding to the other — and it used to be easy to get that
+ * backwards: build the far Bridge first and the near one lined up with *it*, both
+ * facing back across the gap, and everything piled up at the first Bridge. Now a
+ * Bridge with a belt (or anything) running into it, whose way ahead does not reach
+ * a matching Bridge, looks along all four ways for the nearest Bridge in range with
+ * nothing feeding it, and turns the two of them to face from it to that one.
+ * A Bridge you have turned by hand is left exactly as you set it.
+ */
+export function orientBridges(f) {
+  const span = bridgeSpan(f.done);
+  const firstBridge = (i, d) => {
+    for (let k = 1; k <= span; k++) {
+      const x = cx(i) + DIRS[d][0] * k, y = cy(i) + DIRS[d][1] * k;
+      if (!inWorld(x, y)) return -1;
+      const n = f.grid[cellOf(x, y)];
+      if (n?.kind === 'bridge') return cellOf(x, y);
+    }
+    return -1;
+  };
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (m?.kind !== 'bridge' || m.handAim || !fedBridge(f, i)) continue;
+    const ahead = firstBridge(i, m.dir | 0);
+    if (ahead >= 0 && (f.grid[ahead].dir | 0) === (m.dir | 0)) continue;   // already right
+    for (const d of [m.dir | 0, 0, 1, 2, 3]) {
+      const j = firstBridge(i, d);
+      if (j < 0) continue;
+      const n = f.grid[j];
+      if (n.handAim || fedBridge(f, j)) continue;
+      m.dir = d; n.dir = d;
+      m.front = i; n.front = j;
+      break;
+    }
+  }
+}
 
 /**
  * Pair up Bridges. Along any line of Bridges facing the same way, each one within

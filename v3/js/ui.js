@@ -12,7 +12,7 @@
 import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
-  levelCap, techById, techOpen, unlockedBy, SWARM_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
+  levelCap, techById, techOpen, unlockedBy, SWARM_THRESHOLD, BRUTE_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
   cellOf, cx, cy, claimMin, claimMax, seen, seenXY, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
@@ -99,6 +99,60 @@ export class Palette {
     this.onPick = onPick;
     this.rows = [];
     this.key = '';
+    // The shop is one row of tiles under a row of category tabs. `tab` is the
+    // open category's name, or 'CRATE' for the crate.
+    this.tabs = $('shop-tabs');
+    this.crateBox = $('crate-box');
+    this.tab = null;
+    this.groups = [];
+    this.crateN = 0;
+  }
+
+  /** Open a category (or the crate) and show only its tiles. */
+  openTab(name) {
+    if (name === 'CRATE' && !this.crateN) name = null;
+    if (name !== 'CRATE' && !this.groups.includes(name)) name = this.groups[0] || null;
+    this.tab = name;
+    for (const b of this.tabs.children) b.classList.toggle('on', b.dataset.tab === name);
+    const crate = name === 'CRATE';
+    this.host.hidden = crate;
+    this.crateBox.hidden = !crate;
+    for (const r of this.rows) {
+      r.btn.hidden = r.grp !== name;
+      if (r.strip && r.grp !== name) r.strip.hidden = true;
+    }
+    if (!crate && this.held) this.select(this.held, true);
+  }
+
+  /** Called every frame with how many machines are in the crate. */
+  setCrate(n) {
+    if (!!n === !!this.crateN) { this.crateN = n; this.paintCrateTab(); return; }
+    this.crateN = n;
+    this.paintTabs();
+    if (!n && this.tab === 'CRATE') this.openTab(this.groups[0]);
+  }
+
+  paintCrateTab() {
+    const b = this.tabs.querySelector('.crate-tab');
+    if (b) { const t = `CRATE  ${this.crateN}`; if (b.textContent !== t) b.textContent = t; }
+  }
+
+  paintTabs() {
+    this.tabs.textContent = '';
+    for (const name of this.groups) {
+      const b = el('button', null, name);
+      b.dataset.tab = name;
+      b.onclick = () => this.openTab(name);
+      this.tabs.appendChild(b);
+    }
+    if (this.crateN) {
+      const b = el('button', 'crate-tab', `CRATE  ${this.crateN}`);
+      b.dataset.tab = 'CRATE';
+      b.title = 'Machines you own that are not on the map';
+      b.onclick = () => this.openTab('CRATE');
+      this.tabs.appendChild(b);
+    }
+    for (const b of this.tabs.children) b.classList.toggle('on', b.dataset.tab === this.tab);
   }
 
   /** Rebuild the list. Only when what is *available* changes, not when cash does. */
@@ -112,12 +166,14 @@ export class Palette {
 
     this.host.textContent = '';
     this.rows = [];
+    this.groups = [];
 
     for (const grp of GROUPS) {
       const kinds = grp.kinds.filter(k => on.has(k) || (k === 'asm' && anyRecipe(on)));
       // Machines still behind research are not shown until they are unlocked.
       if (!kinds.length) continue;
-      this.host.appendChild(el('div', 'pal-group', grp.name));
+      this.groups.push(grp.name);
+      this.grp = grp.name;
       for (const kind of kinds) {
         if (kind === 'asm') {
           RECIPES.forEach((r, i) => {
@@ -132,6 +188,8 @@ export class Palette {
         }
       }
     }
+    this.paintTabs();
+    this.openTab(this.tab);
     this.price(g);
   }
 
@@ -143,14 +201,17 @@ export class Palette {
     // Sorter's filter is free to change once it is down, so it does not.
     const nm = spec.kind === 'sort' ? KINDS.sort.name : label(spec);
     mid.appendChild(el('div', 'nm', nm.toUpperCase()));
-    const k = KEY_OF[spec.kind];
-    if (k) mid.appendChild(el('span', 'key', `KEY ${k}`));
     btn.appendChild(mid);
-    const cost = el('div', 'cost');
-    btn.appendChild(cost);
+    const foot = el('div');
+    const cost = el('span', 'cost');
+    foot.appendChild(cost);
+    const k = KEY_OF[spec.kind];
+    if (k) foot.appendChild(el('span', 'key', k));
+    btn.appendChild(foot);
+    btn.title = label(spec) + (k ? `  (${k})` : '');
     btn.onclick = () => this.onPick({ ...spec });
     this.host.appendChild(btn);
-    this.rows.push({ btn, cost, spec, tiers });
+    this.rows.push({ btn, cost, spec, tiers, grp: this.grp });
 
     // The Mutator is one row and seven machines. Rather than spend seven lines of
     // a narrow bar on it, its tiers sit underneath as a strip of colours that
@@ -172,6 +233,7 @@ export class Palette {
         c.onclick = ev => { ev.stopPropagation(); this.onPick({ kind: 'mut', mut: t }); };
         strip.appendChild(c);
       }
+      strip.style.padding = '0';
       this.host.appendChild(strip);
       this.rows[this.rows.length - 1].strip = strip;
     }
@@ -190,13 +252,22 @@ export class Palette {
   }
 
   /** Show which machine is in your hand, and open the Mutator strip if it is one. */
-  select(spec) {
+  select(spec, keepTab = false) {
+    this.held = spec || null;
+    // Picking a machine by hotkey opens its tab, so the row always shows it.
+    if (spec && !keepTab) {
+      const want = spec.crate ? 'CRATE' : GROUPS.find(gr => gr.kinds.includes(spec.kind))?.name;
+      if (want && want !== this.tab && (want === 'CRATE' ? this.crateN : this.groups.includes(want))) {
+        this.openTab(want);
+        return;
+      }
+    }
     for (const r of this.rows) {
       const on = !!spec && r.spec.kind === spec.kind
         && (r.spec.kind !== 'asm' || r.spec.mut === spec.mut);
       r.btn.classList.toggle('on', on);
       if (r.strip) {
-        r.strip.hidden = !on;
+        r.strip.hidden = !on || r.grp !== this.tab;
         [...r.strip.children].forEach(c => {
           c.classList.toggle('on', on && spec.mut === +c.dataset.tier);
         });
@@ -233,9 +304,7 @@ export class Crate {
     if (key === this.key) return;
     this.key = key;
 
-    this.box.hidden = !stacks.length;
-    this.count.textContent = stacks.length
-      ? `${f.crate.length}  ·  RIGHT-CLICK TO SELL` : '';
+    this.count.textContent = stacks.length ? 'RIGHT-CLICK TO SELL' : '';
     this.host.textContent = '';
     if (!stacks.length) return;
 
@@ -571,6 +640,44 @@ export class Hud {
     this.expand = $('btn-expand');
     this.alert = $('alert');
     this.toasts = $('toasts');
+    this.head = {
+      money: $('h-money'), sci: $('h-sci'), power: $('h-power'), noise: $('h-noise'), land: $('h-land'),
+    };
+    this.spark = $('spark');
+  }
+
+  /** Text into a node, only when it changed. */
+  put(node, text) {
+    if (node && node.textContent !== text) node.textContent = text;
+  }
+
+  /** The money card's little graph: income over the last few minutes. */
+  paintSpark(g) {
+    const c = this.spark;
+    if (!c || c.closest('.shut')) return;
+    const h = g.hist?.income || [];
+    const k = h.length + ':' + (h[h.length - 1] ?? 0);
+    if (this.last.spark === k) return;
+    this.last.spark = k;
+    const x = c.getContext('2d');
+    x.clearRect(0, 0, c.width, c.height);
+    x.fillStyle = '#05070d';
+    x.fillRect(0, 0, c.width, c.height);
+    if (h.length < 2) return;
+    const pts = h.slice(-60);
+    const hi = Math.max(1, ...pts);
+    const lo = Math.min(0, ...pts);
+    const w = c.width / (pts.length - 1);
+    x.fillStyle = '#a7f070';
+    for (let i = 0; i < pts.length; i++) {
+      const y = Math.round((c.height - 4) * (1 - (pts[i] - lo) / (hi - lo || 1))) + 2;
+      x.fillRect(Math.round(i * w) - 1, y, 2, 2);
+      if (i) {
+        const py = Math.round((c.height - 4) * (1 - (pts[i - 1] - lo) / (hi - lo || 1))) + 2;
+        const top = Math.min(y, py), bot = Math.max(y, py);
+        if (bot - top > 1) x.fillRect(Math.round(i * w) - 1, top, 2, bot - top);
+      }
+    }
   }
 
   set(node, sel, text) {
@@ -595,17 +702,42 @@ export class Hud {
     // Noise: how loud the factory is, coloured by how soon that brings a swarm.
     const nz = f.noise || 0;
     const eta = swarmEta(f);
-    this.set(this.noise, 'b', `${num(nz, 1)} / ${SWARM_THRESHOLD}`);
+    // The number shown against it is the next line you would cross: 5 wakes the
+    // nests, 12 brings Brute Mites.
+    this.set(this.noise, 'b', `${num(nz, 1)} / ${nz < SWARM_THRESHOLD ? SWARM_THRESHOLD : BRUTE_THRESHOLD}`);
     this.set(this.noise, 'i', !f.nests?.some(n => n.hp > 0) ? 'noise'
-      : nz < SWARM_THRESHOLD ? 'nests asleep' : `swarm ${clock(eta)}`);
-    const cls = nz < SWARM_THRESHOLD * 0.8 ? 'quiet' : nz < SWARM_THRESHOLD ? 'busy' : 'loud';
-    if (this.last.ncls !== cls) { this.last.ncls = cls; this.noise.querySelector('b').className = cls; }
+      : nz < SWARM_THRESHOLD ? 'nests asleep' : nz < BRUTE_THRESHOLD ? `swarm ${clock(eta)}` : `brutes · ${clock(eta)}`);
+    const cls = nz < SWARM_THRESHOLD * 0.8 ? 'quiet' : nz < SWARM_THRESHOLD ? 'busy' : nz < BRUTE_THRESHOLD ? 'loud' : 'brute';
+    if (this.last.ncls !== cls) {
+      this.last.ncls = cls;
+      this.noise.querySelector('b').className = cls;
+      this.head.noise.className = 'val ' + cls;
+      $('noise-fill').style.background = { quiet: '#a7f070', busy: '#ffcd75', loud: '#ff5d4a', brute: '#ff2a55' }[cls];
+    }
+    // The noise bar runs to 16, with marks at the two lines that matter.
+    const NMAX = 16;
+    const nw = Math.min(100, (nz / NMAX) * 100).toFixed(1) + '%';
+    if (this.last.nw !== nw) {
+      this.last.nw = nw;
+      $('noise-fill').style.width = nw;
+      $('tick-swarm').style.left = (SWARM_THRESHOLD / NMAX * 100) + '%';
+      $('tick-brute').style.left = (BRUTE_THRESHOLD / NMAX * 100) + '%';
+    }
+    // The one number in each card's header, readable with the card folded.
+    this.put(this.head.money, money(f.cash));
+    this.put(this.head.sci, num(f.science));
+    this.put(this.head.noise, num(nz, 1));
+    this.put(this.head.land, `${f.claim} x ${f.claim}`);
+    this.put($('m-earned'), money(f.earned));
+    this.put($('m-spent'), money(f.spent));
+    this.put($('m-studied'), num(f.studied));
+    this.paintSpark(g);
     this.set(this.claim, 'b', `${f.claim}x${f.claim}`);
     this.set(this.claim, 'i', 'claim');
 
     const p = powerSummary(f);
     const ratio = p.demand <= 0 ? 1 : Math.min(1, p.supply / p.demand);
-    const pct = Math.round(ratio * 100);
+    const pct = p.nets === 0 ? 0 : Math.round(ratio * 100);
     if (this.last.pwr !== pct) {
       this.last.pwr = pct;
       this.pwrFill.style.width = pct + '%';
@@ -620,13 +752,14 @@ export class Hud {
         + (p.unpowered ? ` · ${p.unpowered} off` : '')
         + (p.dry ? ` · ${p.dry} dry` : '');
     if (this.last.ptxt !== ptxt) { this.last.ptxt = ptxt; this.pwrText.textContent = ptxt; }
+    const ph = p.nets === 0 ? 'none' : `${pct}%`;
+    this.put(this.head.power, ph);
+    this.head.power.style.color = p.nets === 0 ? '#5d668a' : ratio >= 0.95 ? '#a7f070' : ratio >= 0.7 ? '#ffcd75' : '#ff5d4a';
 
     // On a narrow window the word is the first thing to go: the button is beside
     // the claim size and its own icon-free shape is unmistakable.
-    const tight = window.matchMedia('(max-width: 1140px)').matches;
     const cost = f.claim < WORLD ? expandCost(f.claim) : 0;
-    const etxt = cost ? (tight ? money(cost) : `EXPAND ${money(cost)}`)
-      : (tight ? 'MAX' : 'WHOLE WORLD');
+    const etxt = cost ? `EXPAND  ${money(cost)}` : 'WHOLE WORLD';
     if (this.last.exp !== etxt) { this.last.exp = etxt; this.expand.textContent = etxt; }
     this.expand.disabled = !cost || f.cash < cost;
     this.expand.classList.toggle('can', !!cost && f.cash >= cost);
@@ -706,7 +839,7 @@ export class Hud {
       head = 'UNPOWERED';
       body = `Every machine is running at ${Math.round(UNPOWERED * 100)}%. ` + (unlockedBy(f.done).has('gen')
         ? 'Build a Generator touching your line and feed it ore.'
-        : 'Feed a Research Lab, then research Generators in the TECH tab (Y).');
+        : 'Feed a Research Lab, then research Generators on the TECH card (Y).');
     } else if (d.dryGens) {
       head = 'OUT OF FUEL';
       target = first(m => m.kind === 'gen' && m.fuel <= 0 && !m.buf.length);
@@ -837,30 +970,23 @@ export function problems(f) {
  * itself and every button that does something to it.
  */
 export class Panel {
-  constructor(game, act) {
+  /**
+   * There are two of these. One fills the pop-up over whatever you clicked
+   * (`info`); the other fills whichever of the right-hand cards is open (`tech`,
+   * `orders`, `stats`). Each ignores a `show` for a tab it does not hold.
+   */
+  constructor(game, act, tabs = ['info'], tab = 'info') {
     this.g = game;
     this.act = act;                 // (name, payload) -> void, wired up in main.js
-    this.tab = 'info';
     this.key = '';
-    this.bodies = {
-      info: $('tab-info'), tech: $('tab-tech'),
-      orders: $('tab-orders'), stats: $('tab-stats'),
-    };
-    for (const b of document.querySelectorAll('.tabs button')) {
-      b.onclick = () => {
-        this.show(b.dataset.tab);
-        // The tech tree has its own page now; the tab opens it.
-        if (b.dataset.tab === 'tech') this.act('openTree');
-      };
-    }
+    this.bodies = {};
+    for (const t of tabs) this.bodies[t] = $('tab-' + t);
+    this.tab = tab;
   }
 
   show(tab) {
+    if (tab && !this.bodies[tab]) return;
     this.tab = tab;
-    for (const b of document.querySelectorAll('.tabs button')) {
-      b.classList.toggle('on', b.dataset.tab === tab);
-    }
-    for (const [k, node] of Object.entries(this.bodies)) node.hidden = k !== tab;
     this.key = '';
   }
 
@@ -875,9 +1001,12 @@ export class Panel {
       node.hidden = !n;
       if (n) node.textContent = n;
     };
-    badge($('order-badge'), g.contracts.length);
-    badge($('tech-badge'), TECH.filter(t =>
-      rankOf(f.done, t.id) < TECH_RANKS && techOpen(t, f.done) && f.science >= rankCost(t, f.done)).length);
+    if (this.bodies.tech) {
+      badge($('order-badge'), g.contracts.length);
+      badge($('tech-badge'), TECH.filter(t =>
+        rankOf(f.done, t.id) < TECH_RANKS && techOpen(t, f.done) && f.science >= rankCost(t, f.done)).length);
+    }
+    if (!this.tab) return;
 
     let key;
     if (this.tab === 'info') {
@@ -928,7 +1057,7 @@ export class Panel {
       if (S.tool) return this.toolInfo(host, g, S.tool);
       host.appendChild(el('div', 'blank',
         'Click a machine to see what it is doing.<br><br>' +
-        'Pick something from the left to build it. Drag with a Conveyor held to lay a whole run at once.<br><br>' +
+        'Pick something from the shop below to build it. Drag with a Conveyor held to lay a whole run at once.<br><br>' +
         '<b style="color:#8b96b8">V</b> shows the power grid. <b style="color:#8b96b8">?</b> shows every control.'));
       return;
     }
@@ -1089,7 +1218,7 @@ export class Panel {
     host.appendChild(head);
     host.appendChild(el('p', 'body', describe(tool)));
     host.appendChild(this.specRows(g, tool));
-    host.appendChild(el('div', 'blank',
+    host.appendChild(el('div', 'blank more-only',
       'Click the map to place it. Dropping it on a slot that is already taken puts '
       + 'whatever was there in the crate — nothing is destroyed, and putting it back '
       + 'costs nothing.<br><br><b style="color:#8b96b8">R</b> turns it, '
@@ -1219,14 +1348,15 @@ export class Panel {
       + `  ·  ${cx(cell)}, ${cy(cell)}`));
     head.appendChild(t);
     host.appendChild(head);
-    host.appendChild(el('p', 'body', describe(m)));
+    // In the pop-up, the description and the recipe picture are behind MORE.
+    host.appendChild(el('p', 'body more-only', describe(m)));
 
     // The three live blocks. Their contents are rewritten by `refresh`; the nodes
     // themselves, and everything below them, are not.
-    const diagramHost = el('div');
-    const insideHost = el('div');
+    const diagramHost = el('div', 'more-only');
+    const insideHost = el('div', 'more-only');
     const rowsHost = el('div');
-    host.appendChild(el('div', 'sub', 'WHAT IT DOES'));
+    host.appendChild(el('div', 'sub more-only', 'WHAT IT DOES'));
     host.appendChild(diagramHost);
     host.appendChild(insideHost);
     host.appendChild(rowsHost);
@@ -1972,6 +2102,7 @@ export function drawMinimap(canvas, g, view) {
     if (!seenXY(f, x, y)) continue;
     if (mt.kind === 'skitter') put(cellOf(x, y), 190, 255, 90);
     else if (mt.kind === 'beetle') put(cellOf(x, y), 255, 170, 60);
+    else if (mt.kind === 'brute') put(cellOf(x, y), 255, 40, 70);
     else put(cellOf(x, y), 255, 79, 122);
   }
   ctx.putImageData(img, 0, 0);
@@ -2107,7 +2238,7 @@ join up, and the corner will tell you which way the mouth faces.</p>
 
 <h3>Building over things</h3>
 <p>You can set a machine down on a slot that already has one on it. Whatever was
-there goes to the <b>crate</b> — a list at the bottom of the build bar of machines
+there goes to the <b>crate</b> — the CRATE tab in the shop, a list of machines
 you own but have not put anywhere. Nothing is destroyed, nothing is refunded at
 half price, and putting a crated machine back down costs nothing, because you
 already bought it. It keeps its level and its settings too.</p>

@@ -27,7 +27,7 @@ import {
   WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN,
   rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, NOISE_IDLE, noiseLevelMult, SWARM_THRESHOLD, SWARM_COST, PASSIVE,
   SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_POP_MIN, NEST_POP_MAX, CREATURES, SKITTER,
-  skitterShare, nestSpec,
+  skitterShare, nestSpec, bruteShare, price,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
   CHARGED, CHARGED_MULT, shotsOf, centreOf, TREMOR_COST, tremorCost, DIRS, BEACON_SIZE, BEACON_NOISE, BEACON_DRAW,
@@ -306,8 +306,12 @@ export function sendSwarm(f, size = null) {
   let nMite = total - nSkit;
   if (!mNest) { nSkit += nMite; nMite = 0; }
   if (!sNest) nSkit = 0;
+  // Loud enough, and some of the Mites are Brutes.
+  const nBrute = nMite > 0 ? Math.max(bruteShare(f.noise) > 0 ? 1 : 0, Math.round(nMite * bruteShare(f.noise))) : 0;
   let sent = 0;
-  for (let k = 0; k < nMite; k++) if (spawnMite(f, cx(mNest.cell) + 0.5, cy(mNest.cell) + 0.5)) sent++;
+  for (let k = 0; k < nMite; k++) {
+    if (spawnMite(f, cx(mNest.cell) + 0.5, cy(mNest.cell) + 0.5, null, k < nBrute ? 'brute' : 'mite')) sent++;
+  }
   for (let k = 0; k < nSkit; k++) if (spawnMite(f, cx(sNest.cell) + 0.5, cy(sNest.cell) + 0.5, null, 'skitter')) sent++;
   if (!sent && !mNest && !sNest) return 0;
   // While the Beacon is being fed, most of every swarm is for it.
@@ -315,7 +319,7 @@ export function sendSwarm(f, size = null) {
     for (const mt of f.mites.slice(-sent)) if (Math.random() < BEACON_DRAW) mt.beacon = 1;
   }
   f.waves++;
-  if (nMite > 0) f.fx.push({ k: 'swarm', n: nMite, cell: mNest.cell, kind: 'mite' });
+  if (nMite > 0) f.fx.push({ k: 'swarm', n: nMite, cell: mNest.cell, kind: 'mite', brutes: nBrute });
   if (nSkit > 0) f.fx.push({ k: 'swarm', n: nSkit, cell: sNest.cell, kind: 'skitter' });
   return sent;
 }
@@ -392,6 +396,9 @@ export function spawnMite(f, x, y, hp = null, kind = 'mite') {
 function pickTarget(f, mt) {
   let best = -1, score = Infinity;
   const beltsOnly = mt.kind === 'skitter';
+  // A Brute goes for what is worth most, not what is nearest: dearer machines look
+  // closer to it, and it ignores belts while there is anything better.
+  const brute = mt.kind === 'brute';
   // A Beetle wants your power: Generators first, anything at all if there are none.
   const gensOnly = mt.kind === 'beetle' && f.cells.some(i => f.grid[i]?.kind === 'gen' && !broken(f.grid[i]));
   for (const i of f.cells) {
@@ -402,7 +409,7 @@ function pickTarget(f, mt) {
     if (gensOnly && m.kind !== 'gen') continue;
     const [mx, my] = centreOf(m, i);
     const d = Math.hypot(mx - mt.x, my - mt.y);
-    const s = PLUMBING.has(m.kind) ? d * 0.7 : d;
+    const s = brute ? (PLUMBING.has(m.kind) ? d * 50 : d / (1 + price(m) / 150)) : PLUMBING.has(m.kind) ? d * 0.7 : d;
     if (s < score) { score = s; best = i; }
   }
   return best;

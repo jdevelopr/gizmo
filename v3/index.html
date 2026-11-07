@@ -36,39 +36,27 @@
 </div>
 
 <!-- -------------------------------------------------------------- game --- -->
+<!--
+  The game screen: the map fills the window, and everything else floats over it.
+  A slim strip of controls along the top; meter cards down the left; Tech, Orders
+  and Stats (and a story contract) down the right; the shop along the bottom; and a
+  pop-up over whatever you click.
+-->
 <div id="app" hidden>
-
-  <!-- left: everything you can build -->
-  <aside id="bar">
-    <div class="bar-head">BUILD</div>
-    <div id="palette"></div>
-    <div id="crate-box" hidden>
-      <div class="crate-head">CRATE <span id="crate-n"></span></div>
-      <div id="crate"></div>
-    </div>
-    <div class="bar-foot">
-      <button id="btn-help" class="mini">CONTROLS  ?</button>
-      <button id="btn-menu" class="mini">MENU  ESC</button>
-    </div>
-  </aside>
-
-  <!-- middle: the world -->
   <main id="stage">
     <canvas id="px"></canvas>
     <canvas id="tx" class="text-layer"></canvas>
 
-    <div id="hud">
-      <div class="stat" id="s-cash"><b>$450</b><i>+0.0/s</i></div>
-      <div class="stat" id="s-sci"><b>0</b><i>science</i></div>
-      <div class="stat wide" id="s-power">
-        <div class="pwr-bar"><span id="pwr-fill"></span></div>
-        <i id="pwr-text">no grid</i>
-      </div>
-      <div class="stat" id="s-noise" title="How loud your factory is. The louder it is, the sooner the next swarm comes."><b>0</b><i>noise</i></div>
-      <button id="btn-noise" class="hud-btn" title="Show where your factory can be heard  (L)">NOISE MAP</button>
-      <div class="stat" id="s-claim"><b>10 x 10</b><i>claim</i></div>
-      <button id="btn-expand" class="hud-btn">EXPAND $130</button>
+    <!-- top: just the controls -->
+    <div id="topbar">
+      <span class="logo">GIZMO <b>3</b></span>
       <div class="spacer"></div>
+      <div class="speeds">
+        <button data-speed="0" title="Pause (Space)">||</button>
+        <button data-speed="1" class="on">1x</button>
+        <button data-speed="2">2x</button>
+        <button data-speed="3">3x</button>
+      </div>
       <div class="zooms">
         <button id="z-out" title="Zoom out  (-)">&#8211;</button>
         <span id="z-label">100%</span>
@@ -81,29 +69,72 @@
           <path class="cross" d="M11 5l1-1 4 4-1 1zM11 11l4-4 1 1-4 4z" fill="currentColor"/>
         </svg>
       </button>
-      <div class="speeds">
-        <button data-speed="0" title="Pause (Space)">||</button>
-        <button data-speed="1" class="on">1x</button>
-        <button data-speed="2">2x</button>
-        <button data-speed="3">3x</button>
+      <button id="btn-help" title="Controls (?)">?</button>
+      <button id="btn-menu" title="Menu (Esc)">MENU</button>
+    </div>
+
+    <!-- left: the meters, each a card that folds -->
+    <div id="leftcards" class="cards">
+      <div class="fcard" data-card="money">
+        <div class="ch"><span class="lbl">MONEY</span><span class="val" id="h-money"></span><span class="car"></span></div>
+        <div class="cb">
+          <div class="stat" id="s-cash"><b>$0</b><i>+0.0/s</i></div>
+          <canvas id="spark" class="spark" width="200" height="32"></canvas>
+          <div class="crow"><span>Earned</span><b id="m-earned"></b></div>
+          <div class="crow"><span>Spent</span><b id="m-spent"></b></div>
+        </div>
+      </div>
+      <div class="fcard" data-card="science">
+        <div class="ch"><span class="lbl">SCIENCE</span><span class="val" id="h-sci"></span><span class="car"></span></div>
+        <div class="cb">
+          <div class="stat" id="s-sci"><b>0</b><i>science</i></div>
+          <div class="crow"><span>Studied in all</span><b id="m-studied"></b></div>
+        </div>
+      </div>
+      <div class="fcard" data-card="power">
+        <div class="ch"><span class="lbl">POWER</span><span class="val" id="h-power"></span><span class="car"></span></div>
+        <div class="cb">
+          <div id="s-power"><div class="pwr-bar"><span id="pwr-fill"></span></div><i id="pwr-text">no grid</i></div>
+          <button id="btn-power" class="cbtn" title="Show the power grid  (V)">POWER MAP <span class="k">V</span></button>
+        </div>
+      </div>
+      <div class="fcard" data-card="noise">
+        <div class="ch"><span class="lbl">NOISE</span><span class="val" id="h-noise"></span><span class="car"></span></div>
+        <div class="cb">
+          <div class="stat" id="s-noise" title="How loud your factory is."><b>0</b><i>noise</i></div>
+          <div class="nbar"><i id="noise-fill"></i><span class="tick" id="tick-swarm"></span><span class="tick" id="tick-brute"></span></div>
+          <div class="nlegend"><span>quiet</span><span>5 swarms</span><span>12 brutes</span></div>
+          <button id="btn-noise" class="cbtn" title="Show where your factory can be heard  (L)">NOISE MAP <span class="k">L</span></button>
+        </div>
+      </div>
+      <div class="fcard" data-card="land">
+        <div class="ch"><span class="lbl">LAND</span><span class="val" id="h-land"></span><span class="car"></span></div>
+        <div class="cb">
+          <div class="stat" id="s-claim"><b>3 x 3</b><i>claim</i></div>
+          <button id="btn-expand" class="cbtn hud-btn">EXPAND $130</button>
+        </div>
       </div>
     </div>
 
-    <div id="toasts"></div>
-
-    <div id="minimap">
-      <canvas id="mini" width="80" height="80"></canvas>
+    <!-- right: the story contract, then Tech, Orders and Stats — one open at a time -->
+    <div id="rightcards" class="cards">
+      <div id="goals" hidden></div>
+      <div class="fcard side" data-side="tech">
+        <div class="ch"><span class="lbl">TECH</span><span class="val"><em id="tech-badge" hidden></em></span><span class="car"></span></div>
+        <div class="cb tab-body" id="tab-tech"></div>
+      </div>
+      <div class="fcard side" data-side="orders">
+        <div class="ch"><span class="lbl">ORDERS</span><span class="val"><em id="order-badge" hidden></em></span><span class="car"></span></div>
+        <div class="cb tab-body" id="tab-orders"></div>
+      </div>
+      <div class="fcard side" data-side="stats">
+        <div class="ch"><span class="lbl">STATS</span><span class="val dimval">income · science · noise</span><span class="car"></span></div>
+        <div class="cb tab-body" id="tab-stats"></div>
+      </div>
     </div>
 
-    <div id="hint"></div>
+    <!-- top centre: the one warning that matters, Gus, and the toasts -->
     <div id="alert" hidden></div>
-
-    <!-- Story mode: this world's contract, always in view. -->
-    <div id="goals" hidden></div>
-
-    <!-- The first-visit walkthrough. It sits where the alert does and takes its
-         place while it is running, because the alert would only be saying a
-         terser version of the same thing. -->
     <div id="tutorial" hidden>
       <div class="tut-face">
         <canvas id="gus" width="32" height="34"></canvas>
@@ -120,21 +151,31 @@
         <div id="tut-dots" class="tut-dots"></div>
       </div>
     </div>
-  </main>
+    <div id="toasts"></div>
 
-  <!-- right: what you are looking at, and what to spend on -->
-  <aside id="panel">
-    <div class="tabs">
-      <button data-tab="info" class="on">INFO</button>
-      <button data-tab="tech">TECH<em id="tech-badge" hidden></em></button>
-      <button data-tab="orders">ORDERS<em id="order-badge" hidden></em></button>
-      <button data-tab="stats">STATS</button>
+    <!-- the pop-up over whatever is selected -->
+    <div id="pop" class="compact" hidden>
+      <div id="tab-info"></div>
+      <button id="pop-more" class="pop-more">MORE &#9662;</button>
     </div>
-    <div id="tab-info" class="tab-body"></div>
-    <div id="tab-tech" class="tab-body" hidden></div>
-    <div id="tab-orders" class="tab-body" hidden></div>
-    <div id="tab-stats" class="tab-body" hidden></div>
-  </aside>
+
+    <div id="minimap">
+      <canvas id="mini" width="80" height="80"></canvas>
+    </div>
+
+    <!-- bottom: the shop -->
+    <div id="shop">
+      <div id="shop-tabs"></div>
+      <div id="shop-row">
+        <div id="palette"></div>
+        <div id="crate-box" hidden>
+          <div class="crate-head">CRATE <span id="crate-n"></span></div>
+          <div id="crate"></div>
+        </div>
+        <div id="hint"></div>
+      </div>
+    </div>
+  </main>
 </div>
 
 <!-- ------------------------------------------------------------ how to --- -->

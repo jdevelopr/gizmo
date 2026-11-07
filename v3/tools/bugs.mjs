@@ -421,5 +421,33 @@ console.log('\nA quiet factory sends them home');
   ok(B.swarmEta(q) === Infinity, 'with no swarm due at all while it stays quiet');
 }
 
+console.log('\nBrute Mites');
+{
+  const M = await import('../js/machines.js');
+  const loud = noise => {
+    const f = createFactory({ world: generateWorld(1234), cash: 1e6 });
+    f.claim = 21; f.mapRev++; rebuild(f);
+    f.noise = noise; f.hum = noise;
+    sendSwarm(f, 12);
+    return f.mites.filter(m => m.kind === 'brute').length;
+  };
+  ok(loud(8) === 0, 'a factory under 12 noise sends no Brutes');
+  const b20 = loud(20), b40 = loud(40);
+  ok(b20 > 0 && b40 > b20, `over it, some of every Mite swarm are Brutes, more the louder it is (${b20}, then ${b40})`);
+  ok(M.BRUTE.hp === 5 * M.MITE.hp && M.BRUTE.bite > M.MITE.bite && M.BRUTE.speed < M.MITE.speed, 'a Brute has 5x the health, a harder bite and a slower walk');
+  const f = bench();
+  build(f, { kind: 'pipe' }, cellOf(22, 20), { free: true, dir: 0 });
+  build(f, { kind: 'asm', mut: 0 }, cellOf(30, 20), { free: true, dir: 0 });
+  const br = spawnMite(f, 20.5, 20.5, null, 'brute');
+  run(f, 1);
+  ok(br.tgt === cellOf(30, 20), 'it walks past a belt to get at an Assembler');
+  f.hum = 6;                         // over 5 but under 12: it stays and fights
+  run(f, 2);
+  ok(f.mites.includes(br), 'it stays while the factory is over 5');
+  f.hum = 0;
+  run(f, 60);
+  ok(!f.mites.includes(br), 'and goes home with the rest once it drops under 5');
+}
+
 console.log(fails ? `\n${fails} FAILED\n` : '\nMites chew, Zappers zap, and everything can be put right.\n');
 process.exit(fails ? 1 : 0);

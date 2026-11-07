@@ -84,6 +84,14 @@ export const TIPS = [
     fx: e => e.k === 'swarm' && e.kind !== 'skitter',
   },
   {
+    id: 'brute',
+    title: 'Brute Mites!',
+    body: 'Whoa, your factory\'s so loud it woke the big ones! Brute Mites take five times the zapping, bite '
+      + 'hard, and go straight for your most valuable machines. Keep the noise under <b>12</b> and they stay '
+      + 'home — or line your Assemblers and Generators with Zappers.',
+    fx: e => e.k === 'swarm' && e.brutes > 0,
+  },
+  {
     id: 'skitter',
     title: 'Skitters — fast little things!',
     body: 'Skitters are quick and fragile and they go straight for your <b>belts</b>. One zap pops one. '

@@ -35,7 +35,7 @@ const SAVE_KEY = 'gizmo3.save.v3';
 /** The story campaign is saved on its own, so it and an endless world can both be in progress. */
 const STORY_KEY = 'gizmo3.story.v1';
 /** Creature kinds by the number a save stores them as. Append only. */
-const BUG_KINDS = ['mite', 'skitter', 'beetle'];
+const BUG_KINDS = ['mite', 'skitter', 'beetle', 'brute'];
 /** Set once the first game has been walked through, or the walk was skipped. */
 const TAUGHT_KEY = 'gizmo3.taught.v1';
 const STEP = 1 / 30;              // the simulation's fixed tick

@@ -534,7 +534,21 @@ export const BEETLE = { hp: 60, speed: 0.35, bite: 6 };
 /** Drill-seconds of tremor that wake one Beetle. */
 export const TREMOR_COST = 200;
 
-export const CREATURES = { mite: MITE, skitter: SKITTER, beetle: BEETLE };
+/**
+ * Brute Mites: the fourth creature, and the reason not to let a factory get too
+ * loud. A big armoured Mite with five times the health, a slow walk and a bite
+ * that wrecks machines, and it goes for your most valuable machines rather than
+ * the nearest belt. They only come once the factory's noise reaches
+ * BRUTE_THRESHOLD, mixed into ordinary Mite swarms — a larger share the louder
+ * you are.
+ */
+export const BRUTE = { hp: 60, speed: 0.5, bite: 5 };
+export const BRUTE_THRESHOLD = 12;
+/** What share of a Mite swarm are Brutes, at this much noise. */
+export const bruteShare = noise =>
+  noise < BRUTE_THRESHOLD ? 0 : Math.min(0.6, 0.15 + (noise - BRUTE_THRESHOLD) * 0.025);
+
+export const CREATURES = { mite: MITE, skitter: SKITTER, beetle: BEETLE, brute: BRUTE };
 
 /** From which swarm (counting from 0) Skitters start joining in, and how many. */
 export const SKITTER_FROM = 4;

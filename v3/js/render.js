@@ -807,6 +807,7 @@ function drawLongBody(ctx, m, frame, W, H) {
 function drawMite(ctx, mt, sx, sy, z) {
   if (mt.kind === 'skitter') { drawSkitter(ctx, mt, sx, sy, z); return; }
   if (mt.kind === 'beetle') { drawBeetle(ctx, mt, sx, sy, z); return; }
+  if (mt.kind === 'brute') { drawBrute(ctx, mt, sx, sy, z); return; }
   const s = z / CELL;
   if (z < 16) {
     const w = Math.max(2, Math.round(z / 6));
@@ -891,6 +892,60 @@ function drawSkitter(ctx, mt, sx, sy, z) {
  * A Beetle: big, round and bronze, a split shell with a sheen on it, a horn out
  * front and six slow legs. Nearly twice a Mite's size, so it reads as a threat.
  */
+/**
+ * A Brute Mite: a Mite half again as long, in dark red armour plates with a ridge
+ * of spikes down its back, heavy legs, and big mandibles that glow while it chews.
+ */
+function drawBrute(ctx, mt, sx, sy, z) {
+  const s = z / CELL;
+  if (z < 16) {
+    const w = Math.max(3, Math.round(z / 4));
+    px(ctx, sx - w / 2, sy - w / 2, w, w, '#c0203c');
+    return;
+  }
+  const chew = mt.st === 'chew';
+  const jig = chew ? Math.round(Math.sin(mt.ph * 2) * s) : 0;
+  const leg = Math.floor(mt.ph * 0.7) % 2;
+  const horiz = mt.face === 0 || mt.face === 2;
+  const L = 16 * s, W = 11 * s;
+  const bw = horiz ? L : W, bh = horiz ? W : L;
+  const x0 = Math.round(sx - bw / 2 + jig), y0 = Math.round(sy - bh / 2);
+  const p = Math.max(1, Math.round(s));
+  // six heavy legs
+  for (let k = 0; k < 3; k++) {
+    const o = (k * 5 + 2) * s + ((k + leg) % 2 ? s : 0);
+    if (horiz) { px(ctx, x0 + o, y0 - 3 * s, 2 * p, 3 * s, '#2a0610'); px(ctx, x0 + o, y0 + bh, 2 * p, 3 * s, '#2a0610'); }
+    else { px(ctx, x0 - 3 * s, y0 + o, 3 * s, 2 * p, '#2a0610'); px(ctx, x0 + bw, y0 + o, 3 * s, 2 * p, '#2a0610'); }
+  }
+  // the body, in three armour plates
+  px(ctx, x0, y0, bw, bh, '#2a0610');
+  px(ctx, x0 + p, y0 + p, bw - 2 * p, bh - 2 * p, '#8a1428');
+  for (let k = 1; k < 3; k++) {
+    if (horiz) px(ctx, x0 + (bw * k) / 3, y0 + p, p, bh - 2 * p, '#4a0a16');
+    else px(ctx, x0 + p, y0 + (bh * k) / 3, bw - 2 * p, p, '#4a0a16');
+  }
+  px(ctx, x0 + 2 * p, y0 + 2 * p, 3 * s, 2 * s, '#e0506a');
+  // the ridge of spikes down its back
+  for (let k = 0; k < 3; k++) {
+    const t = (k + 0.5) / 3;
+    const kx = horiz ? x0 + bw * t : sx, ky = horiz ? sy : y0 + bh * t;
+    px(ctx, kx - p, ky - p, 2 * p, 2 * p, '#ffb0c0');
+  }
+  // the head and mandibles, toward where it is going
+  const [fx, fy] = [[1, 0], [0, 1], [-1, 0], [0, -1]][mt.face | 0];
+  const hx = sx + fx * (L / 2 + 2 * s), hy = sy + fy * (L / 2 + 2 * s);
+  px(ctx, hx - 3 * s, hy - 3 * s, 6 * s, 6 * s, '#2a0610');
+  px(ctx, hx - 2 * s, hy - 2 * s, 4 * s, 4 * s, '#b01c38');
+  const jaw = chew ? '#ffd0e0' : '#ff8aa0';
+  if (horiz) { px(ctx, hx + fx * 3 * s - s, hy - 4 * s, 2 * s, 2 * s, jaw); px(ctx, hx + fx * 3 * s - s, hy + 2 * s, 2 * s, 2 * s, jaw); }
+  else { px(ctx, hx - 4 * s, hy + fy * 3 * s - s, 2 * s, 2 * s, jaw); px(ctx, hx + 2 * s, hy + fy * 3 * s - s, 2 * s, 2 * s, jaw); }
+  if (mt.hp < mt.max) {
+    const w = 16 * s;
+    px(ctx, sx - w / 2, sy - 11 * s, w, Math.max(1, 1.5 * s), '#2a0610');
+    px(ctx, sx - w / 2, sy - 11 * s, w * Math.max(0, mt.hp / mt.max), Math.max(1, 1.5 * s), '#ff8aa0');
+  }
+}
+
 function drawBeetle(ctx, mt, sx, sy, z) {
   const s = z / CELL;
   if (z < 16) {

@@ -47,6 +47,7 @@ let crate = null;
 let tutorial = null;
 let hud = null;
 let panel = null;
+let side = null;     // the right-hand cards: Tech, Orders, Stats
 let input = null;
 let tree = null;
 const S = makeState();
@@ -91,12 +92,16 @@ function boot(game) {
     tutorial = new Tutorial(() => act('endTutorial'), () => { tips.dismiss(); sfx('click'); });
     hud = new Hud();
     panel = new Panel(g, act);
+    side = new Panel(g, act, ['tech', 'orders', 'stats'], null);
+    wireCards();
     input = new Input(view, S, act, () => g);
     tree = new TechTree(act);
     wireChrome();
     window.addEventListener('resize', () => view.resize());
   }
   panel.g = g;
+  side.g = g;
+  side.key = '';
   tips.clear();
   view.resize();
   // Every game opens at the same zoom, not at whatever the last one was left on:
@@ -120,6 +125,13 @@ function boot(game) {
 function wireChrome() {
   $('btn-expand').onclick = () => act('expand');
   $('btn-noise').onclick = () => act('noiseMap');
+  $('btn-power').onclick = () => { S.showPower = !S.showPower; view.showPower = S.showPower; sfx('click'); };
+  $('pop-more').onclick = () => {
+    const pop = $('pop');
+    pop.classList.toggle('compact');
+    try { localStorage.setItem(POP_KEY, pop.classList.contains('compact') ? '0' : '1'); } catch { /* fine */ }
+    paintMore();
+  };
   $('btn-help').onclick = () => act('help');
   $('btn-menu').onclick = () => act('menu');
   $('m-resume').onclick = () => { $('menu').hidden = true; if (!storyCardUp()) resume(); };
@@ -203,6 +215,115 @@ function resume() {
 
 /* ------------------------------------------------------------------- loop --- */
 
+/* ---------------------------------------------------------------- cards --- */
+
+const CARDS_KEY = 'gizmo3.cards.v1';
+const POP_KEY = 'gizmo3.popmore.v1';
+
+/**
+ * The floating cards. Left-hand ones fold independently; of the right-hand ones
+ * (Tech, Orders, Stats) only one is open at a time. Which are open is remembered.
+ */
+function wireCards() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(CARDS_KEY) || '{}') || {}; } catch { saved = {}; }
+  const store = () => {
+    const out = { side: side.tab || '' };
+    for (const c of document.querySelectorAll('.fcard[data-card]')) out[c.dataset.card] = !c.classList.contains('shut');
+    try { localStorage.setItem(CARDS_KEY, JSON.stringify(out)); } catch { /* fine */ }
+  };
+  for (const c of document.querySelectorAll('.fcard[data-card]')) {
+    // Money and Power open to start with; the rest fold until you want them.
+    const open = saved[c.dataset.card] ?? (c.dataset.card === 'money' || c.dataset.card === 'power' || c.dataset.card === 'noise');
+    c.classList.toggle('shut', !open);
+    c.querySelector('.ch').onclick = () => { c.classList.toggle('shut'); hud.last.spark = ''; store(); sfx('click'); };
+  }
+  const sides = [...document.querySelectorAll('.fcard[data-side]')];
+  const openSide = name => {
+    for (const c of sides) c.classList.toggle('shut', c.dataset.side !== name);
+    side.show(name || null);
+    if (!name) side.tab = null;
+  };
+  for (const c of sides) {
+    c.querySelector('.ch').onclick = () => {
+      openSide(side.tab === c.dataset.side ? null : c.dataset.side);
+      store();
+      sfx('click');
+    };
+  }
+  openSide(saved.side === undefined ? 'orders' : saved.side || null);
+  try { if (localStorage.getItem(POP_KEY) === '1') $('pop').classList.remove('compact'); } catch { /* fine */ }
+  paintMore();
+}
+
+function paintMore() {
+  const pop = $('pop');
+  $('pop-more').innerHTML = pop.classList.contains('compact') ? 'MORE &#9662;' : 'LESS &#9652;';
+}
+
+/** The world box, in slots, that the pop-up should point at — or null to dock it. */
+function popAnchor() {
+  const f = g.f;
+  const cells = [];
+  if (S.bp) return null;
+  if (S.area?.length || S.rubble?.length) cells.push(...(S.area || []), ...(S.rubble || []));
+  else if (S.selected >= 0) {
+    const m = f.grid[S.selected];
+    if (m?.cells) cells.push(...m.cells); else cells.push(S.selected);
+  } else return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const i of cells) {
+    const x = cx(i), y = cy(i);
+    if (x < x0) x0 = x; if (y < y0) y0 = y;
+    if (x > x1) x1 = x; if (y > y1) y1 = y;
+  }
+  return { x0, y0, x1: x1 + 1, y1: y1 + 1 };
+}
+
+/** Put the pop-up over what is selected, or dock it above the shop for a tool. */
+function placePop() {
+  const pop = $('pop');
+  const want = S.bp || S.area?.length || S.rubble?.length || S.selected >= 0 || S.tool;
+  if (!want) { if (!pop.hidden) pop.hidden = true; return; }
+  if (pop.hidden) pop.hidden = false;
+  pop.classList.toggle('nomore', !$('tab-info').querySelector('.more-only'));
+  const W = view.w, Hh = view.h;
+  const top = 40 + 8, bottom = Hh - $('shop').offsetHeight - 8;
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const a = popAnchor();
+  let x, y, cls, ax = '50%';
+  if (!a) {
+    // A machine in your hand or a blueprint: docked bottom-left, over the shop.
+    x = 12 + 220 + 12;
+    y = bottom - ph - 4;
+    cls = 'docked';
+  } else {
+    const [sx0, sy0] = view.toScreen(a.x0, a.y0);
+    const [sx1, sy1] = view.toScreen(a.x1, a.y1);
+    const mid = (sx0 + sx1) / 2;
+    x = Math.round(mid - pw / 2);
+    if (sy0 - ph - 14 >= top) { y = sy0 - ph - 14; cls = 'above'; }
+    else if (sy1 + 14 + ph <= bottom) { y = sy1 + 14; cls = 'below'; }
+    else {
+      // No room above or below: stand beside it instead, on whichever side fits.
+      y = Math.max(top, Math.min(bottom - ph, (sy0 + sy1) / 2 - ph / 2));
+      const lw = $('leftcards').offsetWidth + 24, rw = $('rightcards').offsetWidth + 24;
+      x = (W - rw) - sx1 >= sx0 - lw ? sx1 + 14 : sx0 - 14 - pw;
+      cls = 'docked';
+    }
+    x = Math.max(8, Math.min(W - pw - 8, x));
+    ax = Math.max(14, Math.min(pw - 14, mid - x)) + 'px';
+  }
+  y = Math.round(Math.max(top, y));
+  const t = `translate(${Math.round(x)}px, ${y}px)`;
+  if (pop.style.transform !== t) pop.style.transform = t;
+  if (pop.style.getPropertyValue('--ax') !== ax) pop.style.setProperty('--ax', ax);
+  if (!pop.classList.contains(cls)) {
+    pop.classList.remove('above', 'below', 'docked');
+    pop.classList.add(cls);
+  }
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
   // A frame timestamp can be fractionally older than the performance.now() that
@@ -244,7 +365,11 @@ function frame(now) {
   updateZoom();
   palette.price(g);
   crate.update(g, S);
+  palette.setCrate(g.f.crate.length);
   panel.update(g, S);
+  side.update(g, S);
+  placePop();
+  $('btn-power').classList.toggle('on', !!S.showPower);
   if (tree?.open) tree.update(g);
   updateHint();
   updateGoals();
@@ -297,8 +422,8 @@ function playFx(fx) {
       case 'kill':
         if (seen(e.x, e.y)) {
           sfx('kill');
-          const col = { skitter: ['#9dff3c', '#e8ffb0'], beetle: ['#c97a34', '#ffd28a'] }[e.kind] || ['#ff6f9a', '#ffd0e0'];
-          view.burst(e.x, e.y, col[0], e.kind === 'beetle' ? 18 : 10, 3, 0.5, 3);
+          const col = { skitter: ['#9dff3c', '#e8ffb0'], beetle: ['#c97a34', '#ffd28a'], brute: ['#c0203c', '#ffb0c0'] }[e.kind] || ['#ff6f9a', '#ffd0e0'];
+          view.burst(e.x, e.y, col[0], e.kind === 'beetle' || e.kind === 'brute' ? 18 : 10, 3, 0.5, 3);
           view.burst(e.x, e.y, col[1], 4, 1.5, 0.35, 2);
           if (e.kind === 'beetle') view.shake(2.5, 0.2);
         }
@@ -400,7 +525,7 @@ function playFx(fx) {
     else if (e.k === 'swarm') {
       toast(g, e.kind === 'skitter'
         ? `${e.n} Skitter${e.n > 1 ? 's are' : ' is'} racing in from the ${compass(e.cell)} — they eat belts`
-        : `A swarm of ${e.n} mites is coming from the ${compass(e.cell)}`, e.kind === 'skitter' ? '#9dff3c' : '#ff6f9a');
+        : `A swarm of ${e.n} mites is coming from the ${compass(e.cell)}${e.brutes ? ` — ${e.brutes} of them Brutes` : ''}`, e.kind === 'skitter' ? '#9dff3c' : '#ff6f9a');
     }
     else if (e.k === 'broke') {
       // Throttled: a swarm loose on a belt run breaks things faster than anybody
@@ -707,7 +832,7 @@ function act(name, payload, extra) {
       // A machine that still needs research cannot be picked up.
       if (!payload.crate && !unlockedBy(f.done).has(unlockKey(payload))) {
         const t = unlockerOf(unlockKey(payload));
-        toast(g, t ? `Research ${t.name} first — it is in the TECH tab` : 'Not unlocked yet', '#ff8a6a');
+        toast(g, t ? `Research ${t.name} first — it is on the TECH card` : 'Not unlocked yet', '#ff8a6a');
         sfx('error');
         return;
       }

@@ -294,6 +294,29 @@ Once it has run once, this browser never sees it again unless it is asked for. E
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
 
+### The screen is the map, and everything floats over it
+
+The old layout was three columns — a build list on the left, the map, and a panel on
+the right — with a crowded HUD bar over the map. Now the map fills the window:
+
+- **Top strip:** just the controls — speed, zoom, sound, help and menu.
+- **Left cards:** Money (with an income graph), Science, Power (with POWER MAP),
+  Noise (a bar marked at 5 for swarms and 12 for Brutes, plus NOISE MAP) and Land
+  (with EXPAND). Each card's header shows its one number, so a folded card still
+  reads. Click a header to fold or open it.
+- **Right cards:** Tech, Orders and Stats, one open at a time, under the story
+  contract when there is one.
+- **The shop** runs along the bottom: category tabs, one row of machines, and a
+  CRATE tab when the crate has anything in it. Picking a machine by its hotkey opens
+  its tab. The hint for whatever is in your hand sits at the right end of the row.
+- **The pop-up:** clicking a machine, a slot or a box selection opens a card over it
+  (or beside it when there is no room) instead of the old INFO tab. It starts
+  compact — name, numbers and buttons — and MORE adds the description and recipe
+  picture. A machine in your hand gets the same card, docked above the shop.
+
+The warning box, Gus and the toasts sit at the top centre. Which cards are open,
+and whether the pop-up is on MORE, is remembered in this browser.
+
 ### Noise
 
 Every machine makes noise now: belts and Pylons barely any, Extractors, Drills and
@@ -315,6 +338,18 @@ heard on, by how loud it is there, outlines the whole area, and rings any nest y
 can see inside it. Each machine is heard `NOISE_BASE` 4 + `NOISE_REACH` 6 slots per
 point of noise, up to 16. The map is for planning; swarms still answer to the total.
 Gus mentions it the first time you get close to the threshold.
+
+### Brute Mites
+
+The fourth creature. A big Mite in dark red armour with a ridge of spikes: five
+times a Mite's health (60), a harder bite, a slower walk, and it goes for your
+most valuable machines — Assemblers, Generators, Labs — walking straight past
+belts to get there. Brutes only come once the factory's noise reaches **12**
+(`BRUTE_THRESHOLD`): from then on part of every Mite swarm is Brutes, 15% at 12
+rising to 60% as the noise climbs (`bruteShare`). Like the rest, they only go home
+when the noise drops under 5. The NOISE readout shows "/ 12" once you are over 5,
+and turns a hot red with "brutes" underneath over 12. Gus warns you the first time
+they come.
 
 ### Repairs
 

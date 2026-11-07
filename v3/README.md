@@ -642,9 +642,9 @@ inherited unchanged, and on a map this size it is the mistake you will make most
 
 ### Ore is sparse
 
-A world holds 14 scattered Slag patches and 5 Sap patches (plus the opening blob
-and one guaranteed Sap patch), each 5–14 slots, with at least 7 slots between two
-patches of the same ore. A patch is something you go out to find and run a belt
+A world holds 9 scattered Slag patches and 3 Sap patches (plus the opening blob
+and one guaranteed Sap patch). Slag patches are 5–11 slots and Sap 4–8, with at
+least 9 slots between two patches of the same ore. A patch is something you go out to find and run a belt
 home from, not a carpet you can build anywhere on. The opening 3x3 is still all
 Slag, and the opening blob grows to 14 slots.
 

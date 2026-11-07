@@ -35,8 +35,8 @@ const SLAG = 0, SAP = 8;
 /** How many patches of each ore the world holds. */
 // Kept sparse on purpose: ore is something you go out and find, and a patch is
 // worth a long belt home, rather than a carpet you can build anywhere on.
-const SLAG_PATCHES = 14;
-const SAP_PATCHES = 5;
+const SLAG_PATCHES = 9;
+const SAP_PATCHES = 3;
 
 /** Richness at the middle of the map and out at the rim. */
 const RICH_MIN = 0.8;
@@ -58,7 +58,7 @@ const RICH_MAX = 2.6;
  * this game asks anybody to build.
  */
 const ORE_GAP = 10;         // between patches of different ore
-const SAME_GAP = 7;         // between patches of the same ore
+const SAME_GAP = 9;         // between patches of the same ore
 const SAP_MIN_RING = 12;    // no Sap closer than this to the centre
 
 /**
@@ -563,7 +563,7 @@ function scatterPatches(rnd, patch, rich, patches, terrain, ty, count) {
     }
     if (seedCell < 0) continue;
     const ring = Math.max(Math.abs(cx(seedCell) - c), Math.abs(cy(seedCell) - c)) / c;
-    const size = Math.round((ty === SLAG ? 6 : 5) + rnd() * (ty === SLAG ? 8 : 6));
+    const size = Math.round((ty === SLAG ? 5 : 4) + rnd() * (ty === SLAG ? 6 : 4));
     patches.push(growPatch(rnd, patch, rich, ty, seedCell, size, richAt(ring), terrain));
   }
 }

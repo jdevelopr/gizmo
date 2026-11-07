@@ -36,13 +36,13 @@ for (let seed = 1; seed <= N; seed++) {
     note(seed, `only ${s.slagIn} of the ${CLAIM_START * CLAIM_START} opening slots are Slag`);
   }
   if (s.sapIn) note(seed, `${s.sapIn} Sap slots inside the opening claim — Resin is meant to be a journey`);
-  if (s.sapPatches < 4) note(seed, `only ${s.sapPatches} Sap patches in the whole world`);
-  if (s.slagPatches < 8) note(seed, `only ${s.slagPatches} Slag patches in the whole world`);
+  if (s.sapPatches < 3) note(seed, `only ${s.sapPatches} Sap patches in the whole world`);
+  if (s.slagPatches < 6) note(seed, `only ${s.slagPatches} Slag patches in the whole world`);
   if (s.nearestSap < OPENING_RADIUS + 2) note(seed, `Sap only ${s.nearestSap} rings out`);
   if (s.closestDifferentOres < ORE_GAP - 3) {
     note(seed, `two different ores only ${s.closestDifferentOres} slots apart`);
   }
-  if (s.patches < 15) note(seed, `only ${s.patches} patches in the whole world`);
+  if (s.patches < 10) note(seed, `only ${s.patches} patches in the whole world`);
   if (s.bestRich < 1.6) note(seed, `the richest patch anywhere is only ${s.bestRich.toFixed(2)}x`);
 
   // Bedrock never inside the opening claim: the first ten minutes is a factory,

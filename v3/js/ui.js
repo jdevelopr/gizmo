@@ -667,16 +667,24 @@ export class Hud {
     const pts = h.slice(-60);
     const hi = Math.max(1, ...pts);
     const lo = Math.min(0, ...pts);
-    const w = c.width / (pts.length - 1);
-    x.fillStyle = '#a7f070';
-    for (let i = 0; i < pts.length; i++) {
-      const y = Math.round((c.height - 4) * (1 - (pts[i] - lo) / (hi - lo || 1))) + 2;
-      x.fillRect(Math.round(i * w) - 1, y, 2, 2);
-      if (i) {
-        const py = Math.round((c.height - 4) * (1 - (pts[i - 1] - lo) / (hi - lo || 1))) + 2;
-        const top = Math.min(y, py), bot = Math.max(y, py);
-        if (bot - top > 1) x.fillRect(Math.round(i * w) - 1, top, 2, bot - top);
-      }
+    const W = c.width, Hc = c.height;
+    // One unbroken line: every pixel column gets a height interpolated between the
+    // two samples either side of it, and each column joins up with the last.
+    const yAt = px => {
+      const t = (px / (W - 1)) * (pts.length - 1);
+      const k = Math.min(pts.length - 2, Math.floor(t));
+      const v = pts[k] + (pts[k + 1] - pts[k]) * (t - k);
+      return Math.round((Hc - 4) * (1 - (v - lo) / (hi - lo || 1))) + 2;
+    };
+    let prev = yAt(0);
+    for (let px = 0; px < W; px++) {
+      const y = yAt(px);
+      x.fillStyle = 'rgba(167, 240, 112, 0.12)';
+      x.fillRect(px, y, 1, Hc - y);
+      x.fillStyle = '#a7f070';
+      const top = Math.min(y, prev), bot = Math.max(y, prev);
+      x.fillRect(px, top, 1, Math.max(2, bot - top + 1));
+      prev = y;
     }
   }
 

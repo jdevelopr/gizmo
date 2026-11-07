@@ -339,6 +339,36 @@ for every one you already own (the Assembler ladder counts all three recipes tog
 
 Upgrades are priced off the purchase price, so they rose in step.
 
+### Upgrades you can see
+
+The level pips are gone. Instead every machine grows parts as it levels up, bolted
+round the outside of its casing so nothing covers what the machine itself shows,
+and each level keeps the parts from the levels before (`KITS` and `LONG_KITS` in
+render.js; Balancers, Sorters and Overflow Splitters share `drawUpgradeKit`).
+
+- **Belts and Storage:** rail studs, a lit inner edge, running lights, fully lit rails.
+- **Balancer, Sorter, Overflow Splitter:** corner brackets, side fins, a back conduit, a lamp.
+- **Extractor:** feet, ore bins, an exhaust stack, a hazard band.
+- **Market Depot:** an awning, coin stacks, cargo crates, pennants.
+- **Research Lab:** a radar dish, vials, a cable coil, corner signal lights.
+- **Generator:** a fuel hopper, red-hot fins, chimneys, a flywheel.
+- **Solar Panel:** a wing of cells, a second wing, a tracking pivot, sun mirrors.
+- **Battery:** a spare cell, cooling plates, heavy leads, charge lamps.
+- **Pylon:** guy wires, cross braces, warning lights, a lightning rod.
+- **Mutator:** tanks of its colour, a feed pipe with a gauge, emitters, chamber lights.
+- **Fuser:** bellows, a coal bunker, chimneys, molten vents.
+- **Assembler:** a robot arm, parts trays, a crate feeder, spotlights.
+- **Recycler:** a junk hopper, shredder teeth, scrap bins, a crane magnet.
+- **Doubler:** mirror plates, a copy drum, aerials, a crystal.
+- **Trident:** a three-pronged crest, exit collars, pressure tanks, three exit lights.
+- **Wall:** a steel plate, rivets, an iron cap that runs on into its neighbours, spikes.
+- **Night Switch:** a clock dial, wiring, a sun-and-moon vane, two lamps.
+- **Armory:** ammo crates, shell racks, armour plates, a siren.
+- **Zapper:** capacitors, insulators, grounding rods, charged orbs.
+- **Repair Drone Bay:** landing lights, a spare drone, a Copper tank, a radar dish.
+- **Mountain Drill:** cutter teeth, coolant lines, gantry feet, a beacon.
+- **Bridge:** railing posts, suspension cables, lamps, flags.
+
 ### Day and night
 
 The asteroid turns. A day is ten minutes of game time — about seven of daylight and

@@ -547,6 +547,21 @@ function wallField(W, id, sources) {
   return dist;
 }
 
+/**
+ * Move a creature, but never into solid ground: if the step would end on rock it
+ * slides along whichever axis is still open, and if neither is, it stays put.
+ */
+function slide(W, mt, sx, sy) {
+  const solid = (x, y) => {
+    const hx = Math.floor(x), hy = Math.floor(y);
+    return !!W && hx >= 0 && hy >= 0 && hx < WORLD && hy < WORLD && W.blocked[cellOf(hx, hy)] === 2
+      && W.blocked[cellOf(Math.floor(mt.x), Math.floor(mt.y))] !== 2;
+  };
+  if (!solid(mt.x + sx, mt.y + sy)) { mt.x += sx; mt.y += sy; return; }
+  if (!solid(mt.x + sx, mt.y)) { mt.x += sx; return; }
+  if (!solid(mt.x, mt.y + sy)) mt.y += sy;
+}
+
 /** Is the straight line from (x, y) to (tx, ty) free of standing Walls? */
 function clearLine(W, x, y, tx, ty) {
   const d = Math.hypot(tx - x, ty - y);
@@ -622,7 +637,7 @@ function steer(f, W, mt, tx, ty, id, sources, dt) {
   }
   mt.st = 'walk';
   const step = Math.min(d, mt.sp * dt);
-  if (d > 0) { mt.x += dx / d * step; mt.y += dy / d * step; }
+  if (d > 0) slide(W, mt, dx / d * step, dy / d * step);
   return true;
 }
 
@@ -706,8 +721,7 @@ function stepMites(f, dt) {
     } else if (d > 0.05) {
       mt.st = 'walk';
       const step = Math.min(d, mt.sp * dt);
-      mt.x += dx / d * step;
-      mt.y += dy / d * step;
+      slide(W, mt, dx / d * step, dy / d * step);
       mt.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
     }
   }

@@ -248,6 +248,354 @@ function drawBelt(ctx, m, frame, trim, lit) {
     }
   };
   for (const t of arms) run(t, t !== d);
+
+  // Upgrades, bolted to the rails of every arm: studs (2), a lit inner edge (3),
+  // running lights (4), and fully lit rails (5).
+  const lvl = m.level || 1;
+  for (const t of arms) {
+    if (lvl >= 2) for (const fw of [3, 11]) {
+      rp(ctx, cxp, cyp, t, fw, -10, 2, 2, shade(rail, 1.5));
+      rp(ctx, cxp, cyp, t, fw, 8, 2, 2, shade(rail, 1.5));
+    }
+    if (lvl >= 3) {
+      rp(ctx, cxp, cyp, t, 0, -8, 16, 1, shade(trim, 0.75));
+      rp(ctx, cxp, cyp, t, 0, 7, 16, 1, shade(trim, 0.75));
+    }
+    if (lvl >= 4) {
+      rp(ctx, cxp, cyp, t, 6, -10, 3, 1, lit);
+      rp(ctx, cxp, cyp, t, 6, 9, 3, 1, lit);
+    }
+    if (lvl >= 5) {
+      rp(ctx, cxp, cyp, t, 0, -10, 16, 1, lit);
+      rp(ctx, cxp, cyp, t, 0, 9, 16, 1, lit);
+    }
+  }
+}
+
+/**
+ * The upgrade kit for every machine in a casing: parts bolted onto the outside of
+ * the box, so nothing covers what the machine itself is showing. Each level keeps
+ * everything the one before had.
+ *
+ *   2  corner brackets
+ *   3  cooling fins down both sides
+ *   4  a conduit along the back, clamped on
+ *   5  a lamp on the conduit
+ */
+/**
+ * Upgrade parts made for one machine in particular, in place of the shared kit.
+ * Same rules: bolted on round the outside, each level keeping the last one's.
+ * `R(f, l, fw, lw, c)` draws in the machine's own frame (f forward, l to the right;
+ * the back edge is f = -16, the sides l = -16 and l = 13).
+ */
+const KITS = {
+  // Extractor: a rig that grows. Feet, then ore bins, an exhaust, a hazard band.
+  ext(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: heavy feet at the four corners
+    for (const [x, y] of [[0, 0], [26, 0], [0, 26], [26, 26]]) {
+      P(x, y, 6, 6, ink); P(x + 1, y + 1, 4, 4, metal); P(x + 1, y + 1, 4, 1, hi); P(x + 2, y + 2, 2, 2, shade(trim, 0.6));
+    }
+    // 3: an ore bin down each side, heaped with Scrap and Copper
+    if (lvl >= 3) for (const l of [-16, 11]) {
+      R(-7, l, 13, 5, ink);
+      R(-6, l + 1, 11, 3, '#1b1410');
+      R(-5, l + 1, 3, 2, '#c3cbdb'); R(-2, l + 1, 2, 2, '#e08a3c'); R(1, l + 1, 3, 2, '#8b93a8');
+    }
+    // 4: an exhaust stack, back left, smoking
+    if (lvl >= 4) {
+      R(-16, -11, 6, 6, ink); R(-15, -10, 4, 4, shade(trim, 0.85)); R(-15, -10, 4, 1, hi);
+      R(-14, -9, 2, 2, '#05070d');
+    }
+    // 5: a hazard band right across the back
+    if (lvl >= 5) {
+      R(-16, -4, 4, 14, ink);
+      for (let k = 0; k < 6; k++) R(-15, -3 + k * 2, 2, 2, k % 2 ? '#1a1a1a' : '#ffcd75');
+    }
+  },
+  // Depot: a market stall. An awning, coin stacks, a price board, then pennants.
+  depot(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: a striped awning along the back, with a scalloped edge
+    R(-16, -14, 5, 28, ink);
+    for (let k = 0; k < 7; k++) R(-16, -13 + k * 4, 4, 4, k % 2 ? '#e8ecf8' : lit);
+    for (let k = 0; k < 7; k++) R(-12, -12 + k * 4, 1, 2, k % 2 ? '#e8ecf8' : lit);
+    // 3: stacks of coins on each side
+    if (lvl >= 3) for (const l of [-16, 12]) for (let k = 0; k < 3; k++) {
+      R(-6 + k * 5, l, 5, 4, ink);
+      R(-5 + k * 5, l + 1, 3, 2, '#ffcd75');
+      R(-5 + k * 5, l + 1, 3, 1, '#fff0b8');
+    }
+    // 4: a stack of cargo crates in the top corner
+    if (lvl >= 4) {
+      P(22, 0, 10, 10, ink);
+      P(23, 4, 4, 5, '#8a5a2b'); P(23, 4, 4, 1, '#c88a4a'); P(25, 4, 1, 5, '#5a3a1b');
+      P(27, 4, 4, 5, '#7a4e25'); P(27, 4, 4, 1, '#b87a3e'); P(29, 4, 1, 5, '#4a2e15');
+      P(25, 0, 4, 4, '#9a6a35'); P(25, 0, 4, 1, '#d89a5a'); P(27, 0, 1, 4, '#5a3a1b');
+    }
+    // 5: pennants flying from both ends of the awning
+    if (lvl >= 5) for (const [l, c] of [[-16, '#ff5d4a'], [11, '#41a6f6']]) {
+      R(-16, l, 7, 5, ink);
+      R(-16, l + 1, 7, 1, '#8b96b8');
+      R(-15, l + 2, 4, 2, c); R(-11, l + 2, 1, 1, c);
+    }
+  },
+  // Generator: a furnace. A fuel hopper, hot radiator fins, chimneys, a flywheel.
+  gen(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: a fuel hopper on the back, full of ore
+    R(-16, -7, 5, 14, ink); R(-15, -6, 3, 12, shade(trim, 0.55));
+    R(-15, -5, 2, 2, '#c3cbdb'); R(-15, -1, 2, 2, '#e08a3c'); R(-15, 3, 2, 2, '#8b93a8');
+    // 3: radiator fins down both sides, red at the tips
+    if (lvl >= 3) for (const l of [-16, 12]) for (let k = 0; k < 4; k++) {
+      R(-7 + k * 4, l, 2, 4, ink);
+      R(-7 + k * 4, l + (l < 0 ? 0 : 1), 2, 3, metal);
+      R(-7 + k * 4, l < 0 ? l : l + 3, 2, 1, '#ff5d4a');
+    }
+    // 4: a chimney at each back corner, smoking
+    if (lvl >= 4) for (const l of [-16, 11]) {
+      R(-16, l, 5, 5, ink); R(-15, l + 1, 3, 3, shade(trim, 0.8)); R(-14, l + 2, 1, 1, '#05070d');
+    }
+    // 5: a flywheel at the front corner
+    if (lvl >= 5) {
+      P(24, 24, 8, 8, ink); P(25, 25, 6, 6, metal); P(26, 26, 4, 4, ink); P(27, 27, 2, 2, lit);
+      P(25, 27, 1, 2, hi); P(27, 25, 2, 1, hi);
+    }
+  },
+  // Solar Panel: it spreads out. A wing on each side, a tracking pivot, then mirrors.
+  solar(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    const cell = '#2a4a8a', line = '#5a8fe0';
+    const wing = l => { R(-10, l, 20, 5, ink); for (let k = 0; k < 4; k++) R(-9 + k * 5, l + 1, 4, 3, cell); R(-9, l + 1, 19, 1, line); };
+    // 2: a wing of extra cells down one side; 3: and the other
+    wing(-16);
+    if (lvl >= 3) wing(11);
+    // 4: a tracking pivot on the back
+    if (lvl >= 4) { R(-16, -4, 5, 8, ink); R(-15, -3, 3, 6, metal); R(-14, -1, 1, 2, lit); }
+    // 5: sun mirrors on the front corners
+    if (lvl >= 5) for (const l of [-16, 11]) { R(11, l, 5, 5, ink); R(12, l + 1, 3, 3, '#bfe0ff'); R(12, l + 1, 1, 1, '#ffffff'); }
+  },
+  // Battery: more cells. A spare cell, cooling plates, heavy leads, charge lamps.
+  battery(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: a spare cell strapped to one side
+    R(-8, -16, 16, 5, ink); R(-7, -15, 14, 3, shade(trim, 0.55)); R(-7, -15, 14, 1, trim); R(7, -15, 1, 3, lit);
+    // 3: cooling plates on the other side
+    if (lvl >= 3) for (let k = 0; k < 4; k++) { R(-7 + k * 4, 12, 3, 4, ink); R(-7 + k * 4, 13, 2, 3, metal); }
+    // 4: two heavy leads out of the back
+    if (lvl >= 4) for (const l of [-7, 4]) { R(-16, l, 4, 4, ink); R(-15, l + 1, 3, 2, l < 0 ? '#ff5d4a' : '#2a2a2a'); }
+    // 5: charge lamps at the front corners
+    if (lvl >= 5) for (const l of [-16, 13]) { R(12, l, 4, 3, ink); R(13, l + (l < 0 ? 1 : 0), 2, 2, lit); }
+  },
+  // Pylon: a taller mast. Guy wires, cross braces, warning lights, a lightning rod.
+  pylon(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: guy wires out to the four corners
+    for (let k = 0; k < 6; k++) {
+      P(2 + k, 2 + k, 1, 1, shade(trim, 0.7)); P(29 - k, 2 + k, 1, 1, shade(trim, 0.7));
+      P(2 + k, 29 - k, 1, 1, shade(trim, 0.7)); P(29 - k, 29 - k, 1, 1, shade(trim, 0.7));
+    }
+    for (const [x, y] of [[0, 0], [29, 0], [0, 29], [29, 29]]) { P(x, y, 3, 3, ink); P(x + 1, y + 1, 1, 1, metal); }
+    // 3: cross braces on both sides
+    if (lvl >= 3) for (const l of [-16, 13]) {
+      R(-8, l, 16, 3, ink);
+      for (let k = 0; k < 8; k++) R(-8 + k * 2, l + ((k % 2) ? 1 : (l < 0 ? 1 : 0)), 2, 1, metal);
+    }
+    // 4: red warning lights on the back corners
+    if (lvl >= 4) for (const l of [-16, 13]) { R(-16, l, 3, 3, ink); R(-15, l + (l < 0 ? 1 : 0), 2, 2, '#ff5d4a'); }
+    // 5: a lightning rod at the back
+    if (lvl >= 5) { R(-16, -2, 5, 4, ink); R(-16, -1, 4, 2, '#e8ecf8'); R(-16, -1, 1, 2, lit); }
+  },
+  // Assembler: a workshop. A robot arm, parts trays, a crate feeder, spotlights.
+  asm(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: a jointed robot arm reaching in from one side
+    R(-11, -16, 7, 6, ink); R(-10, -15, 5, 4, metal); R(-10, -15, 5, 1, hi);   // its base
+    R(-5, -15, 8, 4, ink); R(-4, -14, 6, 2, shade(trim, 1.15));              // the arm
+    R(-6, -15, 3, 3, ink); R(-5, -14, 1, 1, lit);                            // the elbow joint
+    R(3, -16, 4, 6, ink); R(3, -15, 3, 1, metal); R(3, -12, 3, 1, metal); R(5, -14, 1, 1, lit); // the gripper
+    // 3: trays of parts down the other side
+    if (lvl >= 3) for (const [f, c] of [[-8, '#4fd8bb'], [-2, '#ffcd75'], [4, '#7fe8ff']]) {
+      R(f, 12, 5, 4, ink); R(f + 1, 13, 3, 2, '#1c2133'); R(f + 1, 13, 2, 1, c); R(f + 2, 14, 1, 1, c);
+    }
+    // 4: a crate feeder on the back
+    if (lvl >= 4) { R(-16, -6, 5, 12, ink); R(-15, -5, 3, 4, '#8a5a2b'); R(-15, 0, 3, 4, '#7a4e25'); R(-15, -5, 3, 1, '#c88a4a'); R(-15, 0, 3, 1, '#b87a3e'); }
+    // 5: spotlights on the front corners
+    if (lvl >= 5) for (const l of [-16, 12]) { R(11, l, 5, 4, ink); R(12, l + 1, 3, 2, '#fff8d0'); R(14, l + 1, 1, 2, '#ffffff'); }
+  },
+  // Recycler: a scrapyard. A junk hopper, shredder teeth, scrap bins, a magnet.
+  recyc(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: a hopper of junk on the back
+    R(-16, -8, 5, 16, ink); R(-15, -7, 3, 14, '#1b1410');
+    for (const [l, c] of [[-6, '#8b93a8'], [-3, '#e08a3c'], [0, '#2fb98f'], [3, '#41a6f6']]) R(-15, l, 2, 2, c);
+    // 3: shredder teeth along both sides
+    if (lvl >= 3) for (const l of [-16, 13]) for (let k = 0; k < 5; k++) {
+      R(-7 + k * 3, l, 2, 3, ink); R(-7 + k * 3, l + (l < 0 ? 1 : 0), 2, 2, k % 2 ? hi : metal);
+    }
+    // 4: scrap bins on the front corners
+    if (lvl >= 4) for (const l of [-16, 12]) { R(11, l, 5, 4, ink); R(12, l + 1, 3, 2, shade(trim, 0.6)); R(12, l + 1, 1, 1, '#c3cbdb'); }
+    // 5: a crane magnet hanging over one back corner
+    if (lvl >= 5) {
+      P(0, 0, 9, 9, ink); P(1, 2, 2, 6, '#ff5d4a'); P(6, 2, 2, 6, '#ff5d4a'); P(1, 6, 7, 2, '#ff5d4a');
+      P(1, 2, 2, 1, '#e8ecf8'); P(6, 2, 2, 1, '#e8ecf8'); P(4, 0, 1, 2, metal);
+    }
+  },
+  // Doubler: a copier. Mirror plates, a twin drum, aerials, then a crystal.
+  dup(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: mirror plates on both sides
+    for (const l of [-16, 12]) { R(-8, l, 16, 4, ink); R(-7, l + 1, 14, 2, '#bfe0ff'); R(-7, l + 1, 4, 1, '#ffffff'); }
+    // 3: a twin copy drum on the back
+    if (lvl >= 3) for (const l of [-9, 2]) { R(-16, l, 5, 7, ink); R(-15, l + 1, 3, 5, metal); R(-15, l + 1, 3, 1, hi); R(-14, l + 3, 1, 1, lit); }
+    // 4: an aerial on each front corner
+    if (lvl >= 4) for (const l of [-16, 13]) { R(10, l, 6, 3, ink); R(11, l + 1, 4, 1, metal); R(14, l + (l < 0 ? 0 : 2), 2, 1, lit); }
+    // 5: a glowing crystal in the back corner
+    if (lvl >= 5) {
+      P(0, 0, 8, 9, ink);
+      P(3, 1, 2, 1, '#ffffff'); P(2, 2, 4, 2, '#d6f7ff'); P(1, 4, 6, 2, '#7fe8ff'); P(2, 6, 4, 1, '#41a6f6'); P(3, 7, 2, 1, '#2a4a8a');
+    }
+  },
+  // Trident: three ways out. A fork crest, collars on the side exits, tanks, three lights.
+  trident(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: a three-pronged crest on the back
+    R(-16, -8, 3, 16, ink); R(-15, -7, 1, 14, metal);
+    for (const l of [-7, -1, 5]) { R(-16, l, 5, 3, ink); R(-15, l + 1, 3, 1, hi); }
+    // 3: collars round both side exits
+    if (lvl >= 3) for (const l of [-16, 13]) { R(-6, l, 3, 3, ink); R(3, l, 3, 3, ink); R(-5, l + (l < 0 ? 1 : 0), 1, 2, lit); R(4, l + (l < 0 ? 1 : 0), 1, 2, lit); }
+    // 4: pressure tanks on the back corners
+    if (lvl >= 4) for (const l of [-16, 11]) { R(-16, l, 6, 5, ink); R(-15, l + 1, 4, 3, shade(trim, 0.8)); R(-15, l + 1, 4, 1, hi); }
+    // 5: a light at each of the three exits
+    if (lvl >= 5) { R(12, -2, 4, 4, ink); R(13, -1, 2, 2, lit); for (const l of [-16, 12]) { R(-2, l, 4, 4, ink); R(-1, l + 1, 2, 2, lit); } }
+  },
+  // Night Switch: a timer. A dial, wiring, a sun-and-moon vane, indicator lamps.
+  nswitch(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: a clock dial on one side
+    R(-6, -16, 9, 6, ink); R(-5, -15, 7, 4, '#e8ecf8'); R(-2, -14, 1, 2, '#1c1a34'); R(-1, -13, 2, 1, '#1c1a34');
+    // 3: wiring out of the other side, with plugs
+    if (lvl >= 3) for (const f of [-8, 3]) { R(f, 12, 5, 4, ink); R(f + 1, 13, 3, 1, shade(trim, 0.8)); R(f + 1, 14, 3, 1, lit); }
+    // 4: a weather vane on the back: a sun on one arm, a moon on the other
+    if (lvl >= 4) { R(-16, -7, 4, 14, ink); R(-15, -6, 1, 12, metal); R(-15, -7, 3, 3, '#ffcd75'); R(-15, 4, 3, 3, '#e8ecf8'); R(-14, 4, 1, 2, '#1c1a34'); }
+    // 5: indicator lamps on the front corners, one amber, one violet
+    if (lvl >= 5) for (const [l, c] of [[-16, '#ffcd75'], [13, '#9a8cff']]) { R(12, l, 4, 3, ink); R(13, l + (l < 0 ? 1 : 0), 2, 2, c); }
+  },
+  // Armory: a munitions shop. Ammo crates, shell racks, armour, a siren.
+  arm(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: ammo crates on the back
+    for (const l of [-9, 2]) { R(-16, l, 5, 7, ink); R(-15, l + 1, 3, 5, '#4a5a2a'); R(-15, l + 1, 3, 1, '#7a8a4a'); R(-14, l + 3, 1, 1, '#e8f04a'); }
+    // 3: racks of shells down both sides
+    if (lvl >= 3) for (const l of [-16, 12]) { R(-7, l, 14, 4, ink); for (let k = 0; k < 4; k++) R(-6 + k * 3, l + 1, 2, 2, '#e8f04a'); }
+    // 4: riveted armour on the front corners
+    if (lvl >= 4) for (const l of [-16, 11]) { R(10, l, 6, 5, ink); R(11, l + 1, 4, 3, shade(trim, 0.75)); R(12, l + 2, 1, 1, hi); }
+    // 5: a siren lamp on the back corner
+    if (lvl >= 5) { P(0, 0, 6, 6, ink); P(1, 1, 4, 4, '#a01818'); P(1, 1, 4, 2, '#ff5d4a'); P(2, 1, 1, 1, '#ffffff'); }
+  },
+  // Zapper: a coil gun. Capacitors, insulators, grounding rods, charged orbs.
+  zap(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: capacitor cans on the back
+    for (const l of [-10, -3, 4]) { R(-16, l, 5, 6, ink); R(-15, l + 1, 3, 4, shade(trim, 0.6)); R(-15, l + 1, 3, 1, hi); }
+    // 3: insulator stacks on both sides
+    if (lvl >= 3) for (const l of [-16, 12]) for (const f of [-6, 2]) { R(f, l, 5, 4, ink); R(f + 1, l + 1, 3, 1, '#e8ecf8'); R(f + 1, l + 2, 3, 1, '#8b96b8'); }
+    // 4: grounding rods on the front corners
+    if (lvl >= 4) for (const l of [-16, 13]) { R(10, l, 6, 3, ink); R(11, l + 1, 4, 1, '#c88a4a'); }
+    // 5: charged orbs on all four corners
+    if (lvl >= 5) for (const [x, y] of [[0, 0], [27, 0], [0, 27], [27, 27]]) { P(x, y, 5, 5, ink); P(x + 1, y + 1, 3, 3, '#8f6cff'); P(x + 1, y + 1, 1, 1, '#ffffff'); }
+  },
+  // Repair Drone Bay: an airfield. Landing lights, a spare drone, a Copper tank, radar.
+  drone(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: landing lights down both sides
+    for (const l of [-16, 13]) for (const f of [-9, -3, 3, 9]) { R(f, l, 3, 3, ink); R(f + 1, l + (l < 0 ? 1 : 0), 1, 2, lit); }
+    // 3: a spare drone parked in the back corner
+    if (lvl >= 3) { P(0, 0, 9, 9, ink); P(3, 3, 3, 3, trim); for (const [x, y] of [[1, 1], [6, 1], [1, 6], [6, 6]]) P(x, y, 2, 2, metal); P(4, 4, 1, 1, lit); }
+    // 4: a Copper tank on the back
+    if (lvl >= 4) { R(-16, -4, 5, 12, ink); R(-15, -3, 3, 10, '#7a4a20'); R(-15, -3, 3, 1, '#e08a3c'); R(-15, 3, 3, 1, '#ffc07a'); }
+    // 5: a radar dish on the front corner
+    if (lvl >= 5) { P(24, 24, 8, 8, ink); P(25, 25, 6, 1, metal); P(25, 25, 1, 6, metal); P(26, 26, 4, 1, hi); P(26, 26, 1, 4, hi); P(28, 28, 2, 2, lit); }
+  },
+  // Mountain Drill: a boring machine. Cutter teeth, coolant lines, a gantry, a beacon.
+  drill(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: cutter teeth along the front edge, toward the mountain
+    R(13, -12, 3, 24, ink);
+    for (let k = 0; k < 6; k++) R(13 + (k % 2), -11 + k * 4, 2, 3, k % 2 ? hi : metal);
+    // 3: coolant lines down both sides
+    if (lvl >= 3) for (const l of [-16, 13]) { R(-9, l, 18, 3, ink); R(-8, l + (l < 0 ? 1 : 0), 16, 1, '#41a6f6'); R(-1, l + (l < 0 ? 1 : 0), 2, 2, '#a8dcff'); }
+    // 4: gantry feet on the back corners (the middle of the back is its output)
+    if (lvl >= 4) for (const l of [-16, 11]) { R(-16, l, 5, 5, ink); R(-15, l + 1, 3, 3, metal); R(-15, l + 1, 3, 1, hi); }
+    // 5: a warning beacon on the front corner
+    if (lvl >= 5) { R(10, 11, 6, 5, ink); R(11, 12, 4, 3, '#a87a10'); R(11, 12, 4, 1, '#ffcd75'); R(12, 12, 1, 1, '#ffffff'); }
+  },
+  // Bridge: a proper span. Railing posts, suspension cables, lamps, then flags.
+  bridge(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: railing posts down both sides
+    for (const l of [-16, 13]) for (const f of [-10, -3, 4, 11]) { R(f, l, 3, 3, ink); R(f + 1, l + (l < 0 ? 1 : 0), 1, 2, hi); }
+    // 3: suspension cables strung between the posts
+    if (lvl >= 3) for (const l of [-15, 14]) for (let f = -10; f < 12; f++) R(f, l + (Math.abs(f) < 4 ? (l < 0 ? 1 : -1) : 0), 1, 1, shade(trim, 0.9));
+    // 4: lamps on the back corners
+    if (lvl >= 4) for (const l of [-16, 12]) { R(-16, l, 4, 4, ink); R(-15, l + 1, 2, 2, lit); }
+    // 5: flags on the front corners
+    if (lvl >= 5) for (const [l, c] of [[-16, '#ff5d4a'], [12, '#ffcd75']]) { R(11, l, 5, 4, ink); R(11, l + 1, 1, 3, '#8b96b8'); R(12, l + 1, 3, 2, c); }
+  },
+  // Lab: instruments. A dish, vials down the sides, a coil, then signal lights.
+  lab(R, P, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: a radar dish, back left
+    R(-16, -16, 7, 7, ink);
+    R(-15, -15, 5, 1, metal); R(-15, -15, 1, 5, metal); R(-14, -14, 3, 1, hi); R(-14, -14, 1, 3, hi);
+    R(-12, -12, 2, 2, lit);
+    // 3: two glowing vials down each side
+    if (lvl >= 3) for (const l of [-16, 11]) for (const [f, c] of [[-7, '#7fe8ff'], [1, '#c8a2ff']]) {
+      R(f, l, 6, 5, ink);
+      R(f + 1, l + 1, 4, 3, '#0a0f1e');
+      R(f + 2, l + 1, 3, 3, c);
+      R(f + 4, l + 1, 1, 3, '#ffffff');
+    }
+    // 4: a coil of cable on the back
+    if (lvl >= 4) {
+      R(-16, 1, 5, 11, ink);
+      for (let k = 0; k < 5; k++) R(-15, 2 + k * 2, 3, 1, shade(trim, 1.25));
+    }
+    // 5: signal lights on all four corners
+    if (lvl >= 5) for (const [x, y] of [[0, 0], [28, 0], [0, 28], [28, 28]]) {
+      P(x, y, 4, 4, ink); P(x + 1, y + 1, 2, 2, lit); P(x + 1, y + 1, 1, 1, '#ffffff');
+    }
+  },
+};
+
+function drawUpgradeKit(ctx, m, body, trim, lit) {
+  const lvl = m.level || 1;
+  if (lvl < 2) return;
+  const cxp = CELL / 2, cyp = CELL / 2, d = m.dir | 0;
+  if (KITS[m.kind]) {
+    const ink0 = '#0c0e18';
+    KITS[m.kind]((f, l, fw, lw, c) => rp(ctx, cxp, cyp, d, f, l, fw, lw, c), (x, y, w, h, c) => px(ctx, x, y, w, h, c), lvl,
+      { body, trim, lit, ink: ink0, metal: shade(trim, 0.95), hi: shade(trim, 1.35) });
+    return;
+  }
+  const ink = '#0c0e18', metal = shade(trim, 0.95), hi = shade(trim, 1.35);
+  // 2: an L-shaped bracket on every corner
+  for (const [x, y, sx, sy] of [[0, 0, 1, 1], [CELL, 0, -1, 1], [0, CELL, 1, -1], [CELL, CELL, -1, -1]]) {
+    const X = (v, w) => (sx > 0 ? x + v : x - v - w), Y = (v, h) => (sy > 0 ? y + v : y - v - h);
+    px(ctx, X(0, 8), Y(0, 3), 8, 3, ink);
+    px(ctx, X(0, 3), Y(0, 8), 3, 8, ink);
+    px(ctx, X(1, 6), Y(1, 1), 6, 1, metal);
+    px(ctx, X(1, 1), Y(1, 6), 1, 6, metal);
+    px(ctx, X(1, 1), Y(1, 1), 1, 1, hi);
+  }
+  // 3: fins down both sides
+  if (lvl >= 3) {
+    for (const f of [-7, -2, 3]) {
+      rp(ctx, cxp, cyp, d, f, -16, 3, 3, ink);
+      rp(ctx, cxp, cyp, d, f, 13, 3, 3, ink);
+      rp(ctx, cxp, cyp, d, f, -16, 3, 2, metal);
+      rp(ctx, cxp, cyp, d, f, 14, 3, 2, metal);
+      rp(ctx, cxp, cyp, d, f, -16, 1, 2, hi);
+      rp(ctx, cxp, cyp, d, f, 14, 1, 2, hi);
+    }
+  }
+  // 4: a conduit along the back edge, with two clamps
+  if (lvl >= 4) {
+    rp(ctx, cxp, cyp, d, -16, -9, 3, 18, ink);
+    rp(ctx, cxp, cyp, d, -16, -8, 2, 16, shade(trim, 0.7));
+    rp(ctx, cxp, cyp, d, -16, -8, 2, 1, hi);
+    for (const l of [-6, 4]) rp(ctx, cxp, cyp, d, -16, l, 3, 2, hi);
+  }
+  // 5: a lamp on the conduit
+  if (lvl >= 5) {
+    rp(ctx, cxp, cyp, d, -16, -4, 5, 8, ink);
+    rp(ctx, cxp, cyp, d, -16, -3, 4, 6, shade(lit, 0.7));
+    rp(ctx, cxp, cyp, d, -15, -2, 2, 4, lit);
+    rp(ctx, cxp, cyp, d, -15, -1, 1, 2, '#ffffff');
+  }
 }
 
 /**
@@ -307,7 +655,6 @@ function drawBody(ctx, m, frame) {
         px(ctx, 9 + ox, 16, 2, 1, lit);
         px(ctx, 9 + ox, 17, 1, 1, lit);
       }
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -324,7 +671,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 13, 18, 6, 1, shade(trim, 1.4));
       px(ctx, 9, 21, 3, 2, shade(trim, 0.7));
       px(ctx, 20, 21, 3, 2, shade(trim, 0.7));
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -356,22 +702,28 @@ function drawBody(ctx, m, frame) {
       if (!(L & 2)) px(ctx, ix0, iy1 - 3, ix1 - ix0, 3, shade(body, 0.5));
       if (!(L & 4)) px(ctx, ix0, iy0, 1, iy1 - iy0, shade(body, 1.25));
       if (!(L & 1)) px(ctx, ix1 - 1, iy0, 1, iy1 - iy0, shade(body, 0.7));
-      // Levels are steel plates riveted across the middle.
-      const lvl2 = (m.level || 1) - 1;
-      if (lvl2 > 0) {
-        px(ctx, 9, 13, 14, 6, '#0c0e18');
-        px(ctx, 10, 14, 12, 4, shade(trim, 0.8));
-        px(ctx, 10, 14, 12, 1, trim);
-        for (let i = 0; i < lvl2; i++) px(ctx, 11 + i * 3, 16, 2, 1, lit);
+      // Upgrades: a steel plate across the middle (2), riveted (3), an iron cap
+      // along the top (4, and it runs on into the Walls beside it), then spikes (5).
+      const wl = m.level || 1;
+      if (wl >= 2) {
+        px(ctx, 8, 13, 16, 7, '#0c0e18');
+        px(ctx, 9, 14, 14, 5, shade(trim, 0.8));
+        px(ctx, 9, 14, 14, 1, trim);
+      }
+      if (wl >= 3) for (const x of [10, 20]) { px(ctx, x, 16, 2, 2, shade(trim, 1.3)); px(ctx, x, 16, 1, 1, '#ffffff'); }
+      if (wl >= 4) {
+        px(ctx, ix0, iy0 + 2, ix1 - ix0, 3, '#0c0e18');
+        px(ctx, ix0, iy0 + 2, ix1 - ix0, 2, shade(trim, 0.9));
+        px(ctx, ix0, iy0 + 2, ix1 - ix0, 1, shade(trim, 1.3));
+      }
+      if (wl >= 5) for (let x = ix0 + 1; x < ix1 - 1; x += 4) {
+        px(ctx, x, iy0, 2, 2, '#0c0e18'); px(ctx, x, iy0, 1, 2, shade(trim, 1.4));
       }
       break;
     }
 
     case 'pipe': {
       drawBelt(ctx, m, frame, trim, lit);
-      for (let i = 0; i < (m.level || 1) - 1; i++) {
-        rp(ctx, cxp, cyp, d, -3 + i * 5, -9, 3, 2, lit);
-      }
       break;
     }
 
@@ -430,7 +782,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 14, 14, 4, 4, ore.glow);
       rp(ctx, cxp, cyp, d, 9, -6, 5, 12, trim);
       chevron(ctx, cxp, cyp, d, lit, 9);
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 6, 25 - i * 4, 3, 3, lit);
       break;
     }
 
@@ -446,7 +797,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 9, 24, 14, 2, shade(trim, 0.7));
       px(ctx, 19, 4, 6, 7, shade(body, 0.8));      // chimney
       px(ctx, 19, 4, 6, 2, shade(trim, 1.1));
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 7, 5 + i * 4, 3, 3, lit);
       break;
     }
 
@@ -503,7 +853,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 7, 7, 18, 2, shade(trim, 1.1));
       px(ctx, 7, 23, 18, 2, shade(trim, 0.7));
       chevron(ctx, cxp, cyp, d, trim, 10);
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -515,7 +864,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 9, 9, 5, 4, shade(trim, 1.2));
       px(ctx, 18, 9, 5, 4, shade(trim, 1.2));
       chevron(ctx, cxp, cyp, d, trim, 10);
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -576,7 +924,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 18, 25, 9, 4, '#05070d');
       px(ctx, 19, 26, 7, 2, inB.color);
       chevron(ctx, cxp, cyp, d, lit, 10);
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 3, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -597,7 +944,6 @@ function drawBody(ctx, m, frame) {
       const b = (d + 2) % 4;
       rp(ctx, cxp, cyp, b, 9, -5, 5, 10, '#05070d');
       chevron(ctx, cxp, cyp, b, lit, 9);
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -633,7 +979,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 21, 8, 5, 2, shade(trim, 0.8));
       px(ctx, 5, 7, 2, 2, lit);
       px(ctx, 25, 7, 2, 2, lit);
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 4, 21 + i * 3, 2, 2, lit);
       break;
     }
 
@@ -649,7 +994,6 @@ function drawBody(ctx, m, frame) {
       // the gate across the head of the side exit, with a notch it spills through
       rp(ctx, cxp, cyp, side, 4, -5, 2, 4, shade(trim, 1.25));
       rp(ctx, cxp, cyp, side, 4, 1, 2, 4, shade(trim, 1.25));
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -672,7 +1016,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 18 - fall, 23, 2, 2, '#c3cbdb');
       px(ctx, 15, 24 - (fall % 2), 2, 2, '#8b93a8');
       chevron(ctx, cxp, cyp, d, lit, 10);
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -698,7 +1041,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 15, 15, 2, 2, on === 3 ? '#ffffff' : lit);
       if (on === 1) { px(ctx, 13, 13, 1, 1, lit); px(ctx, 18, 18, 1, 1, lit); }
       if (on === 2) { px(ctx, 18, 13, 1, 1, lit); px(ctx, 13, 18, 1, 1, lit); }
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -730,7 +1072,6 @@ function drawBody(ctx, m, frame) {
       px(ctx, 13, y + 1, 6, 6, '#05070d');
       px(ctx, 14, y + 2, 4, 4, trim);
       px(ctx, 15, y + 3, 2, 2, '#ffffff');
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 3, 6 + i * 4, 2, 2, lit);
       break;
     }
 
@@ -753,13 +1094,13 @@ function drawBody(ctx, m, frame) {
       }
       // the stand under it
       px(ctx, 14, 25, 4, 2, shade(body, 1.6));
-      for (let i = 0; i < lvl - 1; i++) px(ctx, 27, 7 + i * 4, 2, 2, lit);
       break;
     }
 
     default:
       chevron(ctx, cxp, cyp, d, trim, 8);
   }
+  if (m.kind !== 'pipe' && m.kind !== 'store' && m.kind !== 'wall') drawUpgradeKit(ctx, m, body, trim, lit);
 }
 
 /* ------------------------------------------------------------ long bodies --- */
@@ -840,7 +1181,6 @@ function drawLongBody(ctx, m, frame, W, H) {
   Q(26 + frame * 2, 15, 2, 2, ty ? ty.glow : lit);
 
   // --- level studs, along the back module's side
-  for (let i = 0; i < lvl - 1; i++) Q(9 + i * 4, 27, 2, 2, lit);
 
   // --- the chamber
   if (m.kind === 'mut') {
@@ -877,7 +1217,40 @@ function drawLongBody(ctx, m, frame, W, H) {
   Q(60, 12, 3, 8, '#05070d');
   Q(60, 14, 2, 4, lit);
   Q(62, 15, 1, 2, lit);
+
+  if (lvl >= 2) LONG_KITS[m.kind]?.(Q, lvl, { trim, lit, ink: '#0c0e18', metal: shade(trim, 0.95), hi: shade(trim, 1.35), ty });
 }
+
+/**
+ * Upgrade parts for the two 1x2 machines, in their own frame: f runs from the back
+ * edge (0) to the front (64), l across (0 to 32). Bolted on round the edges.
+ */
+const LONG_KITS = {
+  // Mutator: tanks of what it makes, feed pipes, emitters, then a ring of lights.
+  mut(Q, lvl, { trim, lit, ink, metal, hi, ty }) {
+    const c = ty.color, g = ty.glow;
+    // 2: two tanks along one side, filled with the colour it prints
+    for (const f of [8, 17]) { Q(f, 0, 8, 5, ink); Q(f + 1, 1, 6, 3, shade(c, 0.5)); Q(f + 1, 1, 6, 1, g); Q(f + 6, 1, 1, 3, '#ffffff'); }
+    // 3: a feed pipe with a gauge down the other side
+    if (lvl >= 3) { Q(8, 27, 20, 5, ink); Q(9, 28, 18, 2, metal); Q(9, 28, 18, 1, hi); Q(16, 27, 5, 5, ink); Q(17, 28, 3, 3, '#e8ecf8'); Q(18, 29, 1, 1, '#ff5d4a'); }
+    // 4: emitters on the chamber's corners
+    if (lvl >= 4) for (const [f, l] of [[36, 0], [53, 0], [36, 27], [53, 27]]) { Q(f, l, 5, 5, ink); Q(f + 1, l + 1, 3, 3, metal); Q(f + 2, l + 2, 1, 1, g); }
+    // 5: a row of lights down both sides of the chamber
+    if (lvl >= 5) for (const l of [1, 29]) for (const f of [42, 46, 50]) { Q(f, l - 1, 3, 4, ink); Q(f + 1, l, 1, 2, c); }
+  },
+  // Fuser: a forge. Bellows, a coal bunker, chimneys, molten vents.
+  fuse(Q, lvl, { trim, lit, ink, metal, hi }) {
+    // 2: bellows down one side
+    Q(8, 0, 18, 5, ink);
+    for (let k = 0; k < 6; k++) Q(9 + k * 3, k % 2 ? 1 : 2, 2, k % 2 ? 3 : 2, k % 2 ? '#8a5a2b' : '#5a3a1b');
+    // 3: a coal bunker on the other side
+    if (lvl >= 3) { Q(8, 27, 18, 5, ink); Q(9, 28, 16, 3, '#1b1410'); for (let k = 0; k < 5; k++) Q(10 + k * 3, 28, 2, 2, k % 2 ? '#2a2a2a' : '#4a4a4a'); }
+    // 4: chimneys at both back corners
+    if (lvl >= 4) for (const l of [0, 27]) { Q(0, l, 6, 5, ink); Q(1, l + 1, 4, 3, shade(trim, 0.8)); Q(2, l + 2, 2, 1, '#05070d'); }
+    // 5: molten vents down both sides of the crucible
+    if (lvl >= 5) for (const l of [0, 29]) { Q(39, l, 18, 3, ink); for (let k = 0; k < 4; k++) Q(40 + k * 4, l + 1, 3, 1, k % 2 ? '#ffd27a' : '#ff7a3c'); }
+  },
+};
 
 /* ------------------------------------------------------------------ mites --- */
 

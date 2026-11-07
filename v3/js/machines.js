@@ -103,6 +103,10 @@ export const AMMO = 14;
 export const CHARGED = 15;
 export const CHARGED_MULT = 2;
 export const isAmmo = ty => ty === AMMO || ty === CHARGED;
+
+/** What a Recycler turns a gizmo into: Resin for the Sap family, Scrap for the rest. */
+export const RESIN = 8;
+export const recycleTo = ty => (TYPES[ty]?.fam === PART ? RESIN : 0);
 /** Shots loaded in a Zapper, of both kinds. */
 export const shotsOf = m => (m.charge | 0) + (m.hot | 0);
 export const LADDER_MAX = FAM_LEN[ALLOY] - 1;
@@ -367,7 +371,8 @@ export const KINDS = {
   recyc: {
     name: 'Recycler', short: 'RECYCLER',
     desc: 'Shreds anything you feed it — a jammed mix, spare Ammo, the wrong rung — and '
-      + 'pushes out one Scrap for each. The clean-up crew for a messy line.',
+      + 'pushes out one Scrap for each, or one Resin for Resin, Cord and Frame. The clean-up '
+      + 'crew for a messy line.',
     price: 90, cycle: 0.8, cap: 1, hold: 4, travel: 0.52, draw: 6,
     body: '#2c3a2a', trim: '#7fae6a', lit: '#c8f0a0',
   },
@@ -1099,10 +1104,11 @@ export function outputs(m, inputs) {
     case 'over':
       return [{ ty: a, dir: d, cp: copy }];
 
-    // A Recycler turns anything at all into one Scrap. Always an original: what
+    // A Recycler turns anything at all into one raw unit: Sap goods (Resin, Cord,
+    // Frame) back into Resin, everything else into Scrap. Always an original: what
     // goes in is gone, whatever it was.
     case 'recyc':
-      return [{ ty: 0, dir: d, cp: 0 }];
+      return [{ ty: recycleTo(a), dir: d, cp: 0 }];
 
     case 'sort': {
       const want = m.mut ?? 1;
@@ -1547,7 +1553,7 @@ export const TECH = [
     blurb: 'Unlocks the Overflow Splitter. Everything goes straight on; only when that line is full does the extra spill out the side.',
     ranks: 'Ranks II–V: Overflow Splitters work 10% faster each (+40% at V).' },
   { id: 'recycling', branch: 'economy', name: 'Recyclers', cost: 220, needs: ['sorting'], unlocks: ['recyc'],
-    blurb: 'Unlocks the Recycler: anything in, one Scrap out. Use it to clear mixed or unwanted gizmos off a line.',
+    blurb: 'Unlocks the Recycler: anything in, one Scrap out — or one Resin for Resin, Cord and Frame. Use it to clear mixed or unwanted gizmos off a line.',
     ranks: 'Ranks II–V: Recyclers work 10% faster each (+40% at V).' },
 
   // ---- production

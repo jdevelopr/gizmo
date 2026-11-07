@@ -78,7 +78,14 @@ console.log('\nRecycler');
   put(g, 'depot', 11, 10, { dir: 0 });
   for (const ty of [14, 13, 9]) at(g, 10, 10).buf.push({ id: ty, ty, cp: 0 });
   spin(g, 6);
-  ok(g.shipped[0] === 3 && !g.shipped[14] && !g.shipped[13], `Ammo, a Reactor and Cord each come out as one Scrap (${g.shipped[0]})`);
+  ok(g.shipped[0] === 2 && g.shipped[8] === 1 && !g.shipped[14] && !g.shipped[13] && !g.shipped[9],
+    `Ammo and a Reactor come out as Scrap, Cord as Resin (${g.shipped[0]} Scrap, ${g.shipped[8] | 0} Resin)`);
+  const h = bench();
+  put(h, 'recyc', 10, 10, { dir: 0 });
+  put(h, 'depot', 11, 10, { dir: 0 });
+  for (const ty of [8, 9, 10, 10]) at(h, 10, 10).buf.push({ id: ty, ty, cp: 0 });
+  spin(h, 8);
+  ok(h.shipped[8] === 4 && !h.shipped[0], `Resin, Cord and Frame each come out as one Resin (${h.shipped[8] | 0})`);
 }
 
 console.log('\nSolar Panel');

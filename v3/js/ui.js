@@ -12,7 +12,7 @@
 import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
-  levelCap, techById, techOpen, unlockedBy, WALL_LEVEL_HP, WALL_DETOUR, SWARM_THRESHOLD, BRUTE_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
+  levelCap, techById, techOpen, unlockedBy, recycleTo, WALL_LEVEL_HP, WALL_DETOUR, SWARM_THRESHOLD, BRUTE_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
   cellOf, cx, cy, claimMin, claimMax, seen, seenXY, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
@@ -485,11 +485,14 @@ export function diagramFor(m) {
       d.appendChild(op('\u2192'));
       d.appendChild(part(null, true, 'go round, or chew through'));
       return d;
-    case 'recyc':
-      d.appendChild(part(null, true, 'anything'));
+    case 'recyc': {
+      // Show what is in its mouth turning into what it will become.
+      const ty = m.buf?.[0]?.ty;
+      d.appendChild(part(ty ?? null, true, ty == null ? 'anything' : null));
       d.appendChild(op('\u2192'));
-      d.appendChild(part(0, true));
+      d.appendChild(part(ty == null ? 0 : recycleTo(ty), true, ty == null ? 'Scrap, or Resin from Cord / Frame' : null));
       return d;
+    }
     case 'over':
       d.appendChild(part(null, true, 'straight on'));
       d.appendChild(op('·'));
@@ -1705,6 +1708,7 @@ export class Panel {
     } else if (spec.kind === 'recyc') {
       addRow(rows, 'Eats', 'anything');
       addRow(rows, 'Makes', 'one Scrap for each');
+      addRow(rows, 'Except', 'Resin, Cord and Frame — one Resin each');
       addRow(rows, 'Cycle', `${cycleTime({ ...spec, level: 1 }, f.done).toFixed(2)}s`);
     } else if (spec.kind === 'over') {
       addRow(rows, 'Ahead', 'everything, while it can take it');

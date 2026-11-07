@@ -294,6 +294,12 @@ Once it has run once, this browser never sees it again unless it is asked for. E
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
 
+### Repairs
+
+Repairing costs half what it used to: a machine costs 20% of its listed price,
+scaled by the share of its health it has lost (`REPAIR_RATE` 0.2), and the
+Launch Beacon $1.50 per point of damage (`BEACON_REPAIR`).
+
 ### Fog of war
 
 You can see your own land and three slots beyond it in every direction (`FOG` in

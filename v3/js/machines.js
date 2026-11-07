@@ -600,7 +600,7 @@ export function hpMult(m, done = []) {
 }
 
 /** Repairing costs a fraction of the machine's price, in proportion to the damage. */
-export const REPAIR_RATE = 0.4;
+export const REPAIR_RATE = 0.2;   // halved: a chewed line should be cheap to put right
 
 export function repairCost(m, done = []) {
   const max = maxHp(m, done);
@@ -1376,7 +1376,7 @@ export const BEACON_HP = 1000;
 /** Every this many points of damage costs one delivered gizmo. */
 export const BEACON_LOSS = 4;
 /** Dollars per hit point to repair it. */
-export const BEACON_REPAIR = 3;
+export const BEACON_REPAIR = 1.5;
 /** How long after its last delivery it still counts as being fed. */
 export const BEACON_FED = 90;
 /** The extra noise a Beacon makes while it is being fed. */

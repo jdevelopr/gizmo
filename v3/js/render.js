@@ -2189,7 +2189,8 @@ export class View {
       // crated — and red is somewhere the run cannot go at all.
       const tint = !step.ok ? '#ff5d4a' : step.mode === 'new' ? '#7fe8a0' : '#ffcd75';
       this.fillCell(ctx, step.cell, z, tint, step.ok ? 0.2 : 0.28);
-      if (z >= 16 && step.ok) {
+      // Walls face nowhere, so their run has no arrows.
+      if (z >= 16 && step.ok && ui.dragKind !== 'wall') {
         const [sx, sy] = this.toScreen(cx(step.cell), cy(step.cell));
         const d = step.dir | 0, h = Math.max(2, z / 6);
         px(ctx, sx + z / 2 + DIRS[d][0] * z * 0.26 - h / 2,

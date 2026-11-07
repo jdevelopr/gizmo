@@ -35,7 +35,7 @@ import { DIRS, cellOf, cx, cy, inWorld } from './machines.js';
 import { HOTKEYS } from './ui.js';
 
 /** Kinds you can lay in a run by dragging. Belts, and the belt with a tank on it. */
-const DRAGGABLE = new Set(['pipe', 'store']);
+const DRAGGABLE = new Set(['pipe', 'store', 'wall']);
 
 /**
  * How far the pointer has to travel, in pixels, before a press with nothing in

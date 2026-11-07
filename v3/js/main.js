@@ -360,6 +360,7 @@ function frame(now) {
     selected: S.selected,
     ghost: S.ghost,
     dragPath: S.drag?.mode === 'build' ? S.drag.path : null,
+    dragKind: S.drag?.mode === 'build' ? S.tool?.kind : null,
     reach: S.reach,
     range: S.range,
   });
@@ -792,10 +793,10 @@ function updateHint() {
   } else if (S.hand >= 0) txt = 'Click where it goes. <b>Esc</b> to leave it where it was.';
   else if (S.tool) {
     const cost = buyCost(S.tool, countKind(g.f, S.tool.kind));
-    const drag = S.tool.kind === 'pipe' || S.tool.kind === 'store';
+    const drag = S.tool.kind === 'pipe' || S.tool.kind === 'store' || S.tool.kind === 'wall';
     txt = `<b>${label(S.tool).toUpperCase()}</b> ${money(cost)}  ·  ` +
       (drag ? 'click, or drag to lay a run  ·  ' : '') +
-      '<b>R</b> turn  <b>F</b> flip  <b>Esc</b> drop';
+      (S.tool.kind === 'wall' ? '<b>Esc</b> drop' : '<b>R</b> turn  <b>F</b> flip  <b>Esc</b> drop');
   } else if (S.selected >= 0 && g.f.grid[S.selected]) {
     txt = '<b>R</b> turn  <b>M</b> move  <b>X</b> scrap  <b>H</b> repair  <b>Q</b> copy to hand  ·  drag to pan  ·  <b>V</b> power  <b>?</b> controls';
   } else {
@@ -923,7 +924,7 @@ function act(name, payload, extra) {
         const r = place(spec, step.cell, single ? null : step.dir, spec.mir,
           { adopt: k === firstOk, hand: !!spec.dirSet });
         if (!r.ok) { stopped = r.msg; break; }
-        if (k === lastOk && !single && !spec.dirSet && r.machine) {
+        if (k === lastOk && !single && !spec.dirSet && r.machine && spec.kind !== 'wall') {
           const d = handoffDir(f, step.cell);
           if (d != null && d !== r.machine.dir) { r.machine.dir = d; relink(f); }
         }

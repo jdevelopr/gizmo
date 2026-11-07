@@ -405,7 +405,79 @@ export const KINDS = {
     price: 100, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,
     body: '#5d6275', trim: '#a9b0c8', lit: '#ffcd75',
   },
+  battery: {
+    name: 'Battery', short: 'BATTERY',
+    desc: 'Soaks up spare power on its grid and pays it back when the grid runs short — '
+      + 'the way to keep Solar Panels working through the night. Carries power like any '
+      + 'machine, and holds more at every level.',
+    price: 1600, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,
+    body: '#1f2c22', trim: '#7fd36a', lit: '#d4ff9a',
+  },
+  nswitch: {
+    name: 'Night Switch', short: 'NIGHT SWITCH',
+    desc: 'At nightfall it switches off every machine touching it, and every machine touching '
+      + 'those, and switches them back on at dawn — so a factory can go quiet for the dark '
+      + 'without a click. Defences, Batteries, Solar Panels, Pylons and Walls are left alone.',
+    price: 600, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,
+    body: '#1c1a34', trim: '#9a8cff', lit: '#ffe9a0',
+  },
 };
+
+/* ---------------------------------------------------------------- day/night --- */
+
+/**
+ * The asteroid turns. One day is DAY_LEN seconds of game time: about seven minutes
+ * of daylight and three of night, measured at half light, with an hour of dusk and
+ * dawn (a minute each) fading between them. A game starts at the top of the morning.
+ *
+ * Night: Solar Panels go dark, the nests are bolder (they wake at NIGHT_SWARM noise
+ * rather than SWARM_THRESHOLD, and Brutes come at NIGHT_BRUTE), and you can only
+ * see NIGHT_FOG slots past your fence.
+ */
+export const DAY_LEN = 600;
+const DUSK_AT = 390, DUSK_LEN = 60, DAWN_AT = 570, DAWN_LEN = 60;
+const DAY_START = 30;         // t = 0 is the first moment of full daylight
+export const NIGHT_SWARM = 3;
+export const NIGHT_BRUTE = 9;
+export const NIGHT_FOG = 1;
+
+/** Daylight at time t, 0 (night) to 1 (full day). A game opens just after dawn. */
+export function lightAt(t) {
+  const p = ((((t + DAY_START) % DAY_LEN) + DAY_LEN) % DAY_LEN);
+  if (p < DAWN_AT + DAWN_LEN - DAY_LEN) return 0.5 + 0.5 * (p / (DAWN_AT + DAWN_LEN - DAY_LEN));   // the end of dawn
+  if (p < DUSK_AT) return 1;
+  if (p < DUSK_AT + DUSK_LEN) return 1 - (p - DUSK_AT) / DUSK_LEN;
+  if (p < DAWN_AT) return 0;
+  return 0.5 * (p - DAWN_AT) / (DAY_LEN - DAWN_AT);                                                // the start of dawn
+}
+/** Does this world have day and night at all? (Story worlds 1 and 2 do not.) */
+export const dayNightOn = f => !!f.dayNight;
+export const lightOf = f => (dayNightOn(f) ? lightAt(f.t || 0) : 1);
+export const isNight = f => lightOf(f) < 0.5;
+/** Seconds until the light next crosses half: when night falls, or when day breaks. */
+export function nextTurn(f) {
+  const t = f.t || 0, night = isNight(f);
+  for (let k = 1; k <= DAY_LEN; k++) if ((lightAt(t + k) < 0.5) !== night) return k;
+  return DAY_LEN;
+}
+/** Which night this is (counting from 0), for things that act once a night. */
+export const nightIndex = f => Math.floor(((f.t || 0) + DAY_START - (DUSK_AT + DUSK_LEN / 2)) / DAY_LEN);
+
+/** The noise that wakes the nests, and the noise that brings Brutes, right now. */
+export const swarmLine = f => (isNight(f)
+  ? Math.min(SWARM_THRESHOLD, NIGHT_SWARM + 0.5 * Math.max(0, rankOf(f.done, 'nightshift') - 1))
+  : SWARM_THRESHOLD);
+export const bruteLine = f => (isNight(f) ? NIGHT_BRUTE : BRUTE_THRESHOLD);
+
+/** Battery: kJ stored, kW in or out, and how far it carries power, by level. */
+export const BATTERY_CAP = [3000, 5000, 8000, 12000, 18000];
+export const BATTERY_RATE = [40, 60, 85, 115, 150];
+export const BATTERY_REACH = [4, 5, 6, 7, 8];
+export const batteryCap = (m, done = []) =>
+  BATTERY_CAP[(m.level || 1) - 1] * (1 + 0.15 * Math.max(0, rankOf(done, 'batteries') - 1));
+export const batteryRate = m => BATTERY_RATE[(m.level || 1) - 1];
+/** What a Night Switch never switches off: defences, power storage, and stone. */
+export const NIGHT_KEEP = new Set(['nswitch', 'battery', 'solar', 'pylon', 'wall', 'zap', 'arm', 'drone']);
 
 // Defence machines (Armory, Zapper, Repair Drone Bay) are priced at ten times their
 // first prices: holding the line is a real investment, not an afterthought.
@@ -501,7 +573,7 @@ export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort', 'over']);
  */
 export const NOISE = {
   pipe: 0.03, store: 0.05, bridge: 0.05, bal: 0.06, sort: 0.06, over: 0.06, pylon: 0.05, solar: 0.02,
-  depot: 0.15, lab: 0.15, zap: 0.2, drone: 0.3, wall: 0,
+  depot: 0.15, lab: 0.15, zap: 0.2, drone: 0.3, wall: 0, battery: 0.02, nswitch: 0,
   ext: 1, gen: 1.4, drill: 1.2,
   mut: 0.3, fuse: 0.4, asm: 0.6, arm: 0.4, recyc: 0.5, dup: 0.5, trident: 0.5,
 };
@@ -558,8 +630,8 @@ export const TREMOR_COST = 200;
 export const BRUTE = { hp: 60, speed: 0.5, bite: 5 };
 export const BRUTE_THRESHOLD = 12;
 /** What share of a Mite swarm are Brutes, at this much noise. */
-export const bruteShare = noise =>
-  noise < BRUTE_THRESHOLD ? 0 : Math.min(0.6, 0.15 + (noise - BRUTE_THRESHOLD) * 0.025);
+export const bruteShare = (noise, line = BRUTE_THRESHOLD) =>
+  noise < line ? 0 : Math.min(0.6, 0.15 + (noise - line) * 0.025);
 
 export const CREATURES = { mite: MITE, skitter: SKITTER, beetle: BEETLE, brute: BRUTE };
 
@@ -622,7 +694,7 @@ export const NEST_POP_MAX = 240;
 export const MAX_HP = {
   pipe: 12, store: 20, bal: 15, sort: 15, ext: 30, gen: 40, depot: 50, lab: 40,
   dup: 30, trident: 30, mut: 30, asm: 35, fuse: 30, arm: 30, zap: 45, drill: 40, bridge: 25,
-  over: 15, recyc: 30, pylon: 25, drone: 35, solar: 20, wall: 120,
+  over: 15, recyc: 30, pylon: 25, drone: 35, solar: 20, wall: 120, battery: 30, nswitch: 20,
 };
 
 /** A Wall's hit points grow with its level, and with each rank of Walls research. */
@@ -753,7 +825,7 @@ export const twoInput = m =>
 
 /** Machines you may only own so many of cheaply — each costs more than the last. */
 export const LADDERED = {
-  ext: 1.22, depot: 3, lab: 3, gen: 1.2, solar: 1.2, wall: 1.1,
+  ext: 1.22, depot: 3, lab: 3, gen: 1.2, solar: 1.2, wall: 1.1, battery: 1.2,
   // Advanced machinery: a steep first price, and each one after costs 1.2x more.
   asm: 1.2, dup: 1.2, trident: 1.2, fuse: 1.2, drill: 1.2, bridge: 1.2, recyc: 1.2, store: 1.2,
 };
@@ -1178,7 +1250,7 @@ export function outputs(m, inputs) {
 export function acceptsFrom(m, side) {
   if (!m) return false;
   if (m.kind === 'ext' || m.kind === 'drill') return false;   // no mouth at all
-  if (m.kind === 'pylon' || m.kind === 'solar') return false; // power only
+  if (m.kind === 'pylon' || m.kind === 'solar' || m.kind === 'battery' || m.kind === 'nswitch') return false; // power only
   if (m.kind === 'wall') return false;                        // solid
   if (m.kind === 'depot' || m.kind === 'lab') return side === (m.dir | 0);
   return true;
@@ -1242,7 +1314,7 @@ export function canEverAccept(m, ty, side = null) {
   if (m.kind === 'ext' || m.kind === 'drill') return false;
   if (m.kind === 'zap') return isAmmo(ty);
   if (m.kind === 'drone') return ty === DRONE_FUEL;
-  if (m.kind === 'pylon' || m.kind === 'solar' || m.kind === 'wall') return false;
+  if (m.kind === 'pylon' || m.kind === 'solar' || m.kind === 'wall' || m.kind === 'battery' || m.kind === 'nswitch') return false;
   if (m.kind === 'asm' || m.kind === 'arm') return twoInput(m).ins.includes(ty);
   if (m.kind === 'fuse') return fusable(ty);
   return true;
@@ -1340,7 +1412,7 @@ export function exitDirs(m) {
   const d = m.dir | 0;
   switch (m.kind) {
     case 'depot': case 'lab': case 'gen': case 'zap':
-    case 'pylon': case 'solar': case 'drone': case 'wall':
+    case 'pylon': case 'solar': case 'drone': case 'wall': case 'battery': case 'nswitch':
       return [];
     case 'over':
       return [d, sideDir(m)];
@@ -1395,8 +1467,11 @@ export const claimMax = claim => claimMin(claim) + claim - 1;
  * direction, and nothing further. Buying land pushes the fog back.
  */
 export const FOG = 3;
+/** How far past the fence you can see right now: FOG by day, NIGHT_FOG at night. */
+export const fogOf = f => (f && isNight(f) ? NIGHT_FOG : FOG);
 export const seenXY = (f, x, y) => {
-  const lo = claimMin(f.claim) - FOG, hi = claimMax(f.claim) + FOG;
+  const fg = fogOf(f);
+  const lo = claimMin(f.claim) - fg, hi = claimMax(f.claim) + fg;
   return x >= lo && x <= hi && y >= lo && y <= hi;
 };
 export const seen = (f, i) => seenXY(f, cx(i), cy(i));
@@ -1608,6 +1683,9 @@ export const TECH = [
   { id: 'solar', branch: 'power', name: 'Solar Panels', cost: 500, flat: true, needs: ['generators'], unlocks: ['solar'],
     blurb: 'Unlocks the Solar Panel: 15 kW of steady power with no fuel.',
     ranks: 'Ranks II–V: Solar Panels make 10% more power each (+40% at V).' },
+  { id: 'batteries', branch: 'power', name: 'Batteries', cost: 500, flat: true, needs: ['solar'], unlocks: ['battery'],
+    blurb: 'Unlocks the Battery: it stores spare power and pays it back when the grid runs short — Solar through the night.',
+    ranks: 'Ranks II–V: Batteries hold 15% more each (+60% at V).' },
   { id: 'pylons', branch: 'power', name: 'Pylons', cost: 300, needs: ['gridwork'], unlocks: ['pylon'],
     blurb: 'Unlocks the Pylon. Two facing the same way link with a wire that carries power (not gizmos) across a gap of up to 3 slots.',
     ranks: 'Ranks II–V: Pylon links reach 1 slot further each (+4 at V).' },
@@ -1628,6 +1706,9 @@ export const TECH = [
     ranks: 'Ranks II–V: less each rank — 58% less at V.' },
 
   // ---- defence
+  { id: 'nightshift', branch: 'defense', name: 'Night Shift', cost: 150, flat: true, needs: [], unlocks: ['nswitch'],
+    blurb: 'Unlocks the Night Switch: it turns the machines around it off at nightfall and back on at dawn.',
+    ranks: 'Ranks II–V: nights are calmer — swarms wake at 0.5 more noise each (from 3 up to 5 at V).' },
   { id: 'walls', branch: 'defense', name: 'Walls', cost: 60, flat: true, needs: [], unlocks: ['wall'],
     blurb: 'Unlocks the Wall: creatures go round it, or chew through it if there is no way round.',
     ranks: 'Ranks II–V: Walls get 25% more hit points each (+100% at V).' },
@@ -1747,7 +1828,7 @@ export const genOutput = (m, done = []) =>
   * unlockSpeed('gen', done);
 
 /** Kilowatts a Solar Panel makes, after research (each rank of Solar Panels past I: +10%). */
-export const solarOutput = (m, done = []) => SOLAR_OUTPUT[(m.level || 1) - 1] * unlockSpeed('solar', done);
+export const solarOutput = (m, done = [], light = 1) => SOLAR_OUTPUT[(m.level || 1) - 1] * unlockSpeed('solar', done) * light;
 
 /** Slots a Pylon's link may cross, by its level, plus one for each rank of Pylons past I. */
 export const pylonGap = (m, done = []) => PYLON_GAP[(m.level || 1) - 1] + Math.max(0, rankOf(done, 'pylons') - 1);

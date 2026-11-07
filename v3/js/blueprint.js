@@ -299,7 +299,7 @@ export function repairArea(f, cells) {
 export function toggleArea(f, cells) {
   const ms = cells.map(i => f.grid[i]).filter(Boolean);
   const on = ms.every(m => m.off);
-  for (const m of ms) { m.off = on ? 0 : 1; m.blocked = 0; m.blockT = 0; m.waitT = 0; }
+  for (const m of ms) { m.off = on ? 0 : 1; m.nsOff = 0; m.blocked = 0; m.blockT = 0; m.waitT = 0; }
   return { n: ms.length, off: !on };
 }
 

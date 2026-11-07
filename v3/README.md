@@ -339,6 +339,38 @@ for every one you already own (the Assembler ladder counts all three recipes tog
 
 Upgrades are priced off the purchase price, so they rose in step.
 
+### Day and night
+
+The asteroid turns. A day is ten minutes of game time — about seven of daylight and
+three of night, with a minute of dusk and of dawn fading between — and a game opens
+in full daylight. Endless mode has it, and story mode from world 3 on. A sun or moon
+in the top strip shows which, and how long until it turns.
+
+At night:
+
+- **Solar Panels make nothing** (and half at the middle of dusk and dawn).
+- **The nests are bolder:** they wake at noise **3** instead of 5, and Brutes come at
+  **9** instead of 12. The Noise card's marks move to match.
+- **You see less:** the fog closes in to 1 slot past your fence instead of 3.
+- **The map goes dark blue**, and every running machine shows a lamp.
+
+Two new machines:
+
+- **Battery** (Power: *Batteries*, 500 science, after Solar Panels; $800, 1.2x each).
+  It charges from whatever its grid has spare and pays it back when the grid runs
+  short, up to its rate. It counts as a power source with a short reach, so it also
+  carries power. 3 MJ / 40 kW at level 1, 18 MJ / 150 kW at level 5; each rank of
+  Batteries past I adds 15% capacity. Charging is real load: a Generator burns fuel
+  for it. Its gauge fills up the middle of its art.
+- **Night Switch** (Defence: *Night Shift*, 150 science; $300). At nightfall it
+  switches off every machine joined to it by touching — except defences, Batteries,
+  Solar Panels, Pylons and Walls — and switches them back on at dawn. A machine you
+  switch by hand in the night stays as you set it. Its window shows a sun or a moon.
+  Each rank of Night Shift past I raises the night swarm line by 0.5 (back to 5 at V).
+
+`tools/daynight.mjs` checks the clock, the thresholds, the fog, the Battery and the
+Night Switch.
+
 ### Creatures keep to open ground
 
 Bedrock, mountains, valleys and open space are solid to every creature. They walk

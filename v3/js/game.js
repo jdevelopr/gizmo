@@ -56,10 +56,14 @@ const EMA_WINDOW = 12;
  *
  * @param {boolean|null} teach force the walkthrough on or off; null asks storage
  */
+/** Story worlds from this index on (world 3) have day and night. */
+export const DAYNIGHT_FROM = 2;
+
 export function createGame({ seed = null, cash = 650, teach = null } = {}) {
   const s = seed == null ? (Math.floor(Math.random() * 1e9) | 0) : seed;
   const world = generateWorld(s);
   const f = createFactory({ seed: s, world, cash });
+  f.dayNight = true;
   rebuild(f);
   const g = baseGame(f);
   g.tut = (teach == null ? !hasBeenTaught() : teach) ? 0 : -1;
@@ -76,6 +80,7 @@ export function createStoryGame(level, { done = [], seed = null, teach = null, s
   const s = seed == null ? (Math.floor(Math.random() * 1e9) | 0) : seed;
   const world = storyWorld(level, s);
   const f = createFactory({ seed: s, world, cash: L.cash });
+  f.dayNight = level >= DAYNIGHT_FROM;           // the first two rocks have no night
   f.done = done.slice();
   rebuild(f);
   const g = baseGame(f);
@@ -452,7 +457,8 @@ export function serialise(g) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
-    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.charge | 0, m.hot | 0, m.free | 0]);
+    // A machine a Night Switch put to sleep is saved awake; the switch puts it back.
+    machines.push([i, m.kind, m.dir, m.level, m.mut, m.mir, (m.off && !m.nsOff) ? 1 : 0, Math.round(m.hp * 10) / 10, m.charge | 0, m.hot | 0, m.free | 0]);
   }
   const crate = f.crate.map(m => [m.kind, m.dir, m.level, m.mut, m.mir, m.off | 0, Math.round(m.hp * 10) / 10, m.free | 0]);
   // Every slot whose ground differs from what the seed made: rubble cleared, and
@@ -515,6 +521,7 @@ export function deserialise(data) {
   if (!data || data.v !== 1) return null;
   const world = data.story ? storyWorld(data.story.level, data.seed) : generateWorld(data.seed);
   const f = createFactory({ seed: data.seed, world, cash: data.cash || 0 });
+  f.dayNight = data.story ? data.story.level >= DAYNIGHT_FROM : true;
   f.claim = Math.max(CLAIM_START, Math.min(WORLD, data.claim || CLAIM_START));
   for (const i of data.cleared || []) f.terrain[i] = OPEN;        // saves before mountains
   for (const [i, t] of data.ground || []) if (i >= 0 && i < f.terrain.length) f.terrain[i] = t;

@@ -39,6 +39,7 @@ import {
   balDirs, REROUTES, wants, SCIENCE_RATE, sideDir, LEVEL_SPEED, PYLON_GAP, pylonGap, droneCycle, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, maxHp as hpMax, techById, techOpen, levelCap, rankOf, rankCost, TECH_RANKS, ROMAN,
   OPEN, RUBBLE, RUBBLE_COST, SCRAP_RATE, powerMult, energyOf, ORE_NAME,
   STALL_BADGE, label, PLUMBING, broken, hpMult, maxHp, CLEARABLE, footprint, frontOf, sizeKind, MOUNTAIN, VALLEY, BEDROCK, BRIDGE_SPAN, BEACON, SPACE, bridgeSpan,
+  isNight, dayNightOn, nightIndex, NIGHT_KEEP,
 } from './machines.js';
 import { solveTopology, balancePower } from './power.js';
 import { initBugs, stepBugs, nestAt } from './bugs.js';
@@ -200,6 +201,61 @@ export function rebuild(f) {
   pairPylons(f);
   solveTopology(f);
   relink(f);
+}
+
+/* -------------------------------------------------------------- day/night --- */
+
+/**
+ * Sunset and sunrise. Tells the rest of the game when either happens (an `fx`),
+ * repaints the fog when the sight line moves, and runs the Night Switches: at
+ * nightfall each one switches off every machine joined to it by touching —
+ * except what NIGHT_KEEP spares — and at dawn everything it switched off comes
+ * back on. A Night Switch built after dark acts straight away.
+ */
+function stepDayNight(f) {
+  const night = isNight(f);
+  if (night !== !!f.night) {
+    f.night = night;
+    f.mapRev++;                       // the fog line moved
+    if (dayNightOn(f) && f.t > 1) f.fx.push({ k: night ? 'dusk' : 'dawn' });
+    if (!night) {
+      let woke = 0;
+      for (const i of f.cells) {
+        const m = f.grid[i];
+        if (m?.nsOff) { m.off = 0; m.nsOff = 0; woke++; }
+      }
+      if (woke) f.dirty = true;
+    }
+  }
+  if (!night) return;
+  const ni = nightIndex(f);
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (m?.kind !== 'nswitch' || m.off || broken(m) || m.nsAt === ni) continue;
+    m.nsAt = ni;
+    // Everything joined to the switch by touching, as one flood.
+    const seenM = new Set([m]);
+    const q = [i];
+    let n = 0;
+    while (q.length) {
+      const at = q.pop();
+      const here = f.grid[at];
+      for (const c of here.cells || [at]) {
+        const x = cx(c), y = cy(c);
+        for (let d = 0; d < 4; d++) {
+          const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+          if (!inWorld(nx, ny)) continue;
+          const nb = f.grid[cellOf(nx, ny)];
+          if (!nb || seenM.has(nb)) continue;
+          seenM.add(nb);
+          q.push(nb.at ?? cellOf(nx, ny));
+          if (NIGHT_KEEP.has(nb.kind) || nb.off) continue;
+          nb.off = 1; nb.nsOff = 1; n++;
+        }
+      }
+    }
+    if (n) { f.dirty = true; f.fx.push({ k: 'nswitch', cell: i, n }); }
+  }
 }
 
 /* ---------------------------------------------------------------- bridges --- */
@@ -555,6 +611,7 @@ export function stepFactory(f, dt) {
 
   retally(f);
   if (f.dirty) rebuild(f);
+  stepDayNight(f);
   balancePower(f, dt);
   stepBugs(f, dt);
 
@@ -1446,6 +1503,7 @@ export function applyAction(f, a) {
     case 'off': {
       if (!m) return no('Nothing there');
       m.off = m.off ? 0 : 1;
+      m.nsOff = 0;          // a hand on the switch beats the Night Switch until dawn
       m.blocked = 0; m.blockT = 0; m.waitT = 0;
       f.fx.push({ k: m.off ? 'switchoff' : 'switchon', cell: a.i });
       return yes(m.off ? 'Switched off' : 'Switched on');

@@ -231,6 +231,19 @@ h1 span { color: var(--gold); }
 #topbar .logo b { color: var(--text); font-weight: 400; }
 #topbar > button { padding: 5px 9px; font-size: 11px; }
 
+/* The day clock: a sun or a moon, the time left, and how bright it is. */
+#dayclock {
+  display: flex; align-items: center; gap: 6px; margin-left: 14px;
+  padding: 3px 8px; border: 2px solid var(--line); background: var(--plate);
+  font-size: 10px; letter-spacing: 0.1em; color: var(--gold);
+}
+#dayclock .moon { display: none; }
+#dayclock.night { color: #c8ccff; border-color: #3a3f78; background: #10132a; }
+#dayclock.night .sun { display: none; }
+#dayclock.night .moon { display: block; }
+#dayclock .dc-bar { display: block; width: 40px; height: 4px; background: #05070d; }
+#dayclock .dc-bar b { display: block; height: 100%; width: 100%; background: currentColor; }
+
 /* cards ------------------------------------------------------------------ */
 
 /*

@@ -42,15 +42,21 @@
 import {
   DIRS, cellOf, cx, cy, inWorld,
   drawOf, intake, genOutput, genReach, energyOf, powerMult, KINDS, broken, footprint,
-  SOLAR_OUTPUT, SOLAR_REACH, solarOutput,
+  SOLAR_OUTPUT, SOLAR_REACH, solarOutput, lightOf, batteryCap, batteryRate, BATTERY_REACH,
 } from './machines.js';
 
-/** Is this a power source — a Generator, or a Solar Panel? */
-const SOURCE = new Set(['gen', 'solar']);
+/** Is this a power source — a Generator, a Solar Panel, or a Battery? */
+const SOURCE = new Set(['gen', 'solar', 'battery']);
 /** How many hops a source's power carries. */
-const sourceReach = (m, done) => (m.kind === 'solar' ? SOLAR_REACH[(m.level || 1) - 1] ?? 4 : genReach(m, done));
-/** What a source makes right now: a Generator only while burning, a panel always. */
-export const sourceOutput = (m, done) => (m.kind === 'solar' ? solarOutput(m, done) : genOutput(m, done));
+const sourceReach = (m, done) => (m.kind === 'solar' ? SOLAR_REACH[(m.level || 1) - 1] ?? 4
+  : m.kind === 'battery' ? BATTERY_REACH[(m.level || 1) - 1] ?? 4 : genReach(m, done));
+/**
+ * What a source makes right now: a Generator only while burning, a panel only in
+ * daylight (`light`, 0 to 1). A Battery makes nothing of its own — it is settled
+ * separately, from the grid's surplus or shortfall.
+ */
+export const sourceOutput = (m, done, light = 1) => (m.kind === 'solar' ? solarOutput(m, done, light)
+  : m.kind === 'battery' ? 0 : genOutput(m, done));
 
 /**
  * How fast a grid's satisfaction is allowed to move, in units per second. Demand
@@ -193,6 +199,7 @@ export function balancePower(f, dt) {
   const g = f.grid;
   if (f.dirty) solveTopology(f);
   const nets = f.nets || [];
+  const light = lightOf(f);
 
   // 1. Light every generator that has anything left to burn. A generator holding
   //    fuel it has not lit yet lights it now, so a belt arriving after a blackout
@@ -204,7 +211,8 @@ export function balancePower(f, dt) {
       const m = g[gi];
       if (!m) continue;
       if (m.off || broken(m)) { m.load = 0; continue; }   // switched off, or chewed through
-      if (m.kind === 'solar') { m.load = 0; net.supply += sourceOutput(m, f.done); net.hot++; continue; }
+      if (m.kind === 'battery') { m.load = 0; continue; }
+      if (m.kind === 'solar') { m.load = 0; const o = sourceOutput(m, f.done, light); net.supply += o; if (o > 0) net.hot++; continue; }
       if (m.fuel <= 0 && m.buf.length) {
         const fuel = m.buf.shift();
         m.fuel = energyOf(fuel.ty, f.done);
@@ -223,6 +231,48 @@ export function balancePower(f, dt) {
     if (busy(m)) nets[m.net].demand += drawOf(m, f.done);
   }
 
+  // 2b. Batteries. A grid with power to spare charges its Batteries with it; a grid
+  //     that is short draws on them, up to each one's rate, until they are empty.
+  for (const net of nets) {
+    net.stored = 0; net.storeCap = 0; net.flow = 0;
+    const bats = [];
+    for (const gi of net.gens) {
+      const m = g[gi];
+      if (m?.kind !== 'battery' || m.off || broken(m)) continue;
+      bats.push(m);
+      m.charge = Math.min(m.charge || 0, batteryCap(m, f.done));
+      net.stored += m.charge;
+      net.storeCap += batteryCap(m, f.done);
+    }
+    if (!bats.length) continue;
+    const gap = net.demand - net.supply;
+    if (gap > 0) {
+      let need = gap;
+      for (const m of bats) {
+        const give = Math.min(batteryRate(m), (m.charge || 0) / dt, need);
+        if (give <= 0) { m.load = 0; continue; }
+        m.charge -= give * dt;
+        m.load = give;
+        need -= give;
+        net.supply += give;
+        net.flow -= give;
+        if (need <= 0) break;
+      }
+      if (net.flow < 0) net.hot++;
+    } else {
+      let spare = -gap;
+      for (const m of bats) {
+        const take = Math.min(batteryRate(m), (batteryCap(m, f.done) - (m.charge || 0)) / dt, spare);
+        m.load = 0;
+        if (take <= 0) continue;
+        m.charge += take * dt;
+        spare -= take;
+        net.flow += take;
+        if (spare <= 0) break;
+      }
+    }
+  }
+
   // 3. Settle each grid, and burn what it actually delivered.
   for (const net of nets) {
     const target = net.demand <= 0 ? 1 : Math.min(1, net.supply / net.demand);
@@ -230,12 +280,14 @@ export function balancePower(f, dt) {
     net.sat += (target - net.sat) * k;
     if (Math.abs(net.sat - target) < 0.004) net.sat = target;
 
-    const delivered = Math.min(net.supply, net.demand);
+    // Charging Batteries is real load: a Generator burns fuel for it.
+    const delivered = Math.min(net.supply, net.demand + Math.max(0, net.flow || 0));
     if (delivered > 0 && net.supply > 0) {
       for (const gi of net.gens) {
         const m = g[gi];
         if (!m || m.off || broken(m)) continue;
-        if (m.kind === 'solar') { m.load = sourceOutput(m, f.done) / net.supply * delivered; continue; }
+        if (m.kind === 'battery') continue;
+        if (m.kind === 'solar') { m.load = sourceOutput(m, f.done, light) / net.supply * delivered; continue; }
         if (m.fuel <= 0) continue;
         const share = genOutput(m, f.done) / net.supply * delivered;
         m.load = share;
@@ -300,8 +352,9 @@ export function reachFrom(f, at, spec = { level: 1 }) {
  */
 export function powerSummary(f) {
   const nets = f.nets || [];
-  let supply = 0, demand = 0, worst = 1, dry = 0, unpowered = 0;
+  let supply = 0, demand = 0, worst = 1, dry = 0, unpowered = 0, stored = 0, storeCap = 0, flow = 0;
   for (const net of nets) {
+    stored += net.stored || 0; storeCap += net.storeCap || 0; flow += net.flow || 0;
     supply += net.supply;
     demand += net.demand;
     if (net.demand > 0) worst = Math.min(worst, net.sat);
@@ -311,5 +364,5 @@ export function powerSummary(f) {
     const m = f.grid[i];
     if (m && m.net < 0 && !KINDS[m.kind].passive && KINDS[m.kind].draw > 0) unpowered++;
   }
-  return { supply, demand, worst, nets: nets.length, dry, unpowered };
+  return { supply, demand, worst, nets: nets.length, dry, unpowered, stored, storeCap, flow };
 }

@@ -25,7 +25,7 @@
 
 import {
   WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN, BEDROCK, MOUNTAIN, VALLEY, SPACE,
-  rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, NOISE_IDLE, noiseLevelMult, SWARM_THRESHOLD, SWARM_COST, PASSIVE,
+  rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, NOISE_IDLE, noiseLevelMult, SWARM_THRESHOLD, SWARM_COST, PASSIVE, swarmLine, bruteLine,
   SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_POP_MIN, NEST_POP_MAX, CREATURES, SKITTER,
   skitterShare, nestSpec, bruteShare, price, WALL_DETOUR,
   nestAnger, nestBrood,
@@ -220,7 +220,7 @@ export function noiseField(f) {
 export function swarmEta(f) {
   if (!f.nests?.some(n => n.hp > 0)) return Infinity;
   const grace = Math.max(0, SWARM_GRACE - f.t);
-  if (f.noise < SWARM_THRESHOLD) return Infinity;
+  if (f.noise < swarmLine(f)) return Infinity;
   return grace + Math.max(0, SWARM_COST - f.swarm) / f.noise;
 }
 
@@ -233,7 +233,8 @@ export function stepBugs(f, dt) {
 
   // Quiet enough, and the nests settle: the gauge drains, and whatever is out on
   // the map goes home. Loud again, and they come back for you.
-  const quiet = f.noise < SWARM_THRESHOLD;
+  // The line is lower at night: nests that slept through the day can wake in the dark.
+  const quiet = f.noise < swarmLine(f);
   if (quiet !== !!f.quiet) {
     f.quiet = quiet;
     if (quiet && f.mites.some(mt => !mt.beacon && mt.kind !== 'beetle')) f.fx.push({ k: 'quiet' });
@@ -307,7 +308,7 @@ export function sendSwarm(f, size = null) {
   if (!mNest) { nSkit += nMite; nMite = 0; }
   if (!sNest) nSkit = 0;
   // Loud enough, and some of the Mites are Brutes.
-  const nBrute = nMite > 0 ? Math.max(bruteShare(f.noise) > 0 ? 1 : 0, Math.round(nMite * bruteShare(f.noise))) : 0;
+  const nBrute = nMite > 0 ? Math.max(bruteShare(f.noise, bruteLine(f)) > 0 ? 1 : 0, Math.round(nMite * bruteShare(f.noise, bruteLine(f)))) : 0;
   let sent = 0;
   for (let k = 0; k < nMite; k++) {
     if (spawnMite(f, cx(mNest.cell) + 0.5, cy(mNest.cell) + 0.5, null, k < nBrute ? 'brute' : 'mite')) sent++;

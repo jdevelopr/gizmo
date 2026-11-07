@@ -12,7 +12,7 @@
 import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
-  levelCap, techById, techOpen, unlockedBy, recycleTo, WALL_LEVEL_HP, WALL_DETOUR, SWARM_THRESHOLD, BRUTE_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
+  levelCap, techById, techOpen, unlockedBy, recycleTo, batteryCap, batteryRate, BATTERY_CAP, BATTERY_RATE, BATTERY_REACH, isNight, dayNightOn, nextTurn, lightOf, swarmLine, bruteLine, WALL_LEVEL_HP, WALL_DETOUR, SWARM_THRESHOLD, BRUTE_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
   cellOf, cx, cy, claimMin, claimMax, seen, seenXY, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
@@ -63,10 +63,10 @@ const el = (tag, cls, html) => {
 const GROUPS = [
   { name: 'LOGISTICS', kinds: ['pipe', 'bal', 'over', 'sort', 'store'] },
   { name: 'GROUND & TRADE', kinds: ['ext', 'depot', 'lab'] },
-  { name: 'POWER', kinds: ['gen', 'solar', 'pylon'] },
+  { name: 'POWER', kinds: ['gen', 'solar', 'battery', 'pylon'] },
   { name: 'PROCESSING', kinds: ['mut', 'fuse', 'asm', 'recyc'] },
   { name: 'MULTIPLYING', kinds: ['dup', 'trident'] },
-  { name: 'DEFENCE', kinds: ['wall', 'arm', 'zap', 'drone'] },
+  { name: 'DEFENCE', kinds: ['wall', 'nswitch', 'arm', 'zap', 'drone'] },
   { name: 'TERRAIN', kinds: ['drill', 'bridge'] },
 ];
 
@@ -480,6 +480,16 @@ export function diagramFor(m) {
       d.appendChild(op('\u2192'));
       d.appendChild(part(null, true, 'one machine fully repaired'));
       return d;
+    case 'battery':
+      d.appendChild(part(null, true, 'spare power'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, 'power when short'));
+      return d;
+    case 'nswitch':
+      d.appendChild(part(null, true, 'nightfall'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, 'everything joined to it off, till dawn'));
+      return d;
     case 'wall':
       d.appendChild(part(null, true, 'creatures'));
       d.appendChild(op('\u2192'));
@@ -660,6 +670,26 @@ export class Hud {
     if (node && node.textContent !== text) node.textContent = text;
   }
 
+  /** The sun-and-moon clock in the top strip: what time of day it is, and how long it lasts. */
+  paintClock(f) {
+    const box = $('dayclock');
+    if (!box) return;
+    if (!dayNightOn(f)) { box.hidden = true; return; }
+    box.hidden = false;
+    const night = isNight(f);
+    const txt = `${night ? 'NIGHT' : 'DAY'}  ${clock(nextTurn(f))}`;
+    this.put($('dc-text'), txt);
+    if (this.last.dcn !== night) {
+      this.last.dcn = night;
+      box.classList.toggle('night', night);
+      box.title = night ? 'Night: Solar is dark, nests wake at less noise, and you see less. Time until dawn.'
+        : 'Day. Time until nightfall.';
+    }
+    const fill = Math.round(lightOf(f) * 100) + '%';
+    const bar = $('dc-fill');
+    if (bar.style.width !== fill) bar.style.width = fill;
+  }
+
   /** The money card's little graph: income over the last few minutes. */
   paintSpark(g) {
     const c = this.spark;
@@ -721,10 +751,13 @@ export class Hud {
     const eta = swarmEta(f);
     // The number shown against it is the next line you would cross: 5 wakes the
     // nests, 12 brings Brute Mites.
-    this.set(this.noise, 'b', `${num(nz, 1)} / ${nz < SWARM_THRESHOLD ? SWARM_THRESHOLD : BRUTE_THRESHOLD}`);
+    // Both lines drop at night.
+    const SW = swarmLine(f), BR = bruteLine(f);
+    const nf = v => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+    this.set(this.noise, 'b', `${num(nz, 1)} / ${nf(nz < SW ? SW : BR)}`);
     this.set(this.noise, 'i', !f.nests?.some(n => n.hp > 0) ? 'noise'
-      : nz < SWARM_THRESHOLD ? 'nests asleep' : nz < BRUTE_THRESHOLD ? `swarm ${clock(eta)}` : `brutes · ${clock(eta)}`);
-    const cls = nz < SWARM_THRESHOLD * 0.8 ? 'quiet' : nz < SWARM_THRESHOLD ? 'busy' : nz < BRUTE_THRESHOLD ? 'loud' : 'brute';
+      : nz < SW ? 'nests asleep' : nz < BR ? `swarm ${clock(eta)}` : `brutes · ${clock(eta)}`);
+    const cls = nz < SW * 0.8 ? 'quiet' : nz < SW ? 'busy' : nz < BR ? 'loud' : 'brute';
     if (this.last.ncls !== cls) {
       this.last.ncls = cls;
       this.noise.querySelector('b').className = cls;
@@ -733,13 +766,16 @@ export class Hud {
     }
     // The noise bar runs to 16, with marks at the two lines that matter.
     const NMAX = 16;
-    const nw = Math.min(100, (nz / NMAX) * 100).toFixed(1) + '%';
+    const nw = Math.min(100, (nz / NMAX) * 100).toFixed(1) + '%|' + SW + '|' + BR;
     if (this.last.nw !== nw) {
       this.last.nw = nw;
-      $('noise-fill').style.width = nw;
-      $('tick-swarm').style.left = (SWARM_THRESHOLD / NMAX * 100) + '%';
-      $('tick-brute').style.left = (BRUTE_THRESHOLD / NMAX * 100) + '%';
+      $('noise-fill').style.width = Math.min(100, (nz / NMAX) * 100).toFixed(1) + '%';
+      $('tick-swarm').style.left = (SW / NMAX * 100) + '%';
+      $('tick-brute').style.left = (BR / NMAX * 100) + '%';
+      $('n-swarm').textContent = `${nf(SW)} swarms`;
+      $('n-brute').textContent = `${nf(BR)} brutes`;
     }
+    this.paintClock(f);
     // The one number in each card's header, readable with the card folded.
     this.put(this.head.money, money(f.cash));
     this.put(this.head.sci, num(f.science));
@@ -769,6 +805,10 @@ export class Hud {
         + (p.unpowered ? ` · ${p.unpowered} off` : '')
         + (p.dry ? ` · ${p.dry} dry` : '');
     if (this.last.ptxt !== ptxt) { this.last.ptxt = ptxt; this.pwrText.textContent = ptxt; }
+    const btxt = p.storeCap > 0
+      ? `${num(p.stored / 1000, 1)} / ${num(p.storeCap / 1000, 1)} MJ${p.flow > 1 ? ' · charging' : p.flow < -1 ? ' · in use' : ''}` : '';
+    this.put($('m-stored'), btxt);
+    $('m-stored-row').hidden = !btxt;
     const ph = p.nets === 0 ? 'none' : `${pct}%`;
     this.put(this.head.power, ph);
     this.head.power.style.color = p.nets === 0 ? '#5d668a' : ratio >= 0.95 ? '#a7f070' : ratio >= 0.7 ? '#ffcd75' : '#ff5d4a';
@@ -1361,7 +1401,8 @@ export class Panel {
     t.appendChild(el('div', 'sub',
       (broken(m) ? 'BROKEN  ·  ' : '') + (m.off ? 'SWITCHED OFF  ·  ' : '')
       + `Level ${m.level} of ${levelCap(f.done)}  ·  `
-      + (ONE_MOUTH.has(m.kind) ? `mouth faces ${DIR_NAME[m.dir]}` : `facing ${DIR_NAME[m.dir]}`)
+      + (['wall', 'battery', 'nswitch', 'solar'].includes(m.kind) ? 'faces nowhere'
+        : ONE_MOUTH.has(m.kind) ? `mouth faces ${DIR_NAME[m.dir]}` : `facing ${DIR_NAME[m.dir]}`)
       + `  ·  ${cx(cell)}, ${cy(cell)}`));
     head.appendChild(t);
     host.appendChild(head);
@@ -1480,6 +1521,29 @@ export class Panel {
       }
     }
 
+    if (m.kind === 'battery') {
+      const cap = batteryCap(m, f.done);
+      const net = m.net >= 0 ? f.nets[m.net] : null;
+      addRow(rows, 'Stored', `${num((m.charge || 0) / 1000, 1)} of ${num(cap / 1000, 1)} MJ`,
+        (m.charge || 0) > cap * 0.5 ? 'good' : (m.charge || 0) > cap * 0.15 ? 'warn' : 'bad');
+      addRow(rows, 'Right now', (m.load || 0) > 0 ? `paying out ${Math.round(m.load)} kW`
+        : net && (net.flow || 0) > 0 ? 'charging' : (m.charge || 0) >= cap - 1 ? 'full' : 'waiting for spare power');
+      addRow(rows, 'In or out', `up to ${batteryRate(m)} kW`);
+      addRow(rows, 'Carries power', `${BATTERY_REACH[(m.level || 1) - 1]} machines out`);
+      if (net) addRow(rows, 'This grid', `${Math.round(net.demand)} / ${Math.round(net.supply)} kW`,
+        net.sat >= 0.95 ? 'good' : net.sat >= 0.7 ? 'warn' : 'bad');
+      return rows;
+    }
+    if (m.kind === 'nswitch') {
+      const night = isNight(f);
+      let held = 0;
+      for (const c of f.cells) if (f.grid[c]?.nsOff) held++;
+      addRow(rows, 'Now', !dayNightOn(f) ? 'no nights on this world' : night ? `night — ${held} machine${held === 1 ? '' : 's'} asleep` : 'day — everything runs',
+        night ? 'warn' : 'good');
+      if (dayNightOn(f)) addRow(rows, night ? 'Dawn in' : 'Nightfall in', clock(nextTurn(f)));
+      addRow(rows, 'Leaves alone', 'defences, Batteries, Solar, Pylons, Walls');
+      return rows;
+    }
     if (m.kind === 'wall') {
       if (!(m.hp != null && m.hp < hpMax - 0.01)) addRow(rows, 'Hit points', `${Math.round(hpMax)}`, 'good');
       addRow(rows, 'Blocks', 'every creature — they go round or chew through');
@@ -1696,6 +1760,14 @@ export class Panel {
       addRow(rows, 'Links to', 'the next Pylon ahead facing the same way');
       addRow(rows, 'Gap', `up to ${PYLON_GAP[0]} slots at level 1, ${PYLON_GAP[4]} at level 5`);
       addRow(rows, 'Carries', 'power only — never gizmos');
+    } else if (spec.kind === 'battery') {
+      addRow(rows, 'Holds', `${num(BATTERY_CAP[0] / 1000, 1)} MJ at level 1, ${num(BATTERY_CAP[4] / 1000, 1)} at level 5`);
+      addRow(rows, 'In or out', `up to ${BATTERY_RATE[0]} kW at level 1`);
+      addRow(rows, 'Charges from', 'whatever its grid has to spare');
+    } else if (spec.kind === 'nswitch') {
+      addRow(rows, 'At nightfall', 'switches off everything joined to it by touching');
+      addRow(rows, 'At dawn', 'switches it all back on');
+      addRow(rows, 'Leaves alone', 'defences, Batteries, Solar, Pylons and Walls');
     } else if (spec.kind === 'wall') {
       addRow(rows, 'Hit points', `${Math.round(maxHp({ kind: 'wall', level: 1 }, f.done))} at level 1, ${Math.round(maxHp({ kind: 'wall', level: 5 }, f.done))} at level 5`);
       addRow(rows, 'Blocks', 'every creature, Skitters too');
@@ -2116,6 +2188,8 @@ export function drawMinimap(canvas, g, view) {
         else if (m.kind === 'solar') { r = 90; gg = 143; b = 224; }
         else if (m.kind === 'pylon') { r = 255; gg = 243; b = 160; }
         else if (m.kind === 'drone') { r = 79; gg = 216; b = 208; }
+        else if (m.kind === 'battery') { r = 127; gg = 211; b = 106; }
+        else if (m.kind === 'nswitch') { r = 154; gg = 140; b = 255; }
         else if (m.kind === 'wall' && !broken(m)) { r = 169; gg = 176; b = 200; }
         else if (broken(m)) { r = 120; gg = 20; b = 40; }
         else if (m.net < 0 && KINDS[m.kind].draw > 0) { r = 70; gg = 82; b = 128; }

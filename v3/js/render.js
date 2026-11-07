@@ -29,10 +29,10 @@
 
 import {
   WORLD, CELL, DIRS, TYPES, KINDS, RAW, RECIPES,
-  cx, cy, cellOf, inWorld, claimMin, claimMax, FOG, seenXY, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON, SPACE,
+  cx, cy, cellOf, inWorld, claimMin, claimMax, FOG, fogOf, lightOf, seenXY, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, BEACON, SPACE,
   BEACON_SIZE, BEACON_INPUTS, BEACON_NEED, BEACON_HP, surveyed, sizeKind, footprint,
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
-  ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
+  ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf, isNight, batteryCap,
 } from './machines.js';
 import { noiseField } from './bugs.js';
 import { heldTypes, machineLoad, contents } from './sim.js';
@@ -131,7 +131,7 @@ function makeCanvas(w, h) {
 const tiles = new Map();
 
 /** How many animation frames a kind's body has. Most have one. */
-const FRAMES = { pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab: 4, arm: 4, zap: 4, drill: 4, recyc: 4, pylon: 4, drone: 4, solar: 8 };
+const FRAMES = { battery: 1, pipe: 8, store: 8, gen: 4, ext: 4, asm: 4, mut: 4, fuse: 4, lab: 4, arm: 4, zap: 4, drill: 4, recyc: 4, pylon: 4, drone: 4, solar: 8 };
 
 export function frameCount(kind) { return FRAMES[kind] || 1; }
 
@@ -284,6 +284,50 @@ function drawBody(ctx, m, frame) {
   }
 
   switch (m.kind) {
+    case 'battery': {
+      // A squat cell pack: two fat cells with terminals on top, a gauge window down
+      // the middle (filled live, see drawMachine), and a lightning mark on the front.
+      px(ctx, 6, 8, 20, 18, '#0b120c');
+      px(ctx, 7, 9, 8, 16, shade(body, 1.35));
+      px(ctx, 17, 9, 8, 16, shade(body, 1.35));
+      px(ctx, 7, 9, 8, 2, shade(body, 1.9));
+      px(ctx, 17, 9, 8, 2, shade(body, 1.9));
+      px(ctx, 9, 6, 4, 3, shade(trim, 0.8));
+      px(ctx, 19, 6, 4, 3, shade(trim, 0.8));
+      px(ctx, 10, 6, 2, 1, lit);
+      px(ctx, 20, 6, 2, 1, lit);
+      // the gauge slot between the cells
+      px(ctx, 15, 10, 2, 14, '#050806');
+      // the bolt
+      for (const ox of [0, 10]) {
+        px(ctx, 11 + ox, 12, 2, 1, lit);
+        px(ctx, 10 + ox, 13, 2, 1, lit);
+        px(ctx, 9 + ox, 14, 4, 1, lit);
+        px(ctx, 10 + ox, 15, 2, 1, lit);
+        px(ctx, 9 + ox, 16, 2, 1, lit);
+        px(ctx, 9 + ox, 17, 1, 1, lit);
+      }
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
+      break;
+    }
+
+    case 'nswitch': {
+      // A dial plate with a big lever. The window at the top shows a sun or a moon,
+      // and is drawn live, because which one it is depends on the hour.
+      px(ctx, 7, 7, 18, 18, '#0b0a18');
+      px(ctx, 8, 8, 16, 16, shade(body, 1.3));
+      px(ctx, 10, 9, 12, 7, '#06050e');            // the window
+      px(ctx, 10, 9, 12, 1, shade(trim, 0.6));
+      // the lever: a slot, and the handle
+      px(ctx, 15, 17, 2, 6, '#06050e');
+      px(ctx, 13, 18, 6, 2, trim);
+      px(ctx, 13, 18, 6, 1, shade(trim, 1.4));
+      px(ctx, 9, 21, 3, 2, shade(trim, 0.7));
+      px(ctx, 20, 21, 3, 2, shade(trim, 0.7));
+      for (let i = 0; i < lvl - 1; i++) px(ctx, 5, 6 + i * 4, 2, 2, lit);
+      break;
+    }
+
     case 'wall': {
       // Stone blocks, seen from above, that run on into the Wall next door: every
       // side with a Wall beside it goes right to the edge, so a line of them reads
@@ -1076,6 +1120,7 @@ function drawFog(ctx, x, y, gx, gy) {
 }
 
 function paintGround(g, f) {
+  const FG = fogOf(f);
   const ctx = g.getContext('2d');
   const lo = claimMin(f.claim), hi = claimMax(f.claim);
   ctx.clearRect(0, 0, g.width, g.height);
@@ -1089,7 +1134,7 @@ function paintGround(g, f) {
 
       // Fog of war: past FOG slots beyond the claim, nothing is drawn but fog.
       const ring = Math.max(lo - x, x - hi, lo - y, y - hi);
-      if (ring > FOG) { drawFog(ctx, px0, py0, x, y); continue; }
+      if (ring > FG) { drawFog(ctx, px0, py0, x, y); continue; }
 
       px(ctx, px0, py0, CELL, CELL, own ? (checker ? FLOOR2 : FLOOR) : (checker ? DIRT2 : DIRT));
       if (own) {
@@ -1120,7 +1165,7 @@ function paintGround(g, f) {
       else if (t !== OPEN) drawRock(ctx, px0, py0, t, !own);
       // the last ring before the fog fades toward it
       if (ring > 0) {
-        ctx.globalAlpha = ring === FOG ? 0.45 : ring === FOG - 1 ? 0.22 : 0.08;
+        ctx.globalAlpha = ring === FG ? 0.45 : ring === FG - 1 ? 0.22 : 0.08;
         px(ctx, px0, py0, CELL, CELL, '#04050a');
         ctx.globalAlpha = 1;
       }
@@ -1493,6 +1538,10 @@ export class View {
       this.stats.drawn++;
     }
 
+    // 2b. night: the whole floor and every machine sink into a blue dark, and the
+    //     machines that are running show a light of their own through it.
+    this.drawNight(ctx, f, b, z);
+
     // 3. the gizmos
     this.drawGizmos(ctx, f, b, z);
 
@@ -1551,6 +1600,32 @@ export class View {
     ctx.lineWidth = 2;
     ctx.strokeRect(sx + 1, sy + 1, w - 2, h - 2);
     ctx.restore();
+  }
+
+  /** The dark, and the lights in it. */
+  drawNight(ctx, f, b, z) {
+    const dark = 1 - lightOf(f);
+    if (dark <= 0.02) return;
+    ctx.globalAlpha = 0.52 * dark;
+    px(ctx, 0, 0, this.w, this.h, '#070c26');
+    ctx.globalAlpha = 1;
+    const s = z / CELL;
+    const glow = Math.max(2, Math.round(4 * s));
+    for (const i of f.cells) {
+      const m = f.grid[i];
+      const x = cx(i), y = cy(i);
+      if (!m || x < b.x0 - 1 || x > b.x1 + 1 || y < b.y0 - 1 || y > b.y1 + 1) continue;
+      if (m.off || broken(m) || PLUMBING.has(m.kind) || m.kind === 'wall' || m.kind === 'pipe' || m.kind === 'store') continue;
+      const lit = KINDS[m.kind].lit || '#ffffff';
+      const [sx, sy] = this.toScreen(x, y);
+      // A soft pool of its own light, and a lamp in its top-right corner — off to
+      // the side, so it never sits over what the machine is showing.
+      ctx.globalAlpha = 0.12 * dark;
+      px(ctx, sx + z * 0.15, sy + z * 0.15, z * 0.7, z * 0.7, lit);
+      ctx.globalAlpha = 0.95 * dark;
+      px(ctx, sx + z - 6 * s - glow / 2, sy + 4 * s, glow, glow, lit);
+      ctx.globalAlpha = 1;
+    }
   }
 
   /** A blueprint in your hand: every machine it would place, green, amber or red. */
@@ -1711,6 +1786,40 @@ export class View {
       }
     }
 
+    // --- a Battery's charge, filling its gauge from the bottom
+    if (m.kind === 'battery') {
+      const cap = batteryCap(m, f?.done || []);
+      const frac = cap > 0 ? Math.max(0, Math.min(1, (m.charge || 0) / cap)) : 0;
+      const hgt = Math.round(14 * frac);
+      if (hgt > 0) {
+        const col = frac > 0.5 ? '#a7f070' : frac > 0.2 ? '#ffcd75' : '#ff5d4a';
+        px(ctx, sx + 15 * s, sy + (24 - hgt) * s, 2 * s, hgt * s, col);
+      }
+      // a blink on the terminals while it is paying power out
+      if ((m.load || 0) > 0 && frame % 8 < 4) {
+        px(ctx, sx + 10 * s, sy + 6 * s, 2 * s, s, '#ffffff');
+        px(ctx, sx + 20 * s, sy + 6 * s, 2 * s, s, '#ffffff');
+      }
+    }
+
+    // --- a Night Switch's window: the sun by day, the moon at night
+    if (m.kind === 'nswitch' && f) {
+      const night = isNight(f);
+      if (night) {
+        // a crescent, opening to the right
+        for (const [ox, oy, w] of [[1, 0, 3], [0, 1, 3], [0, 2, 2], [0, 3, 2], [0, 4, 3], [1, 5, 3]]) {
+          px(ctx, sx + (14 + ox) * s, sy + (9.5 + oy) * s, w * s, s, '#e8ecf8');
+        }
+        px(ctx, sx + 11 * s, sy + 11 * s, s, s, '#9a8cff');
+        px(ctx, sx + 20 * s, sy + 13 * s, s, s, '#9a8cff');
+      } else {
+        px(ctx, sx + 14 * s, sy + 11 * s, 4 * s, 4 * s, '#ffcd75');
+        px(ctx, sx + 15 * s, sy + 10 * s, 2 * s, 6 * s, '#ffcd75');
+        px(ctx, sx + 13 * s, sy + 12 * s, 6 * s, 2 * s, '#ffcd75');
+        px(ctx, sx + 15 * s, sy + 12 * s, 2 * s, 2 * s, '#ffffff');
+      }
+    }
+
     // --- a Zapper's charges, as pips down its side, and a red badge when it is dry
     if (m.kind === 'zap') {
       // Charged shots in pink on top, plain shots in yellow below them.
@@ -1815,7 +1924,7 @@ export class View {
     const bc = f.beacon;
     if (!bc) return;
     // Hidden in the fog until your land comes within sight of it.
-    const lo = claimMin(f.claim) - FOG, hi = claimMax(f.claim) + FOG;
+    const lo = claimMin(f.claim) - fogOf(f), hi = claimMax(f.claim) + fogOf(f);
     if (bc.x0 + BEACON_SIZE - 1 < lo || bc.x0 > hi || bc.y0 + BEACON_SIZE - 1 < lo || bc.y0 > hi) return;
     if (bc.x0 + BEACON_SIZE < b.x0 - 1 || bc.x0 > b.x1 + 1 || bc.y0 + BEACON_SIZE < b.y0 - 1 || bc.y0 > b.y1 + 1) {
       if (!bc.done) return;

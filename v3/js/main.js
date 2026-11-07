@@ -455,6 +455,9 @@ function playFx(fx) {
       case 'move': sfx('move'); break;
       case 'swarm': sfx('swarm'); view.pulse('#ff3b5c'); break;
       case 'quiet': toast(g, 'Quiet enough — the creatures are heading home to their nests', '#a7f070'); break;
+      case 'dusk': toast(g, 'Night falls — Solar goes dark, and the nests wake at less noise', '#c8ccff'); break;
+      case 'dawn': toast(g, 'Dawn — the sun is up', '#ffcd75'); break;
+      case 'nswitch': toast(g, `Night Switch — ${e.n} machine${e.n === 1 ? '' : 's'} off till dawn`, '#c8ccff'); break;
       case 'beetle':
         sfx('broke');
         toast(g, `A Beetle has burrowed out of a mountain to the ${compass(e.cell)} — it is after your Generators`, '#ffb060');

@@ -50,6 +50,16 @@
     <!-- top: just the controls -->
     <div id="topbar">
       <span class="logo">GIZMO <b>3</b></span>
+      <div id="dayclock" hidden>
+        <svg class="sun" viewBox="0 0 10 10" width="12" height="12" aria-hidden="true" shape-rendering="crispEdges">
+          <path d="M3 3h4v4H3zM4 0h2v2H4zM4 8h2v2H4zM0 4h2v2H0zM8 4h2v2H8z" fill="#ffcd75"/>
+        </svg>
+        <svg class="moon" viewBox="0 0 10 10" width="12" height="12" aria-hidden="true" shape-rendering="crispEdges">
+          <path d="M3 1h4v1H5v1H4v4h1v1h2v1H3V8H2V2h1z" fill="#e8ecf8"/>
+        </svg>
+        <span id="dc-text"></span>
+        <i class="dc-bar"><b id="dc-fill"></b></i>
+      </div>
       <div class="spacer"></div>
       <div class="speeds">
         <button data-speed="0" title="Pause (Space)">||</button>
@@ -95,6 +105,7 @@
         <div class="ch"><span class="lbl">POWER</span><span class="val" id="h-power"></span><span class="car"></span></div>
         <div class="cb">
           <div id="s-power"><div class="pwr-bar"><span id="pwr-fill"></span></div><i id="pwr-text">no grid</i></div>
+          <div class="crow" id="m-stored-row" hidden><span>Batteries</span><b id="m-stored"></b></div>
           <button id="btn-power" class="cbtn" title="Show the power grid  (V)">POWER MAP <span class="k">V</span></button>
         </div>
       </div>
@@ -103,7 +114,7 @@
         <div class="cb">
           <div class="stat" id="s-noise" title="How loud your factory is."><b>0</b><i>noise</i></div>
           <div class="nbar"><i id="noise-fill"></i><span class="tick" id="tick-swarm"></span><span class="tick" id="tick-brute"></span></div>
-          <div class="nlegend"><span>quiet</span><span>5 swarms</span><span>12 brutes</span></div>
+          <div class="nlegend"><span>quiet</span><span id="n-swarm">5 swarms</span><span id="n-brute">12 brutes</span></div>
           <button id="btn-noise" class="cbtn" title="Show where your factory can be heard  (L)">NOISE MAP <span class="k">L</span></button>
         </div>
       </div>

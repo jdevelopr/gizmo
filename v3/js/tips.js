@@ -92,6 +92,15 @@ export const TIPS = [
     fx: e => e.k === 'swarm' && e.brutes > 0,
   },
   {
+    id: 'night',
+    title: 'Sun\'s going down!',
+    body: 'This rock turns, rookie, and night lasts about three minutes. In the dark your <b>Solar Panels</b> '
+      + 'quit, the nests get jumpy — they wake at noise <b>3</b> instead of 5, and Brutes come at <b>9</b> — and '
+      + 'you can\'t see as far past the fence. <b>Batteries</b> keep the lights on; a <b>Night Switch</b> '
+      + 'puts your loud machines to bed till sunrise.',
+    fx: e => e.k === 'dusk',
+  },
+  {
     id: 'skitter',
     title: 'Skitters — fast little things!',
     body: 'Skitters are quick and fragile and they go straight for your <b>belts</b>. One zap pops one. '

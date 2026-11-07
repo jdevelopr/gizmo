@@ -283,7 +283,10 @@ function popAnchor() {
 /** Put the pop-up over what is selected, or dock it above the shop for a tool. */
 function placePop() {
   const pop = $('pop');
-  const want = S.bp || S.area?.length || S.rubble?.length || S.selected >= 0 || S.tool;
+  // While something is being moved the card would only sit on the spot you are
+  // aiming at, so it gets out of the way until the move is finished.
+  const moving = S.hand >= 0 || !!S.bp?.held;
+  const want = !moving && (S.bp || S.area?.length || S.rubble?.length || S.selected >= 0 || S.tool);
   if (!want) { if (!pop.hidden) pop.hidden = true; return; }
   if (pop.hidden) pop.hidden = false;
   pop.classList.toggle('nomore', !$('tab-info').querySelector('.more-only'));

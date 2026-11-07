@@ -392,6 +392,14 @@ export const KINDS = {
     price: 1000, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,   // free power is dear
     body: '#1a2440', trim: '#5a8fe0', lit: '#bfe0ff',
   },
+  wall: {
+    name: 'Wall', short: 'WALL',
+    desc: 'A block of plated stone. Nothing that crawls can walk through it: creatures go round '
+      + 'if there is a way, and chew through it if there is not. Silent, needs no power, '
+      + 'and joins up with the Walls beside it.',
+    price: 100, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,
+    body: '#5d6275', trim: '#a9b0c8', lit: '#ffcd75',
+  },
 };
 
 // Defence machines (Armory, Zapper, Repair Drone Bay) are priced at ten times their
@@ -488,7 +496,7 @@ export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort', 'over']);
  */
 export const NOISE = {
   pipe: 0.03, store: 0.05, bridge: 0.05, bal: 0.06, sort: 0.06, over: 0.06, pylon: 0.05, solar: 0.02,
-  depot: 0.15, lab: 0.15, zap: 0.2, drone: 0.3,
+  depot: 0.15, lab: 0.15, zap: 0.2, drone: 0.3, wall: 0,
   ext: 1, gen: 1.4, drill: 1.2,
   mut: 0.3, fuse: 0.4, asm: 0.6, arm: 0.4, recyc: 0.5, dup: 0.5, trident: 0.5,
 };
@@ -609,14 +617,20 @@ export const NEST_POP_MAX = 240;
 export const MAX_HP = {
   pipe: 12, store: 20, bal: 15, sort: 15, ext: 30, gen: 40, depot: 50, lab: 40,
   dup: 30, trident: 30, mut: 30, asm: 35, fuse: 30, arm: 30, zap: 45, drill: 40, bridge: 25,
-  over: 15, recyc: 30, pylon: 25, drone: 35, solar: 20,
+  over: 15, recyc: 30, pylon: 25, drone: 35, solar: 20, wall: 120,
 };
+
+/** A Wall's hit points grow with its level, and with each rank of Walls research. */
+export const WALL_LEVEL_HP = [1, 1.5, 2, 2.75, 3.5];
+/** How many extra slots a creature will walk round rather than chew one Wall. */
+export const WALL_DETOUR = 24;
 
 /** What Plating research multiplies every machine's hit points by. */
 export const PLATING_BONUS = 1.5;
 
 export const maxHp = (m, done = []) =>
-  (MAX_HP[m.kind] || 30) * grow(done, 'hp', PLATING_BONUS);
+  (MAX_HP[m.kind] || 30) * grow(done, 'hp', PLATING_BONUS)
+  * (m.kind === 'wall' ? WALL_LEVEL_HP[(m.level || 1) - 1] * (1 + 0.25 * Math.max(0, rankOf(done, 'walls') - 1)) : 1);
 
 /** Is this machine chewed through? It does nothing until it is repaired. */
 export const broken = m => m.hp != null && m.hp <= 0;
@@ -733,7 +747,7 @@ export const twoInput = m =>
   (m?.kind === 'asm' ? recipeOf(m) : m?.kind === 'arm' ? ARMORY : null);
 
 /** Machines you may only own so many of cheaply — each costs more than the last. */
-export const LADDERED = { ext: 1.22, depot: 3, lab: 3, gen: 1.2, solar: 1.2 };
+export const LADDERED = { ext: 1.22, depot: 3, lab: 3, gen: 1.2, solar: 1.2, wall: 1.1 };
 
 /** Mutators are priced by the tier they output. */
 /**
@@ -1152,6 +1166,7 @@ export function acceptsFrom(m, side) {
   if (!m) return false;
   if (m.kind === 'ext' || m.kind === 'drill') return false;   // no mouth at all
   if (m.kind === 'pylon' || m.kind === 'solar') return false; // power only
+  if (m.kind === 'wall') return false;                        // solid
   if (m.kind === 'depot' || m.kind === 'lab') return side === (m.dir | 0);
   return true;
 }
@@ -1205,7 +1220,7 @@ export function canEverAccept(m, ty, side = null) {
   if (m.kind === 'ext' || m.kind === 'drill') return false;
   if (m.kind === 'zap') return isAmmo(ty);
   if (m.kind === 'drone') return ty === DRONE_FUEL;
-  if (m.kind === 'pylon' || m.kind === 'solar') return false;
+  if (m.kind === 'pylon' || m.kind === 'solar' || m.kind === 'wall') return false;
   if (m.kind === 'asm' || m.kind === 'arm') return twoInput(m).ins.includes(ty);
   if (m.kind === 'fuse') return fusable(ty);
   return true;
@@ -1303,7 +1318,7 @@ export function exitDirs(m) {
   const d = m.dir | 0;
   switch (m.kind) {
     case 'depot': case 'lab': case 'gen': case 'zap':
-    case 'pylon': case 'solar': case 'drone':
+    case 'pylon': case 'solar': case 'drone': case 'wall':
       return [];
     case 'over':
       return [d, sideDir(m)];
@@ -1591,6 +1606,9 @@ export const TECH = [
     ranks: 'Ranks II–V: less each rank — 58% less at V.' },
 
   // ---- defence
+  { id: 'walls', branch: 'defense', name: 'Walls', cost: 60, flat: true, needs: [], unlocks: ['wall'],
+    blurb: 'Unlocks the Wall: creatures go round it, or chew through it if there is no way round.',
+    ranks: 'Ranks II–V: Walls get 25% more hit points each (+100% at V).' },
   { id: 'defense', branch: 'defense', name: 'Pest Control', cost: 120, needs: [], unlocks: ['arm', 'zap'],
     blurb: 'Unlocks the Armory (makes Ammo) and the Zapper (shoots creatures with it). Get it before the first swarm.',
     ranks: 'Ranks II–V: Armories and Zappers work 10% faster each (+40% at V).' },

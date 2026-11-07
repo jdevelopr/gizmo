@@ -138,7 +138,7 @@ export function frameCount(kind) { return FRAMES[kind] || 1; }
 function tileKey(m, frame) {
   // Belts carry their join mask in the key: a belt in the middle of a run and a
   // belt on the end of one are different pictures of the same machine.
-  const link = (m.kind === 'pipe' || m.kind === 'store') ? (m.link | 0) : 0;
+  const link = (m.kind === 'pipe' || m.kind === 'store' || m.kind === 'wall') ? (m.link | 0) : 0;
   return `${m.kind}|${m.dir}|${m.level || 1}|${m.mut ?? 0}|${m.mir | 0}|${frame}|${link}`;
 }
 
@@ -268,7 +268,7 @@ function drawBody(ctx, m, frame) {
    * Everything else keeps its casing: a Mutator is an object sitting on the floor,
    * and it should look like one.
    */
-  if (m.kind !== 'pipe' && m.kind !== 'store') {
+  if (m.kind !== 'pipe' && m.kind !== 'store' && m.kind !== 'wall') {
     // casing: outline, body, a light source from the top left, corner bolts
     px(ctx, 1, 1, CELL - 2, CELL - 2, '#0c0e18');
     px(ctx, 3, 3, CELL - 6, CELL - 6, body);
@@ -284,6 +284,45 @@ function drawBody(ctx, m, frame) {
   }
 
   switch (m.kind) {
+    case 'wall': {
+      // Stone blocks, seen from above, that run on into the Wall next door: every
+      // side with a Wall beside it goes right to the edge, so a line of them reads
+      // as one wall rather than a row of boxes. The brick pattern repeats every
+      // 8 pixels, which divides the slot, so the joins do not show.
+      const L = m.link | 0;
+      const x0 = L & 4 ? 0 : 4, x1 = L & 1 ? CELL : CELL - 4;
+      const y0 = L & 8 ? 0 : 4, y1 = L & 2 ? CELL : CELL - 4;
+      px(ctx, x0, y0, x1 - x0, y1 - y0, '#0c0e18');
+      const ix0 = L & 4 ? 0 : x0 + 1, ix1 = L & 1 ? CELL : x1 - 1;
+      const iy0 = L & 8 ? 0 : y0 + 1, iy1 = L & 2 ? CELL : y1 - 1;
+      px(ctx, ix0, iy0, ix1 - ix0, iy1 - iy0, body);
+      const mortar = shade(body, 0.62);
+      for (let y = 0; y < CELL; y += 6) {
+        if (y > iy0 && y < iy1) px(ctx, ix0, y, ix1 - ix0, 1, mortar);
+        const off = (y / 6) % 2 ? 4 : 0;
+        for (let x = off; x < CELL; x += 8) {
+          const top = Math.max(iy0, y + 1), bot = Math.min(iy1, y + 6);
+          if (x > ix0 && x < ix1 && bot > top) px(ctx, x, top, 1, bot - top, mortar);
+          // a lit corner on each brick
+          if (x + 1 >= ix0 && x + 1 < ix1 && top < bot) px(ctx, x + 1, top, 2, 1, shade(body, 1.3));
+        }
+      }
+      // The top face catches the light; the bottom face is the wall's height.
+      if (!(L & 8)) px(ctx, ix0, iy0, ix1 - ix0, 2, shade(body, 1.55));
+      if (!(L & 2)) px(ctx, ix0, iy1 - 3, ix1 - ix0, 3, shade(body, 0.5));
+      if (!(L & 4)) px(ctx, ix0, iy0, 1, iy1 - iy0, shade(body, 1.25));
+      if (!(L & 1)) px(ctx, ix1 - 1, iy0, 1, iy1 - iy0, shade(body, 0.7));
+      // Levels are steel plates riveted across the middle.
+      const lvl2 = (m.level || 1) - 1;
+      if (lvl2 > 0) {
+        px(ctx, 9, 13, 14, 6, '#0c0e18');
+        px(ctx, 10, 14, 12, 4, shade(trim, 0.8));
+        px(ctx, 10, 14, 12, 1, trim);
+        for (let i = 0; i < lvl2; i++) px(ctx, 11 + i * 3, 16, 2, 1, lit);
+      }
+      break;
+    }
+
     case 'pipe': {
       drawBelt(ctx, m, frame, trim, lit);
       for (let i = 0; i < (m.level || 1) - 1; i++) {

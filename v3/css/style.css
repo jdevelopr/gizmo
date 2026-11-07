@@ -241,7 +241,7 @@ h1 span { color: var(--gold); }
   z-index: 4;
 }
 #leftcards { left: 12px; width: var(--left); overflow-y: auto; scrollbar-width: none; }
-#rightcards { right: 12px; width: var(--right); }
+#rightcards { right: 12px; width: var(--right); bottom: calc(var(--shop) + 10px + 116px + 8px); }
 .fcard {
   pointer-events: auto;
   background: rgba(21, 25, 41, 0.95);
@@ -426,7 +426,7 @@ h1 span { color: var(--gold); }
 #tutorial.done #tut-skip { border-color: var(--green); color: var(--green); }
 
 #minimap {
-  position: absolute; right: calc(var(--right) + 24px); bottom: calc(var(--shop) + 10px); z-index: 4;
+  position: absolute; right: 12px; bottom: calc(var(--shop) + 10px); z-index: 4;
   border: 2px solid var(--line); background: var(--ink);
   line-height: 0;
 }
@@ -553,7 +553,6 @@ h3 {
 }
 @media (max-width: 900px) {
   #rightcards { display: none; }
-  #minimap { right: 12px; }
 }
 
 /* --- quality of life: clickable alert, sound button, stats bars --- */

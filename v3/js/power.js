@@ -127,6 +127,7 @@ export function solveTopology(f) {
           ni = extra[d - 4];
         }
         if (seen[ni] === k || !g[ni]) continue;    // an empty slot is a broken wire
+        if (g[ni].kind === 'wall') continue;        // and a Wall is solid stone
         seen[ni] = k;
         dist[ni] = dist[at] + 1;
         queue[tail++] = ni;

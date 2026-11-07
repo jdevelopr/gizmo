@@ -57,7 +57,8 @@ console.log('\nEvery card can be written');
   ok(M.pylonGap({ level: 1 }, r('pylons', 5)) === M.pylonGap({ level: 1 }, r('pylons', 1)) + 4, 'Pylons ranks II–V really add reach');
   ok(M.droneCycle({ level: 1 }, r('drones', 5)) < M.droneCycle({ level: 1 }, r('drones', 1)) / 1.39, 'Repair Drones ranks II–V really repair more often');
   ok(M.unlockSpeed('drill', r('surveying', 5)) > 1.39, 'Surveying ranks II–V really speed up Mountain Drills');
-  ok(TECH.every(t => !t.flat || /Generators|Balancers|Sorters|Fusers|Mutator|Overflow Splitters|Solar Panels/.test(t.name)),
+  ok(M.maxHp({ kind: 'wall', level: 1 }, r('walls', 5)) === M.maxHp({ kind: 'wall', level: 1 }, r('walls', 1)) * 2, 'Walls ranks II–V really add hit points');
+  ok(TECH.every(t => !t.flat || /Generators|Balancers|Sorters|Fusers|Mutator|Overflow Splitters|Solar Panels|Walls/.test(t.name)),
     'every starter node is named after the machine it unlocks');
 }
 

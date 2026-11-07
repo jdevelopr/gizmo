@@ -27,7 +27,7 @@ import {
   WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN,
   rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, NOISE_IDLE, noiseLevelMult, SWARM_THRESHOLD, SWARM_COST, PASSIVE,
   SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_POP_MIN, NEST_POP_MAX, CREATURES, SKITTER,
-  skitterShare, nestSpec, bruteShare, price,
+  skitterShare, nestSpec, bruteShare, price, WALL_DETOUR,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
   CHARGED, CHARGED_MULT, shotsOf, centreOf, TREMOR_COST, tremorCost, DIRS, BEACON_SIZE, BEACON_NOISE, BEACON_DRAW,
@@ -404,6 +404,8 @@ function pickTarget(f, mt) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m || broken(m)) continue;
+    // A Wall is in the way, not on the menu: it is only chewed to get past it.
+    if (m.kind === 'wall') continue;
     // A Skitter eats conveyors and nothing else.
     if (beltsOnly && m.kind !== 'pipe' && m.kind !== 'store') continue;
     if (gensOnly && m.kind !== 'gen') continue;
@@ -415,7 +417,161 @@ function pickTarget(f, mt) {
   return best;
 }
 
+/* ------------------------------------------------------------------ walls --- */
+
+/*
+ * Walls. Creatures otherwise walk straight at what they want; a Wall in the way
+ * turns that into a route. Each target gets a distance field over the whole map
+ * (Dijkstra, four neighbours) in which a standing Wall costs WALL_DETOUR slots to
+ * cross — so a creature walks round when the way round is shorter than that, and
+ * chews straight through when it is not, or when there is no way round at all.
+ * The fields are kept until a Wall is built, broken or repaired, and live in a
+ * WeakMap so they never end up in a save.
+ */
+const WALLS = new WeakMap();
+
+function wallState(f) {
+  let key = '';
+  for (const i of f.cells) {
+    const m = f.grid[i];
+    if (m?.kind === 'wall' && !broken(m)) key += i + ',';
+  }
+  if (!key) { WALLS.delete(f); return null; }
+  let W = WALLS.get(f);
+  if (W && W.key === key) return W;
+  const blocked = new Uint8Array(WORLD * WORLD);
+  for (const s of key.split(',')) if (s) blocked[+s] = 1;
+  W = { key, blocked, fields: new Map() };
+  WALLS.set(f, W);
+  return W;
+}
+
+/** Distance (in slots, Walls counted dear) from every slot to the nearest of `sources`. */
+function wallField(W, id, sources) {
+  let dist = W.fields.get(id);
+  if (dist) return dist;
+  if (W.fields.size > 48) W.fields.clear();
+  const n = WORLD * WORLD;
+  dist = new Float32Array(n).fill(Infinity);
+  // a plain binary heap of [cost, cell]
+  const hc = [], hv = [];
+  const push = (c, v) => {
+    let k = hc.length; hc.push(c); hv.push(v);
+    while (k > 0) {
+      const p = (k - 1) >> 1;
+      if (hc[p] <= hc[k]) break;
+      [hc[p], hc[k]] = [hc[k], hc[p]]; [hv[p], hv[k]] = [hv[k], hv[p]]; k = p;
+    }
+  };
+  const pop = () => {
+    const c = hc[0], v = hv[0];
+    const lc = hc.pop(), lv = hv.pop();
+    if (hc.length) {
+      hc[0] = lc; hv[0] = lv;
+      let k = 0;
+      for (;;) {
+        const a = 2 * k + 1, b = a + 1;
+        let s = k;
+        if (a < hc.length && hc[a] < hc[s]) s = a;
+        if (b < hc.length && hc[b] < hc[s]) s = b;
+        if (s === k) break;
+        [hc[s], hc[k]] = [hc[k], hc[s]]; [hv[s], hv[k]] = [hv[k], hv[s]]; k = s;
+      }
+    }
+    return [c, v];
+  };
+  for (const c of sources) if (c >= 0 && c < n) { dist[c] = 0; push(0, c); }
+  while (hc.length) {
+    const [c, at] = pop();
+    if (c > dist[at]) continue;
+    const x = cx(at), y = cy(at);
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+      if (nx < 0 || ny < 0 || nx >= WORLD || ny >= WORLD) continue;
+      const ni = cellOf(nx, ny);
+      // Walking *out of* a Wall slot is what costs: that is the slot being chewed.
+      const nc = c + (W.blocked[at] ? WALL_DETOUR : 1);
+      if (nc < dist[ni]) { dist[ni] = nc; push(nc, ni); }
+    }
+  }
+  W.fields.set(id, dist);
+  return dist;
+}
+
+/** Is the straight line from (x, y) to (tx, ty) free of standing Walls? */
+function clearLine(W, x, y, tx, ty) {
+  const d = Math.hypot(tx - x, ty - y);
+  const steps = Math.ceil(d / 0.25);
+  for (let k = 0; k <= steps; k++) {
+    const t = steps ? k / steps : 0;
+    const sx = Math.floor(x + (tx - x) * t), sy = Math.floor(y + (ty - y) * t);
+    if (sx < 0 || sy < 0 || sx >= WORLD || sy >= WORLD) continue;
+    if (W.blocked[cellOf(sx, sy)]) return false;
+  }
+  return true;
+}
+
+/**
+ * Steer one creature round (or through) the Walls between it and (tx, ty).
+ * Returns false when there is nothing in the way, and the ordinary straight walk
+ * should run instead.
+ */
+function steer(f, W, mt, tx, ty, id, sources, dt) {
+  if (!W) return false;
+  const hx = Math.floor(mt.x), hy = Math.floor(mt.y);
+  if (hx < 0 || hy < 0 || hx >= WORLD || hy >= WORLD) return false;
+  // Checking the line every frame for every creature is wasted work: it is asked
+  // a few times a second, and whenever the Walls change.
+  mt.lc = (mt.lc || 0) - dt;
+  if (mt.lc <= 0 || mt.lk !== W.key + id) {
+    mt.lc = 0.3;
+    mt.lk = W.key + id;
+    mt.clr = clearLine(W, mt.x, mt.y, tx, ty);
+  }
+  if (mt.clr) return false;
+  const dist = wallField(W, id, sources);
+  const here = cellOf(hx, hy);
+  if (dist[here] === 0) return false;
+  // The neighbouring slot that is nearest the target, diagonals allowed when
+  // neither side of the corner is a Wall.
+  let best = -1, bd = Infinity;
+  for (let d = 0; d < 4; d++) {
+    const nx = hx + DIRS[d][0], ny = hy + DIRS[d][1];
+    if (nx < 0 || ny < 0 || nx >= WORLD || ny >= WORLD) continue;
+    const ni = cellOf(nx, ny);
+    if (dist[ni] < bd) { bd = dist[ni]; best = ni; }
+  }
+  for (const [ddx, ddy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const nx = hx + ddx, ny = hy + ddy;
+    if (nx < 0 || ny < 0 || nx >= WORLD || ny >= WORLD) continue;
+    if (W.blocked[cellOf(hx + ddx, hy)] || W.blocked[cellOf(hx, hy + ddy)]) continue;
+    const ni = cellOf(nx, ny);
+    if (!W.blocked[ni] && dist[ni] < bd) { bd = dist[ni]; best = ni; }
+  }
+  if (best < 0 || !(bd < dist[here] || W.blocked[here])) return false;
+  const wx = cx(best) + 0.5, wy = cy(best) + 0.5;
+  const dx = wx - mt.x, dy = wy - mt.y, d = Math.hypot(dx, dy);
+  mt.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+  const wall = W.blocked[best] ? f.grid[best] : null;
+  if (wall && d < 0.8) {
+    // Up against a Wall with no better way: chew.
+    mt.st = 'chew';
+    wall.hp = Math.max(0, (wall.hp ?? maxHp(wall, f.done)) - (CREATURES[mt.kind] || MITE).bite * dt);
+    wall.hurt = 1;
+    if (wall.hp <= 0) {
+      f.chewed++;
+      f.fx.push({ k: 'broke', cell: best });
+    }
+    return true;
+  }
+  mt.st = 'walk';
+  const step = Math.min(d, mt.sp * dt);
+  if (d > 0) { mt.x += dx / d * step; mt.y += dy / d * step; }
+  return true;
+}
+
 function stepMites(f, dt) {
+  const W = wallState(f);
   const c = (WORLD - 1) / 2 + 0.5;
   const bAlive = !!f.beacon && !f.beacon.done && f.beacon.hp > 0;
   for (const mt of f.mites) {
@@ -426,6 +582,11 @@ function stepMites(f, dt) {
       const b = f.beacon;
       const tx = Math.max(b.x0 - 0.15, Math.min(b.x0 + BEACON_SIZE + 0.15, mt.x)) + mt.ox * 0.4;
       const ty = Math.max(b.y0 - 0.15, Math.min(b.y0 + BEACON_SIZE + 0.15, mt.y)) + mt.oy * 0.4;
+      if (W) {
+        const bc = [];
+        for (let yy = 0; yy < BEACON_SIZE; yy++) for (let xx = 0; xx < BEACON_SIZE; xx++) bc.push(cellOf(b.x0 + xx, b.y0 + yy));
+        if (steer(f, W, mt, tx, ty, 'beacon', bc, dt)) continue;
+      }
       const dx = tx - mt.x, dy = ty - mt.y, d = Math.hypot(dx, dy);
       if (d < 0.2) {
         mt.st = 'chew';
@@ -459,7 +620,7 @@ function stepMites(f, dt) {
     }
     mt.home = 0;
     let m = mt.tgt >= 0 ? f.grid[mt.tgt] : null;
-    if (!m || broken(m) || (mt.st === 'walk' && mt.rt <= 0)) {
+    if (!m || broken(m) || m.kind === 'wall' || (mt.st === 'walk' && mt.rt <= 0)) {
       mt.tgt = pickTarget(f, mt);
       mt.rt = 1.5 + Math.random();
       m = mt.tgt >= 0 ? f.grid[mt.tgt] : null;
@@ -468,6 +629,7 @@ function stepMites(f, dt) {
     const [mx, my] = m ? centreOf(m, m.at ?? mt.tgt) : [c, c];
     const tx = m ? mx + mt.ox : c;
     const ty = m ? my + mt.oy : c;
+    if (m && steer(f, W, mt, tx, ty, mt.tgt, m.cells || [mt.tgt], dt)) continue;
     const dx = tx - mt.x, dy = ty - mt.y;
     const d = Math.hypot(dx, dy);
     if (m && d < 0.12) {

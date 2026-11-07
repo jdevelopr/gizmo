@@ -12,7 +12,7 @@
 import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
-  levelCap, techById, techOpen, unlockedBy, SWARM_THRESHOLD, BRUTE_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
+  levelCap, techById, techOpen, unlockedBy, WALL_LEVEL_HP, WALL_DETOUR, SWARM_THRESHOLD, BRUTE_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
   cellOf, cx, cy, claimMin, claimMax, seen, seenXY, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
@@ -66,7 +66,7 @@ const GROUPS = [
   { name: 'POWER', kinds: ['gen', 'solar', 'pylon'] },
   { name: 'PROCESSING', kinds: ['mut', 'fuse', 'asm', 'recyc'] },
   { name: 'MULTIPLYING', kinds: ['dup', 'trident'] },
-  { name: 'DEFENCE', kinds: ['arm', 'zap', 'drone'] },
+  { name: 'DEFENCE', kinds: ['wall', 'arm', 'zap', 'drone'] },
   { name: 'TERRAIN', kinds: ['drill', 'bridge'] },
 ];
 
@@ -480,6 +480,11 @@ export function diagramFor(m) {
       d.appendChild(op('\u2192'));
       d.appendChild(part(null, true, 'one machine fully repaired'));
       return d;
+    case 'wall':
+      d.appendChild(part(null, true, 'creatures'));
+      d.appendChild(op('\u2192'));
+      d.appendChild(part(null, true, 'go round, or chew through'));
+      return d;
     case 'recyc':
       d.appendChild(part(null, true, 'anything'));
       d.appendChild(op('\u2192'));
@@ -531,6 +536,7 @@ export function diagramFor(m) {
  */
 export function insideOf(m) {
   const d = el('div', 'inside');
+  if (m.kind === 'wall') return d;      // solid: nothing goes in
   const held = heldTypes(m);
   const add = (list, cls, none) => {
     const row = el('div', 'inside-row');
@@ -1461,13 +1467,22 @@ export class Panel {
     const hpMax = maxHp(m, f.done);
     if (m.hp != null && m.hp < hpMax - 0.01) {
       addRow(rows, 'Health', broken(m) ? `BROKEN — 0 of ${Math.round(hpMax)}`
-        : `${Math.ceil(m.hp)} of ${Math.round(hpMax)}  ·  ${Math.round((0.5 + 0.5 * m.hp / hpMax) * 100)}% speed`,
+        : `${Math.ceil(m.hp)} of ${Math.round(hpMax)}` + (m.kind === 'wall' ? '' : `  ·  ${Math.round((0.5 + 0.5 * m.hp / hpMax) * 100)}% speed`),
         broken(m) ? 'bad' : 'warn');
       addRow(rows, 'Repair costs', money(repairCost(m, f.done)), 'warn');
       if (broken(m)) {
-        addRow(rows, 'While it is broken', 'it holds what it has, takes nothing, does nothing');
+        addRow(rows, 'While it is broken', m.kind === 'wall' ? 'creatures walk straight through the gap'
+          : 'it holds what it has, takes nothing, does nothing');
         return rows;
       }
+    }
+
+    if (m.kind === 'wall') {
+      if (!(m.hp != null && m.hp < hpMax - 0.01)) addRow(rows, 'Hit points', `${Math.round(hpMax)}`, 'good');
+      addRow(rows, 'Blocks', 'every creature — they go round or chew through');
+      if ((m.level || 1) < 5) addRow(rows, 'Next level', `${Math.round(hpMax / WALL_LEVEL_HP[(m.level || 1) - 1] * WALL_LEVEL_HP[m.level || 1])} hit points`);
+      addRow(rows, 'Power / noise', 'none / silent');
+      return rows;
     }
 
     if (m.kind === 'zap') {
@@ -1678,6 +1693,11 @@ export class Panel {
       addRow(rows, 'Links to', 'the next Pylon ahead facing the same way');
       addRow(rows, 'Gap', `up to ${PYLON_GAP[0]} slots at level 1, ${PYLON_GAP[4]} at level 5`);
       addRow(rows, 'Carries', 'power only — never gizmos');
+    } else if (spec.kind === 'wall') {
+      addRow(rows, 'Hit points', `${Math.round(maxHp({ kind: 'wall', level: 1 }, f.done))} at level 1, ${Math.round(maxHp({ kind: 'wall', level: 5 }, f.done))} at level 5`);
+      addRow(rows, 'Blocks', 'every creature, Skitters too');
+      addRow(rows, 'Creatures', `walk up to ${WALL_DETOUR} slots round rather than chew one`);
+      addRow(rows, 'Power / noise', 'none / silent');
     } else if (spec.kind === 'drone') {
       addRow(rows, 'Eats', `Copper — ${DRONE_COST} per repair, holds ${KINDS.drone.hold}`);
       addRow(rows, 'Repairs', `the most damaged machine within ${DRONE_RANGE[0]} slots`);
@@ -2092,6 +2112,7 @@ export function drawMinimap(canvas, g, view) {
         else if (m.kind === 'solar') { r = 90; gg = 143; b = 224; }
         else if (m.kind === 'pylon') { r = 255; gg = 243; b = 160; }
         else if (m.kind === 'drone') { r = 79; gg = 216; b = 208; }
+        else if (m.kind === 'wall' && !broken(m)) { r = 169; gg = 176; b = 200; }
         else if (broken(m)) { r = 120; gg = 20; b = 40; }
         else if (m.net < 0 && KINDS[m.kind].draw > 0) { r = 70; gg = 82; b = 128; }
         else { r = 150; gg = 168; b = 206; }

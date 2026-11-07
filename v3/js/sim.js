@@ -337,9 +337,20 @@ export function relink(f) {
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m) continue;
+    const x = cx(i), y = cy(i);
+    // A Wall joins up with the Walls beside it, and only with them.
+    if (m.kind === 'wall') {
+      let wm = 0;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+        if (nx < 0 || ny < 0 || nx >= WORLD || ny >= WORLD) continue;
+        if (f.grid[cellOf(nx, ny)]?.kind === 'wall') wm |= 1 << d;
+      }
+      m.link = wm;
+      continue;
+    }
     if (m.kind !== 'pipe' && m.kind !== 'store') { m.link = 0; continue; }
     let mask = 0;
-    const x = cx(i), y = cy(i);
     for (let d = 0; d < 4; d++) {
       const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
       if (!openAt(f, nx, ny)) continue;

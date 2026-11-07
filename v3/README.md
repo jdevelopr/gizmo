@@ -317,6 +317,23 @@ the right — with a crowded HUD bar over the map. Now the map fills the window:
 The warning box, Gus and the toasts sit at the top centre. Which cards are open,
 and whether the pop-up is on MORE, is remembered in this browser.
 
+### Walls
+
+A Wall (Defence branch, **Walls** research, 60 science) is a block of plated stone:
+$50, and each one after costs 1.1x the last. Nothing that crawls walks through it —
+Mites, Brutes, Beetles and Skitters alike. Each creature's target gets a distance
+field over the map in which a standing Wall costs `WALL_DETOUR` (24) slots to
+cross, so a creature walks round when the way round is shorter than that and chews
+through when it is not, or when it is boxed out entirely. Walls are never chosen as
+targets in their own right; they are only chewed to get past.
+
+Walls are silent, draw no power and do not carry it, take no gizmos, and join up
+with the Walls beside them. 120 hit points at level 1, x3.5 at level 5, and each
+rank of Walls research past the first adds 25%. Repair them like anything else.
+`tools/walls.mjs` checks all of it.
+
+The minimap now sits in the bottom-right corner, under the right-hand cards.
+
 ### Noise
 
 Every machine makes noise now: belts and Pylons barely any, Extractors, Drills and

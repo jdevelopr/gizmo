@@ -41,6 +41,11 @@
  */
 [hidden] { display: none !important; }
 
+/* It is a game, not a page: dragging and double-clicking should never paint a text
+   selection over the map, the cards or the shop. Fields you type in still can. */
+html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+
 html, body {
   margin: 0;
   height: 100%;

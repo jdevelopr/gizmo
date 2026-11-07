@@ -1514,6 +1514,7 @@ export class View {
       for (const c of ui.jams) {
         const x = cx(c), y = cy(c);
         if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
+        if (PLUMBING.has(f.grid[c]?.kind)) continue;      // not the belts, just the machine
         this.outline(ctx, c, z, '#ff3b30', 2);
       }
     }
@@ -1729,7 +1730,11 @@ export class View {
      * on nearly every cycle, and badging that turned a healthy factory into a
      * screen full of alarm that nobody could read.
      */
-    if (m.blockT > STALL_BADGE) {
+    // Conveyors (and the rest of the plumbing) back up all the time in a busy line,
+    // and bracketing every one of them buried the machines that matter.
+    if (m.blockT > STALL_BADGE && PLUMBING.has(m.kind)) {
+      // no badge
+    } else if (m.blockT > STALL_BADGE) {
       // BACKED UP: holding finished goods, nowhere to put them. Fix the line ahead.
       // Corner brackets rather than a full ring: it has to be visible without
       // painting over the machine you are trying to identify.

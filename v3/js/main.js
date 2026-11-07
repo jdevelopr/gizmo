@@ -119,6 +119,7 @@ function boot(game) {
 
 function wireChrome() {
   $('btn-expand').onclick = () => act('expand');
+  $('btn-noise').onclick = () => act('noiseMap');
   $('btn-help').onclick = () => act('help');
   $('btn-menu').onclick = () => act('menu');
   $('m-resume').onclick = () => { $('menu').hidden = true; if (!storyCardUp()) resume(); };
@@ -322,6 +323,7 @@ function playFx(fx) {
       case 'rot': sfx('rot'); break;
       case 'move': sfx('move'); break;
       case 'swarm': sfx('swarm'); view.pulse('#ff3b5c'); break;
+      case 'quiet': toast(g, 'Quiet enough — the creatures are heading home to their nests', '#a7f070'); break;
       case 'beetle':
         sfx('broke');
         toast(g, `A Beetle has burrowed out of a mountain to the ${compass(e.cell)} — it is after your Generators`, '#ffb060');
@@ -1100,6 +1102,11 @@ function act(name, payload, extra) {
     }
 
     /* --- the tech tree page --- */
+    case 'noiseMap':
+      view.showNoise = !view.showNoise;
+      $('btn-noise').classList.toggle('on', view.showNoise);
+      sfx('click');
+      return;
     case 'openTree':
       if (tree.open) tree.close(); else tree.show(g);
       return;

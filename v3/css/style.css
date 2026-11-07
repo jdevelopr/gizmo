@@ -257,6 +257,10 @@ h1 span { color: var(--gold); }
 
 .hud-btn { padding: 6px 9px; font-size: 11px; white-space: nowrap; flex: 0 0 auto; }
 .hud-btn.can { border-color: var(--gold); color: var(--gold); }
+.hud-btn.on { border-color: #ff4f7a; color: #ff9ab8; background: #2a1220; }
+#s-noise b.quiet { color: var(--green); }
+#s-noise b.busy { color: var(--gold); }
+#s-noise b.loud { color: #ff5d4a; }
 
 .spacer { flex: 1 1 0; min-width: 0; }
 

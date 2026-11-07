@@ -294,6 +294,28 @@ Once it has run once, this browser never sees it again unless it is asked for. E
 new world after that opens with an empty claim and $650 — enough for the Extractor,
 the Depot, the belt, a Generator and the Balancer that feeds it, with a little over.
 
+### Noise
+
+Every machine makes noise now: belts and Pylons barely any, Extractors, Drills and
+burning Generators a lot (`NOISE` in machines.js). A machine standing idle makes
+40% of its noise; Depots, Labs and power machines always count fully. Each level
+past the first adds half again, so a level 5 machine is 3x as loud.
+
+The **NOISE** readout in the top bar shows the factory's total against the swarm
+threshold of **5** (`SWARM_THRESHOLD`), green, gold near it, red over it, with the
+time to the next swarm underneath. Below the threshold the nests stay asleep: the
+swarm gauge drains, no swarm sets out, and any Mites and Skitters already out on
+the map walk home to their nests and disappear — so a factory that keeps under the
+threshold can build up in peace. At or over it, swarms build with the noise as
+before. Creatures sent at the Launch Beacon, and Beetles (which answer to drilling,
+not noise), are not sent home.
+
+**NOISE MAP** (button beside it, or **L**) shades every slot your factory can be
+heard on, by how loud it is there, outlines the whole area, and rings any nest you
+can see inside it. Each machine is heard `NOISE_BASE` 4 + `NOISE_REACH` 6 slots per
+point of noise, up to 16. The map is for planning; swarms still answer to the total.
+Gus mentions it the first time you get close to the threshold.
+
 ### Repairs
 
 Repairing costs half what it used to: a machine costs 20% of its listed price,

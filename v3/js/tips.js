@@ -12,7 +12,7 @@
  */
 
 import {
-  WORLD, MOUNTAIN, VALLEY, cellOf, claimMin, claimMax, TECH, techOpen, rankCost,
+  WORLD, MOUNTAIN, VALLEY, cellOf, claimMin, claimMax, TECH, techOpen, rankCost, SWARM_THRESHOLD,
 } from './machines.js';
 import { jams } from './sim.js';
 
@@ -67,6 +67,14 @@ export const TIPS = [
     body: 'That\'s a valley — nothing can stand in one. Research <b>Bridging</b>, then set a pair of Bridges facing the '
       + 'same way on either side. They carry gizmos <i>and</i> power right across. Easy as pie!',
     check: (g, f) => nearClaim(f, 2, i => f.terrain[i] === VALLEY),
+  },
+  {
+    id: 'noise',
+    title: 'Getting noisy!',
+    body: 'Every machine makes a little noise, and upgraded ones make more. Keep the NOISE readout up top '
+      + 'under the threshold and the nests stay asleep — go over it and swarms start building. Press <b>L</b> '
+      + 'to see how far your racket carries!',
+    check: (g, f) => (f.noise || 0) >= SWARM_THRESHOLD * 0.8 && (f.nests || []).some(n => n.hp > 0),
   },
   {
     id: 'swarm',

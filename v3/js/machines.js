@@ -480,7 +480,25 @@ export const PLUMBING = new Set(['pipe', 'store', 'bal', 'sort', 'over']);
  */
 
 /** Noise each kind makes while it is working (and not switched off or broken). */
-export const NOISE = { ext: 1, gen: 1.4, asm: 0.6, fuse: 0.4, mut: 0.3, dup: 0.5, trident: 0.5, arm: 0.4, drill: 1.2, recyc: 0.5 };
+/**
+ * Noise, by kind. Every machine makes some: belts barely any, heavy machinery a lot.
+ * A machine that is working makes its full noise, one standing idle 40% of it
+ * (machines with no job of their own — Depots, Labs, power — always count fully),
+ * and every level past the first adds half again: a level 5 machine is 3x as loud.
+ */
+export const NOISE = {
+  pipe: 0.03, store: 0.05, bridge: 0.05, bal: 0.06, sort: 0.06, over: 0.06, pylon: 0.05, solar: 0.02,
+  depot: 0.15, lab: 0.15, zap: 0.2, drone: 0.3,
+  ext: 1, gen: 1.4, drill: 1.2,
+  mut: 0.3, fuse: 0.4, asm: 0.6, arm: 0.4, recyc: 0.5, dup: 0.5, trident: 0.5,
+};
+export const NOISE_IDLE = 0.4;
+export const noiseLevelMult = level => 1 + 0.5 * ((level || 1) - 1);
+/**
+ * Below this much noise the nests settle: no swarm builds, and any Mites and
+ * Skitters out on the map go home. At or above it, swarms build as the noise does.
+ */
+export const SWARM_THRESHOLD = 5;
 
 /** Noise-seconds that fill the gauge and send one swarm. */
 export const SWARM_COST = 1100;

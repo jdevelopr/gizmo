@@ -34,6 +34,7 @@ import {
   capacity, intake, PASSIVE, PLUMBING, genOutput, drawOf, missingFor, STALL_BADGE,
   ARMORY, broken, maxHp, AMMO_CHARGES, nestSpec, shotsOf,
 } from './machines.js';
+import { noiseField } from './bugs.js';
 import { heldTypes, machineLoad, contents } from './sim.js';
 import { progress as beaconProgress } from './beacon.js';
 
@@ -1162,6 +1163,7 @@ export class View {
     this.floats = [];
     this.t = 0;
     this.showPower = false;
+    this.showNoise = false;
     this.beams = [];
     this.parts = [];          // particles: sparks, coins, dust
     this.shakeT = 0;          // seconds of screen shake left
@@ -1410,6 +1412,7 @@ export class View {
 
     // 4. everything that is about what you are doing rather than what is there
     if (this.showPower) this.drawPowerOverlay(ctx, f, b, z);
+    if (this.showNoise) this.drawNoise(ctx, f, b, z);
     if (ui.reach) this.drawReach(ctx, ui.reach, b, z);
     // A line that has stopped for good gets a red ring, because it is the one
     // thing on this map that will never fix itself.
@@ -1803,6 +1806,37 @@ export class View {
    * Pylon wires: a thin line that sags between a linked pair, from the bright
    * insulator of the sender to the far one, with a spark riding along it.
    */
+  /**
+   * The noise map: every slot a noisy machine can be heard on, tinted by how loud
+   * it is there, with a bright line round the edge of the whole area — and a ring
+   * round every nest you can see that sits inside it.
+   */
+  drawNoise(ctx, f, b, z) {
+    if (!this.noise || this.t - (this.noiseAt || -9) > 0.5) { this.noise = noiseField(f); this.noiseAt = this.t; }
+    const fld = this.noise;
+    const heard = (x, y) => inWorld(x, y) && fld[cellOf(x, y)] > 0.02;
+    const t = Math.max(1, Math.round(z / 16));
+    for (let y = Math.max(0, b.y0); y <= Math.min(WORLD - 1, b.y1); y++) {
+      for (let x = Math.max(0, b.x0); x <= Math.min(WORLD - 1, b.x1); x++) {
+        const v = fld[cellOf(x, y)];
+        if (v <= 0.02 || !seenXY(f, x, y)) continue;
+        const [sx, sy] = this.toScreen(x, y);
+        ctx.globalAlpha = Math.min(0.5, 0.1 + v * 0.1);
+        px(ctx, sx, sy, z, z, '#ff4f7a');
+        ctx.globalAlpha = 0.9;
+        if (!heard(x, y - 1)) px(ctx, sx, sy, z, t, '#ff9ab8');
+        if (!heard(x, y + 1)) px(ctx, sx, sy + z - t, z, t, '#ff9ab8');
+        if (!heard(x - 1, y)) px(ctx, sx, sy, t, z, '#ff9ab8');
+        if (!heard(x + 1, y)) px(ctx, sx + z - t, sy, t, z, '#ff9ab8');
+      }
+    }
+    ctx.globalAlpha = 1;
+    for (const n of f.nests || []) {
+      if (n.hp <= 0 || fld[n.cell] <= 0.02 || !seenXY(f, cx(n.cell), cy(n.cell))) continue;
+      this.outline(ctx, n.cell, z, '#ff4f7a', 3);
+    }
+  }
+
   drawWires(ctx, f, b, z) {
     const s = z / CELL;
     for (const i of f.cells) {

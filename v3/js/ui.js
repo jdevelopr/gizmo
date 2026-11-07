@@ -12,7 +12,7 @@
 import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
-  levelCap, techById, techOpen, unlockedBy, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
+  levelCap, techById, techOpen, unlockedBy, SWARM_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
   cellOf, cx, cy, claimMin, claimMax, seen, seenXY, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
@@ -567,6 +567,7 @@ export class Hud {
     this.pwrFill = $('pwr-fill');
     this.pwrText = $('pwr-text');
     this.claim = $('s-claim');
+    this.noise = $('s-noise');
     this.expand = $('btn-expand');
     this.alert = $('alert');
     this.toasts = $('toasts');
@@ -591,6 +592,14 @@ export class Hud {
     this.set(this.cash, 'i', `${g.income >= 0 ? '+' : ''}${num(g.income, 1)}/s`);
     this.set(this.sci, 'b', num(f.science));
     this.set(this.sci, 'i', `+${num(g.sciRate, 1)}/s sci`);
+    // Noise: how loud the factory is, coloured by how soon that brings a swarm.
+    const nz = f.noise || 0;
+    const eta = swarmEta(f);
+    this.set(this.noise, 'b', `${num(nz, 1)} / ${SWARM_THRESHOLD}`);
+    this.set(this.noise, 'i', !f.nests?.some(n => n.hp > 0) ? 'noise'
+      : nz < SWARM_THRESHOLD ? 'nests asleep' : `swarm ${clock(eta)}`);
+    const cls = nz < SWARM_THRESHOLD * 0.8 ? 'quiet' : nz < SWARM_THRESHOLD ? 'busy' : 'loud';
+    if (this.last.ncls !== cls) { this.last.ncls = cls; this.noise.querySelector('b').className = cls; }
     this.set(this.claim, 'b', `${f.claim}x${f.claim}`);
     this.set(this.claim, 'i', 'claim');
 

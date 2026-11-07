@@ -27,6 +27,7 @@ const ok = (cond, what, detail = '') => {
 function bench() {
   const f = createFactory({ world: plainWorld(), cash: 1e9 });
   f.claim = WORLD; f.mapRev++; rebuild(f);
+  f.hum = 100;               // loud enough that the creatures stay and fight
   return f;
 }
 const put = (f, k, x, y, o = {}) => build(f, { kind: k, ...o }, cellOf(x, y), { free: true, dir: o.dir ?? 0 });
@@ -392,6 +393,32 @@ console.log('\nNoise and swarms');
   const secs = Math.ceil(SWARM_COST / noiseOf(f)) + 5;
   for (let i = 0; i < 30 * secs; i++) stepFactory(f, 1 / 30);
   ok(f.waves >= 1 && f.mites.length > 0, `a swarm sets out once the gauge fills (${f.mites.length} mites)`);
+}
+
+console.log('\nA quiet factory sends them home');
+{
+  const M = await import('../js/machines.js');
+  const B = await import('../js/bugs.js');
+  ok(M.noiseLevelMult(5) === 3 && M.noiseLevelMult(1) === 1, 'a level 5 machine is 3x as loud as a level 1');
+  const q = createFactory({ world: plainWorld(), cash: 1e9 });
+  q.claim = WORLD; q.mapRev++; rebuild(q);
+  build(q, { kind: 'pipe' }, cellOf(20, 20), { free: true, dir: 0 });
+  build(q, { kind: 'depot' }, cellOf(21, 20), { free: true, dir: 0 });
+  const p = q.grid[cellOf(20, 20)];
+  ok(noiseOf(q) > 0 && noiseOf(q) < M.SWARM_THRESHOLD, `every machine makes some noise, even a belt and a Depot (${noiseOf(q).toFixed(2)})`);
+  p.level = 5;
+  ok(noiseOf(q) > 0.03 * 3 * 0.4 + 0.1, 'and upgrading makes it louder');
+  for (let k = 0; k < 5; k++) spawnMite(q, 26.5, 20.5);
+  for (let i = 0; i < 30 * 60; i++) stepFactory(q, 1 / 30);
+  ok(q.mites.length === 0 && (p.hp ?? 1) > 0, `below the threshold, the mites walk away without chewing (${q.mites.length} left)`);
+  q.hum = 100;
+  for (let k = 0; k < 3; k++) spawnMite(q, 21.5, 21.5);
+  for (let i = 0; i < 30 * 3; i++) stepFactory(q, 1 / 30);
+  ok(q.mites.length === 3, 'above it, they stay');
+  q.swarm = 500; q.hum = 0;
+  for (let i = 0; i < 30 * 5; i++) stepFactory(q, 1 / 30);
+  ok(q.swarm < 500, 'and a quiet spell drains the swarm gauge');
+  ok(B.swarmEta(q) === Infinity, 'with no swarm due at all while it stays quiet');
 }
 
 console.log(fails ? `\n${fails} FAILED\n` : '\nMites chew, Zappers zap, and everything can be put right.\n');

@@ -25,7 +25,7 @@
 
 import {
   WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN,
-  rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, SWARM_COST,
+  rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, NOISE_IDLE, noiseLevelMult, SWARM_THRESHOLD, SWARM_COST, PASSIVE,
   SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_POP_MIN, NEST_POP_MAX, CREATURES, SKITTER,
   skitterShare, nestSpec,
   nestAnger, nestBrood,
@@ -158,25 +158,69 @@ export function initBugs(f) {
 
 /** How loud the factory is. Machines switched off or chewed through are silent. */
 export function noiseOf(f) {
-  let n = 0;
+  // `hum` is a fixed background noise, for test benches that need the creatures
+  // to stay and fight rather than walk home from a quiet factory.
+  let n = f.hum || 0;
+  for (const s of noiseSources(f)) n += s.v;
+  return n;
+}
+
+/**
+ * Everything making noise right now, and how much: a burning Generator, a working
+ * Extractor, anything mid-job that has a NOISE value, and a Beacon being fed.
+ */
+export function noiseSources(f) {
+  const out = [];
   for (const i of f.cells) {
     const m = f.grid[i];
     if (!m || m.off || broken(m)) continue;
-    const v = NOISE[m.kind];
-    if (!v) continue;
-    if (m.kind === 'gen') { if (m.fuel > 0) n += v; continue; }
-    if (m.kind === 'ext' || m.t > 0) n += v;
+    const base = NOISE[m.kind];
+    if (!base) continue;
+    const working = m.kind === 'gen' ? m.fuel > 0
+      : (PASSIVE.has(m.kind) || m.kind === 'ext' || m.t > 0);
+    const v = base * noiseLevelMult(m.level) * (working ? 1 : NOISE_IDLE);
+    const [x, y] = m.cells?.length > 1 ? [cx(i) + 0.5 + (cx(m.front) - cx(i)) / 2, cy(i) + 0.5 + (cy(m.front) - cy(i)) / 2] : [cx(i) + 0.5, cy(i) + 0.5];
+    out.push({ x, y, v });
   }
   // A Beacon being fed is the loudest thing in the world.
-  if (beaconHot(f)) n += BEACON_NOISE;
-  return n;
+  if (beaconHot(f)) { const [x, y] = beaconCentre(f); out.push({ x, y, v: BEACON_NOISE }); }
+  return out;
+}
+
+/**
+ * How far a noise carries, in slots: NOISE_BASE plus NOISE_REACH for every point
+ * of it. A working Extractor is heard 10 slots away, a burning Generator 12.
+ */
+export const NOISE_BASE = 4;
+export const NOISE_REACH = 6;
+export const NOISE_MAX_REACH = 16;
+
+/**
+ * The noise heard on every slot of the map: each source adds its loudness, fading
+ * to nothing at the edge of its reach. Shown on the noise map; it does not change
+ * how swarms work (those still answer to the factory's total noise).
+ */
+export function noiseField(f) {
+  const field = new Float32Array(WORLD * WORLD);
+  for (const s of noiseSources(f)) {
+    const r = Math.min(NOISE_MAX_REACH, NOISE_BASE + NOISE_REACH * s.v);
+    const x0 = Math.max(0, Math.floor(s.x - r)), x1 = Math.min(WORLD - 1, Math.ceil(s.x - 1 + r));
+    const y0 = Math.max(0, Math.floor(s.y - r)), y1 = Math.min(WORLD - 1, Math.ceil(s.y - 1 + r));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const d = Math.hypot(x + 0.5 - s.x, y + 0.5 - s.y);
+        if (d < r) field[cellOf(x, y)] += s.v * (1 - d / r);
+      }
+    }
+  }
+  return field;
 }
 
 /** Roughly how many seconds until the next swarm, or Infinity on a quiet factory. */
 export function swarmEta(f) {
   if (!f.nests?.some(n => n.hp > 0)) return Infinity;
   const grace = Math.max(0, SWARM_GRACE - f.t);
-  if (f.noise <= 0.01) return Infinity;
+  if (f.noise < SWARM_THRESHOLD) return Infinity;
   return grace + Math.max(0, SWARM_COST - f.swarm) / f.noise;
 }
 
@@ -187,7 +231,17 @@ export function stepBugs(f, dt) {
   f.noise = noiseOf(f);
   popNests(f);
 
-  if (f.t >= SWARM_GRACE && f.nests.some(n => n.hp > 0)) {
+  // Quiet enough, and the nests settle: the gauge drains, and whatever is out on
+  // the map goes home. Loud again, and they come back for you.
+  const quiet = f.noise < SWARM_THRESHOLD;
+  if (quiet !== !!f.quiet) {
+    f.quiet = quiet;
+    if (quiet && f.mites.some(mt => !mt.beacon && mt.kind !== 'beetle')) f.fx.push({ k: 'quiet' });
+  }
+  if (quiet) {
+    f.swarm = Math.max(0, f.swarm - SWARM_COST * 0.02 * dt);
+    f.stirred = 0;
+  } else if (f.t >= SWARM_GRACE && f.nests.some(n => n.hp > 0)) {
     f.swarm += f.noise * dt;
     if (!f.stirred && f.swarm >= SWARM_COST * 0.75) {
       f.stirred = 1;
@@ -378,6 +432,25 @@ function stepMites(f, dt) {
       continue;
     }
     if (mt.beacon) mt.beacon = 0;    // nothing left to chew there: back to the factory
+    // A quiet factory: Mites and Skitters walk home to the nearest nest and are gone.
+    if (f.quiet && mt.kind !== 'beetle') {
+      let home = null, hd = Infinity;
+      for (const n of f.nests || []) {
+        if (n.hp <= 0) continue;
+        const d = Math.hypot(cx(n.cell) + 0.5 - mt.x, cy(n.cell) + 0.5 - mt.y);
+        if (d < hd) { hd = d; home = n; }
+      }
+      const tx = home ? cx(home.cell) + 0.5 : (mt.x < c ? -1 : WORLD + 1);
+      const ty = home ? cy(home.cell) + 0.5 : mt.y;
+      const dx = tx - mt.x, dy = ty - mt.y, d = Math.hypot(dx, dy);
+      mt.st = 'walk'; mt.tgt = -1; mt.home = 1;
+      if (d < 0.4 || mt.x < -0.5 || mt.x > WORLD + 0.5) { mt.hp = 0; mt.gone = 1; continue; }
+      const step = Math.min(d, mt.sp * dt);
+      mt.x += dx / d * step; mt.y += dy / d * step;
+      mt.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+      continue;
+    }
+    mt.home = 0;
     let m = mt.tgt >= 0 ? f.grid[mt.tgt] : null;
     if (!m || broken(m) || (mt.st === 'walk' && mt.rt <= 0)) {
       mt.tgt = pickTarget(f, mt);
@@ -408,6 +481,8 @@ function stepMites(f, dt) {
       mt.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
     }
   }
+  // The ones that made it home are gone.
+  if (f.mites.some(mt => mt.gone)) f.mites = f.mites.filter(mt => !mt.gone);
   for (const i of f.cells) {
     const m = f.grid[i];
     if (m && m.hurt > 0) m.hurt = Math.max(0, m.hurt - dt * 3);

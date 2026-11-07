@@ -286,7 +286,9 @@ function placePop() {
   // While something is being moved the card would only sit on the spot you are
   // aiming at, so it gets out of the way until the move is finished.
   const moving = S.hand >= 0 || !!S.bp?.held;
-  const want = !moving && (S.bp || S.area?.length || S.rubble?.length || S.selected >= 0 || S.tool);
+  // A machine picked from the shop gets no card: the hint at the end of the shop
+  // row already says what it costs and how to place it.
+  const want = !moving && !S.tool && (S.bp || S.area?.length || S.rubble?.length || S.selected >= 0);
   if (!want) { if (!pop.hidden) pop.hidden = true; return; }
   if (pop.hidden) pop.hidden = false;
   pop.classList.toggle('nomore', !$('tab-info').querySelector('.more-only'));

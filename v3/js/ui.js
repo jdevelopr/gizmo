@@ -13,7 +13,7 @@ import {
   TYPES, KINDS, RECIPES, TECH, MILESTONES, LADDERED, WORLD, CLAIM_START, sizeKind,
   catalogue, buyCost, upgradeCost, scrapValue, label, describe, cycleTime, drawOf,
   levelCap, techById, techOpen, unlockedBy, recycleTo, batteryCap, batteryRate, BATTERY_CAP, BATTERY_RATE, BATTERY_REACH, isNight, dayNightOn, nextTurn, lightOf, swarmLine, bruteLine, WALL_LEVEL_HP, WALL_DETOUR, SWARM_THRESHOLD, BRUTE_THRESHOLD, SOLAR_OUTPUT, SOLAR_REACH, PYLON_GAP, solarOutput, pylonGap, DRONE_FUEL, DRONE_COST, DRONE_CYCLE, DRONE_RANGE, unlockerOf, unlockKey, specOfKey, expandCost, money, num, clock,
-  cellOf, cx, cy, claimMin, claimMax, seen, seenXY, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, goalText, CRATE_CAP,
+  cellOf, cx, cy, claimMin, claimMax, seen, seenXY, RUBBLE_COST, OPEN, RUBBLE, BEDROCK, DIRS, SPACE, STORY_LEVELS, storyLevel, storyLabel, goalText, CRATE_CAP,
   genOutput, genReach, energyOf, capacity, recipeOf, recipeText, sideName,
   MAX_LEVEL, ORE_NAME, GEN_OUTPUT, UNPOWERED, powerMult, DIR_NAME, CONTRACT_PREMIUM,
   MUT_PRICE, missingFor, queued, LANE, STALL_BADGE, FAM_NAME, TUTORIAL, TUTORIAL_END,
@@ -1907,9 +1907,9 @@ export class Panel {
 
   /** Story mode's ORDERS tab: the one contract this world is for. */
   storyCard(host, g) {
-    const lv = g.story.level, L = STORY_LEVELS[lv];
+    const lv = g.story.level, L = storyLevel(lv);
     host.appendChild(el('h3', null, `${L.name}`));
-    host.appendChild(el('div', 'sub', `WORLD ${lv + 1} OF ${STORY_LEVELS.length} · ${L.kind.toUpperCase()}`));
+    host.appendChild(el('div', 'sub', `${storyLabel(lv)} · ${L.kind.toUpperCase()}`));
     host.appendChild(el('p', 'blurb', L.learn));
     L.goals.forEach((goal, k) => {
       const st = g.story.goals[k];

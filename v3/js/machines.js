@@ -467,7 +467,8 @@ export const nightIndex = f => Math.floor(((f.t || 0) + DAY_START - (DUSK_AT + D
 
 /** The noise that wakes the nests, and the noise that brings Brutes, right now. */
 export const swarmLine = f => (isNight(f) ? NIGHT_SWARM : SWARM_THRESHOLD);
-export const bruteLine = f => (isNight(f) ? NIGHT_BRUTE : BRUTE_THRESHOLD);
+// An endless story world's `mean` brings Brutes in earlier: half a point of noise a world, up to 4.
+export const bruteLine = f => (isNight(f) ? NIGHT_BRUTE : BRUTE_THRESHOLD) - Math.min(4, 0.5 * (f.mean || 0));
 
 /** Battery: kJ stored, kW in or out, and how far it carries power, by level. */
 export const BATTERY_CAP = [3000, 5000, 8000, 12000, 18000];
@@ -1933,6 +1934,70 @@ export const STORY_LEVELS = [
     learn: 'Everything you have learnt, at full scale. Reactors and Prisms, and the swarms that come for a factory this loud.',
     goals: [{ k: 'ship', ty: 13, n: 40 }, { k: 'ship', ty: 7, n: 20 }, { k: 'rate', ty: 13, per: 3, secs: 120 }, { k: 'cash', n: 250000 }] },
 ];
+
+/* ---------------------------------------------------------- endless story --- */
+
+/**
+ * After Orrin the campaign keeps going: world 9, 10, 11 and on, each one made up
+ * from its number. Every endless world is a full moon with every feature switched
+ * on, and every one asks for more than the last — bigger shipments, faster rates,
+ * more cash — while its nests are more numerous and send bigger, Brute-heavier
+ * swarms (`mean`). Research still carries over; a fast finish also earns a cash
+ * head start on the next world (`storyBonus`).
+ */
+const ENDLESS_NAMES = ['VESPER', 'HALCYON', 'MORROW', 'THULE', 'ISKRA', 'NADIR', 'OBERON', 'KALLIS',
+  'TARN', 'VANTA', 'EREBUS', 'SOLACE', 'MIRREN', 'CASK', 'UMBRA', 'ZENITH'];
+const ENDLESS_KINDS = ['Moon', 'Rogue moon', 'Dwarf planet', 'Comet core'];
+const ENDLESS_BLURBS = [
+  'Another contract, another rock. The company is never satisfied.',
+  'Further out than anyone has worked before. The nests here have never seen a Zapper.',
+  'Rich ground, and something in it that does not want to share.',
+  'The orders get bigger. So do the swarms.',
+];
+export const ENDLESS_LEARN = 'Endless worlds. Each one after Orrin wants more, and its nests are '
+  + 'more numerous and angrier. Your research comes with you, and a fast finish earns a cash head start.';
+
+/** The spec for story world `level` (0-based): one of the eight, or an endless one. */
+export function storyLevel(level) {
+  if (level < STORY_LEVELS.length) return STORY_LEVELS[level];
+  const k = level - STORY_LEVELS.length + 1;          // 1 for world 9
+  const rnd = rng(hashSeed(0x656e646c + level));
+  const grow = Math.pow(1.3, k);
+  const lap = Math.floor((k - 1) / ENDLESS_NAMES.length);
+  const name = ENDLESS_NAMES[(k - 1) % ENDLESS_NAMES.length] + (lap ? ' ' + (lap + 1) : '');
+  // Two big shipments of different things, a rate to hold, and a sum to earn.
+  const ships = [[13, 40], [12, 60], [7, 20], [6, 40], [5, 60]];
+  const a = Math.floor(rnd() * ships.length);
+  const b = (a + 1 + Math.floor(rnd() * (ships.length - 1))) % ships.length;
+  const rates = [[13, 3], [12, 4], [11, 6]];
+  const [rty, rper] = rates[Math.floor(rnd() * rates.length)];
+  return {
+    name, kind: ENDLESS_KINDS[(k - 1) % ENDLESS_KINDS.length], r: 39, cash: 1500,
+    sap: true, bugs: true, skitters: true, mountains: true, valleys: true,
+    nests: Math.min(40, 16 + 3 * k), mean: k, endless: true,
+    blurb: ENDLESS_BLURBS[(k - 1) % ENDLESS_BLURBS.length],
+    learn: ENDLESS_LEARN,
+    goals: [
+      { k: 'ship', ty: ships[a][0], n: Math.round(ships[a][1] * grow / 5) * 5 },
+      { k: 'ship', ty: ships[b][0], n: Math.round(ships[b][1] * grow / 5) * 5 },
+      { k: 'rate', ty: rty, per: Math.ceil(rper * (1 + 0.15 * k)), secs: 120 },
+      { k: 'cash', n: Math.round(250000 * Math.pow(1.45, k) / 1000) * 1000 },
+    ],
+  };
+}
+
+/** "WORLD 3 OF 8", or "WORLD 11 · ENDLESS". */
+export const storyLabel = level => (level < STORY_LEVELS.length
+  ? `WORLD ${level + 1} OF ${STORY_LEVELS.length}` : `WORLD ${level + 1} · ENDLESS`);
+
+/**
+ * The head start an endless world gives for finishing the last one quickly: up to
+ * three times the world's own starting cash for a finish inside a few minutes,
+ * nothing for one that took forty minutes or more.
+ */
+export const STORY_PAR = 2400;
+export const storyBonus = (secs, cash = 1500) =>
+  Math.round(cash * 3 * Math.max(0, Math.min(1, 1 - secs / STORY_PAR)) / 50) * 50;
 
 /** One goal, in words. */
 export function goalText(goal) {

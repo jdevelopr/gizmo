@@ -12,7 +12,7 @@
 import {
   WORLD, CLAIM_START, CELL, TYPES, KINDS, cellOf, cx, cy, money, num,
   expandCost, buyCost, label, PASSIVE, zapRange, CRATE_CAP, RUBBLE, RUBBLE_COST, unlockedBy, unlockerOf, unlockKey,
-  sizeKind, footprint, STORY_LEVELS, goalText, DRONE_RANGE, techById, techOpen, rankCost, rankOf,
+  sizeKind, footprint, STORY_LEVELS, storyLevel, storyLabel, storyBonus, goalText, DRONE_RANGE, techById, techOpen, rankCost, rankOf,
 } from './machines.js';
 import { repairMachine, repairAll } from './bugs.js';
 import { repairBeacon, progress as beaconProgress } from './beacon.js';
@@ -31,7 +31,7 @@ import { reachFrom } from './power.js';
 import {
   createGame, stepGame, saveGame, loadGame, hasSave, hasOldSave, clearSave,
   ageToasts, toast, endTutorial, SPEEDS,
-  createStoryGame, nextStoryGame, loadStory, storyLevelSaved, clearStory, goalProgress, storyStats,
+  createStoryGame, nextStoryGame, loadStory, storyLevelSaved, clearStory, goalProgress, storyStats, storyBest,
 } from './game.js';
 import { Palette, Crate, Hud, Panel, Tutorial, drawMinimap, howtoHtml, health, problems } from './ui.js';
 import { Input, makeState } from './input.js';
@@ -64,10 +64,14 @@ function showTitle() {
   $('title').hidden = false;
   $('app').hidden = true;
   const lv = storyLevelSaved();
-  $('btn-story').textContent = lv >= 0
-    ? `CONTINUE STORY · WORLD ${lv + 1} OF ${STORY_LEVELS.length}` : 'STORY MODE';
-  $('story-note').hidden = lv < 0;
-  if (lv >= 0) $('story-note').textContent = `The campaign is on ${STORY_LEVELS[lv].name}. Abandon it from the in-game menu to start again.`;
+  $('btn-story').textContent = lv >= 0 ? `CONTINUE STORY · ${storyLabel(lv)}` : 'STORY MODE';
+  // The furthest anyone in this browser has got, endless worlds and all.
+  const best = storyBest();
+  const bestTxt = best && best.world > 1
+    ? ` Best so far: world ${best.world}${best.world > STORY_LEVELS.length ? ' (endless)' : ''}, ${Math.floor(best.t / 3600) ? Math.floor(best.t / 3600) + 'h ' : ''}${Math.floor(best.t / 60) % 60}m in.` : '';
+  $('story-note').hidden = lv < 0 && !bestTxt;
+  $('story-note').textContent = (lv >= 0
+    ? `The campaign is on ${storyLevel(lv).name}. Abandon it from the in-game menu to start again.` : '') + bestTxt;
   const has = hasSave();
   $('btn-continue').hidden = !has;
   $('save-note').hidden = !has;
@@ -584,8 +588,8 @@ const storyCardUp = () => !$('story-intro').hidden || !$('story-done').hidden;
 
 /** The card that opens every story world: where you are, what is new, what is wanted. */
 function showIntro() {
-  const lv = g.story.level, L = STORY_LEVELS[lv];
-  $('si-kicker').textContent = `WORLD ${lv + 1} OF ${STORY_LEVELS.length} · ${L.kind.toUpperCase()}`;
+  const lv = g.story.level, L = storyLevel(lv);
+  $('si-kicker').textContent = `${storyLabel(lv)} · ${L.kind.toUpperCase()}`;
   $('si-name').textContent = L.name;
   $('si-blurb').textContent = L.blurb;
   $('si-learn').textContent = L.learn;
@@ -598,17 +602,20 @@ function showIntro() {
     rows.appendChild(r);
   }
   const ranks = g.f.done.length;
+  const bonus = g.story.bonus || 0;
   $('si-carry').textContent = lv === 0
     ? 'Money and science start fresh on every world. Research is kept from one to the next.'
-    : `You start with ${money(L.cash)} and no science. Your ${ranks} rank${ranks === 1 ? '' : 's'} of research came with you.`;
+    : `You start with ${money(L.cash + bonus)}${bonus ? ` (${money(bonus)} of it a head start for a fast finish)` : ''} and no science. `
+      + `Your ${ranks} rank${ranks === 1 ? '' : 's'} of research came with you.`;
   $('story-intro').hidden = false;
   paused = true;
 }
 
 /** The pop-up when a contract is met: this world's numbers, and the way on. */
 function showStoryDone() {
-  const lv = g.story.level, last = lv >= STORY_LEVELS.length - 1;
+  const lv = g.story.level, last = lv === STORY_LEVELS.length - 1;
   const st = storyStats(g);
+  const N = storyLevel(lv + 1);
   const rows = $('sd-stats');
   rows.textContent = '';
   const add = (k, v) => {
@@ -625,18 +632,21 @@ function showStoryDone() {
   add('Science studied', num(Math.round(st.studied)));
   add('Machines standing', num(st.machines));
   add('Land claimed', `${st.claim} x ${st.claim}`);
-  if (STORY_LEVELS[lv].bugs) add('Creatures zapped', num(st.here.zapped));
+  if (storyLevel(lv).bugs) add('Creatures zapped', num(st.here.zapped));
   add('Research ranks owned', num(st.research));
-  if (last) {
+  if (last || storyLevel(lv).endless) {
     add('Campaign time', time(st.total.t));
     add('Campaign earnings', money(st.total.earned));
   }
-  $('sd-kicker').textContent = `WORLD ${lv + 1} OF ${STORY_LEVELS.length} · ${STORY_LEVELS[lv].name}`;
+  const head = N.endless ? storyBonus(at, N.cash) : 0;
+  $('sd-kicker').textContent = `${storyLabel(lv)} · ${storyLevel(lv).name}`;
   $('sd-title').textContent = last ? 'CAMPAIGN COMPLETE' : 'CONTRACT FULFILLED';
-  $('sd-note').textContent = last
-    ? 'Every contract from a pebble to a moon. The moon is yours to keep building on.'
-    : `Next: ${STORY_LEVELS[lv + 1].name}, a ${STORY_LEVELS[lv + 1].kind.toLowerCase()}. Your research comes with you; money and science start again.`;
-  $('sd-next').textContent = last ? 'START A NEW CAMPAIGN' : `ON TO ${STORY_LEVELS[lv + 1].name}`;
+  $('sd-note').textContent = (last
+    ? 'Every contract from a pebble to a moon. And the company has more: the endless worlds start here. '
+    : '')
+    + `Next: ${N.name}, a ${N.kind.toLowerCase()}. Your research comes with you; money and science start again.`
+    + (N.endless ? (head ? ` A fast finish earns you a ${money(head)} head start.` : ' Finish faster for a head start next time.') : '');
+  $('sd-next').textContent = `ON TO ${N.name}`;
   $('story-done').hidden = false;
   paused = true;
 }
@@ -644,8 +654,7 @@ function showStoryDone() {
 function nextWorld() {
   $('story-done').hidden = true;
   paused = false;
-  const last = g.story.level >= STORY_LEVELS.length - 1;
-  const next = last ? createStoryGame(0, { teach: false }) : nextStoryGame(g);
+  const next = nextStoryGame(g);
   saveGame(next);
   boot(next);
   showIntro();
@@ -657,7 +666,7 @@ function updateGoals() {
   const box = $('goals');
   if (!g.story) { box.hidden = true; goalsKey = ''; return; }
   box.hidden = false;
-  const L = STORY_LEVELS[g.story.level];
+  const L = storyLevel(g.story.level);
   const parts = L.goals.map((goal, k) => ({ goal, st: g.story.goals[k], pr: goalProgress(g, k) }));
   const key = g.story.complete + '|' + parts.map(p => p.pr.text + (p.pr.hot ? '*' : '')).join('|');
   if (key === goalsKey) return;
@@ -665,7 +674,7 @@ function updateGoals() {
   box.classList.toggle('go', g.story.complete);
   box.style.pointerEvents = g.story.complete ? 'auto' : 'none';
   box.style.cursor = g.story.complete ? 'pointer' : '';
-  let html = `<div class="g-head">${L.name}<span>WORLD ${g.story.level + 1} / ${STORY_LEVELS.length}</span></div>`;
+  let html = `<div class="g-head">${L.name}<span>${g.story.level < STORY_LEVELS.length ? `WORLD ${g.story.level + 1} / ${STORY_LEVELS.length}` : `WORLD ${g.story.level + 1} · ENDLESS`}</span></div>`;
   for (const p of parts) {
     const cls = 'g-row' + (p.st.done ? ' done' : '') + (p.pr.hot && !p.st.done ? ' hot' : '');
     html += `<div class="${cls}"><div class="g-top"><b>${goalText(p.goal)}</b><i>${p.st.done ? 'DONE' : p.pr.text}</i></div>`

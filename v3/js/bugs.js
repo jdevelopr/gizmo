@@ -300,7 +300,8 @@ function nearNest(f, kind) {
  * from two directions at once, the fast half first.
  */
 export function sendSwarm(f, size = null) {
-  const total = Math.min(size ?? swarmSize(f.noise, f.waves), MITE_CAP - f.mites.length);
+  // An endless story world's nests send a fifth more a world.
+  const total = Math.min(Math.round((size ?? swarmSize(f.noise, f.waves)) * (1 + 0.2 * (f.mean || 0))), MITE_CAP - f.mites.length);
   const sNest = nearNest(f, 'skitter');
   const mNest = nearNest(f, 'mite');
   let nSkit = sNest ? Math.round(total * skitterShare(f.waves)) : 0;

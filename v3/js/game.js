@@ -22,7 +22,7 @@
 import {
   TYPES, RAW, WORLD, CLAIM_START, MILESTONES, TUTORIAL, CONTRACT_SLOTS,
   CONTRACT_PREMIUM, contractPremium, CONTRACT_GRACE, CONTRACT_GAP, cellOf, cx, cy, rng, hashSeed,
-  money, makeMachine, techById, unlockedBy, OPEN, MOUNTAIN, VALLEY, STORY_LEVELS,
+  money, makeMachine, techById, unlockedBy, OPEN, MOUNTAIN, VALLEY, STORY_LEVELS, storyLevel, storyBonus,
 } from './machines.js';
 import { generateWorld, storyWorld } from './world.js';
 import { spawnMite, addMissingNests } from './bugs.js';
@@ -75,17 +75,20 @@ export function createGame({ seed = null, cash = 650, teach = null } = {}) {
  * starting cash and no science at all — and the research in `done` carries over
  * from the world before.
  */
-export function createStoryGame(level, { done = [], seed = null, teach = null, stats = null } = {}) {
-  const L = STORY_LEVELS[level];
+export function createStoryGame(level, { done = [], seed = null, teach = null, stats = null, bonus = 0 } = {}) {
+  const L = storyLevel(level);
   const s = seed == null ? (Math.floor(Math.random() * 1e9) | 0) : seed;
   const world = storyWorld(level, s);
-  const f = createFactory({ seed: s, world, cash: L.cash });
+  const f = createFactory({ seed: s, world, cash: L.cash + bonus });
+  f.mean = L.mean || 0;
   f.dayNight = level >= DAYNIGHT_FROM;           // the first two rocks have no night
   f.done = done.slice();
   rebuild(f);
   const g = baseGame(f);
   g.story = newStory(level);
+  g.story.bonus = bonus;
   if (stats) g.story.total = { ...stats };
+  noteStoryBest(level, g.story.total.t);
   // The walkthrough runs on the first rock only, and only for somebody new.
   g.tut = level === 0 && (teach == null ? !hasBeenTaught() : teach) ? 0 : -1;
   return g;
@@ -94,7 +97,7 @@ export function createStoryGame(level, { done = [], seed = null, teach = null, s
 function newStory(level) {
   return {
     level,
-    goals: STORY_LEVELS[level].goals.map(() => ({ done: false, held: 0 })),
+    goals: storyLevel(level).goals.map(() => ({ done: false, held: 0 })),
     complete: false,
     doneAt: 0,
     // Running totals across the campaign so far, for the last screen.
@@ -104,7 +107,7 @@ function newStory(level) {
 
 /** How far along one goal is, 0 to 1, and a short line saying so. */
 export function goalProgress(g, k) {
-  const goal = STORY_LEVELS[g.story.level].goals[k];
+  const goal = storyLevel(g.story.level).goals[k];
   const st = g.story.goals[k];
   const f = g.f;
   if (st.done) return { p: 1, text: 'done' };
@@ -131,7 +134,7 @@ export function goalProgress(g, k) {
 function tickStory(g, dt) {
   const s = g.story;
   if (!s || s.complete) return;
-  const L = STORY_LEVELS[s.level];
+  const L = storyLevel(s.level);
   const f = g.f;
   L.goals.forEach((goal, k) => {
     const st = s.goals[k];
@@ -179,7 +182,22 @@ export function storyStats(g) {
 /** The next world of the campaign, carrying the research and the running totals. */
 export function nextStoryGame(g) {
   const st = storyStats(g);
-  return createStoryGame(g.story.level + 1, { done: g.f.done, stats: st.total, teach: false });
+  const next = g.story.level + 1;
+  // Into the endless worlds, a quick finish buys a head start.
+  const bonus = storyLevel(next).endless ? storyBonus(g.story.doneAt || g.f.t, storyLevel(next).cash) : 0;
+  return createStoryGame(next, { done: g.f.done, stats: st.total, teach: false, bonus });
+}
+
+/** The furthest story world this browser has reached, and the campaign time it took. */
+const BEST_KEY = 'gizmo3.storybest.v1';
+export function storyBest() {
+  try { return JSON.parse(localStorage.getItem(BEST_KEY) || 'null'); } catch (e) { return null; }
+}
+function noteStoryBest(level, t) {
+  try {
+    const b = storyBest();
+    if (!b || level + 1 > b.world) localStorage.setItem(BEST_KEY, JSON.stringify({ world: level + 1, t: Math.round(t || 0) }));
+  } catch (e) { /* private window */ }
 }
 
 /** Has this browser already been walked through the opening once? */
@@ -521,6 +539,7 @@ export function deserialise(data) {
   if (!data || data.v !== 1) return null;
   const world = data.story ? storyWorld(data.story.level, data.seed) : generateWorld(data.seed);
   const f = createFactory({ seed: data.seed, world, cash: data.cash || 0 });
+  f.mean = data.story ? (storyLevel(data.story.level).mean || 0) : 0;
   f.dayNight = data.story ? data.story.level >= DAYNIGHT_FROM : true;
   f.claim = Math.max(CLAIM_START, Math.min(WORLD, data.claim || CLAIM_START));
   for (const i of data.cleared || []) f.terrain[i] = OPEN;        // saves before mountains

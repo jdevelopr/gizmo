@@ -27,7 +27,7 @@
 
 import {
   WORLD, CLAIM_START, DIRS, OPEN, RUBBLE, BEDROCK, MOUNTAIN, VALLEY, MOUNTAIN_ORE, BEACON, BEACON_SIZE, SPACE,
-  STORY_LEVELS, cellOf, cx, cy, inWorld, claimMin, claimCells, rng, hashSeed,
+  STORY_LEVELS, storyLevel, cellOf, cx, cy, inWorld, claimMin, claimCells, rng, hashSeed,
 } from './machines.js';
 
 const SLAG = 0, SAP = 8;
@@ -304,7 +304,7 @@ export function placeBeacon(w) {
  * rim — so the two modes play the same game on different-sized pieces of ground.
  */
 export function storyWorld(level, seed) {
-  const L = STORY_LEVELS[Math.max(0, Math.min(STORY_LEVELS.length - 1, level))];
+  const L = storyLevel(Math.max(0, level));
   const w = generateWorld(seed);
   const rnd = rng(hashSeed((seed ^ 0x73746f72) >>> 0));
   const n = WORLD * WORLD;

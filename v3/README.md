@@ -339,6 +339,22 @@ for every one you already own (the Assembler ladder counts all three recipes tog
 
 Upgrades are priced off the purchase price, so they rose in step.
 
+### Endless story worlds
+
+Story mode no longer stops at Orrin. Finishing world 8 opens world 9, and on it goes
+(`storyLevel` in machines.js makes each one from its number, the same every time):
+
+- Every endless world is a full moon with every feature on, and a four-part
+  contract: two big shipments of high-rung gizmos (x1.3 a world), a rate to hold for
+  two minutes, and a sum to earn (from $363k at world 9, x1.45 a world).
+- **Meaner creatures:** 3 more nests a world (up to 40), swarms a fifth bigger a
+  world, and Brutes at half a point less noise a world (up to 4 less).
+- **Carry-over:** research, as ever, plus a cash head start for a fast finish — up to
+  three times the world's starting cash for a quick one, nothing past 40 minutes
+  (`storyBonus`).
+- **Score:** the title screen remembers the furthest world reached and the campaign
+  time it took (`gizmo3.storybest.v1`).
+
 ### Upgrades you can see
 
 The level pips are gone. Instead every machine grows parts as it levels up, bolted

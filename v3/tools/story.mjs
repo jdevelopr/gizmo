@@ -5,6 +5,7 @@
  */
 import {
   WORLD, STORY_LEVELS, SPACE, OPEN, MOUNTAIN, VALLEY, BEACON, cellOf, cx, cy, CLAIM_START, catalogue,
+  storyLevel, storyLabel, storyBonus, bruteLine, BRUTE_THRESHOLD, TYPES,
 } from '../js/machines.js';
 import { storyWorld, SAP } from '../js/world.js';
 import { placeNests } from '../js/bugs.js';
@@ -126,5 +127,31 @@ console.log('\nSaving');
   ok(back.f.world.maxClaim === g.f.world.maxClaim, 'and the same fence limit');
 }
 
-console.log(fails ? `\n${fails} FAILED\n` : '\nEight worlds, one tech tree, and every contract can be met.\n');
+console.log('\nEndless worlds');
+{
+  const L8 = storyLevel(8), L9 = storyLevel(9), L30 = storyLevel(30);
+  ok(L8.endless && L9.endless && !storyLevel(7).endless, 'after world 8 the worlds keep coming');
+  ok(L8.name !== L9.name && storyLevel(8).name === L8.name, `each has its own name, and the same one every time (${L8.name}, ${L9.name}, ... ${L30.name})`);
+  ok(storyLabel(8) === 'WORLD 9 · ENDLESS' && storyLabel(7) === 'WORLD 8 OF 8', 'and is labelled as endless');
+  const cashGoal = L => L.goals.find(g => g.k === 'cash').n;
+  ok(cashGoal(L9) > cashGoal(L8) && cashGoal(L30) > cashGoal(L9) * 10, 'every world wants more cash than the last');
+  ok(L8.goals.every(g => g.k !== 'ship' || g.n >= 20), 'and big shipments');
+  ok(L9.nests > L8.nests && L8.nests > STORY_LEVELS[7].nests && L30.nests <= 40, `more nests each world, capped (${L8.nests}, ${L9.nests} ... ${L30.nests})`);
+  const g = createStoryGame(8, { seed: 99, bonus: 2000 });
+  ok(g.f.cash === L8.cash + 2000 && g.f.mean === 1, 'a head start is added to the starting cash, and the world is meaner');
+  ok(bruteLine(g.f) < BRUTE_THRESHOLD, 'Brutes come at less noise');
+  const nests = (g.f.nests || []).filter(n => n.hp > 0).length;
+  ok(nests >= 10, `its nests are dug in (${nests})`);
+  ok(storyBonus(300) > storyBonus(1200) && storyBonus(1200) > 0 && storyBonus(5000) === 0, 'a faster finish earns a bigger head start, a slow one none');
+  // Into the endless worlds from Orrin
+  const o = createStoryGame(7, { seed: 5 });
+  o.story.complete = true; o.story.doneAt = 600;
+  const n = nextStoryGame(o);
+  ok(n.story.level === 8 && n.f.cash === L8.cash + storyBonus(600), `finishing Orrin opens world 9 with a head start (${n.f.cash})`);
+  const back = deserialise(serialise(n));
+  ok(back.story.level === 8 && back.f.mean === 1, 'an endless save comes back as the same world');
+  ok(L8.goals.every(g => g.k === 'cash' || TYPES[g.ty]), 'every goal names a real gizmo');
+}
+
+console.log(fails ? `\n${fails} FAILED\n` : '\nEight worlds, then endless ones, one tech tree, and every contract can be met.\n');
 process.exit(fails ? 1 : 0);

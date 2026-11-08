@@ -96,8 +96,8 @@ export const TIPS = [
     title: 'Sun\'s going down!',
     body: 'This rock turns, rookie, and night lasts about three minutes. In the dark your <b>Solar Panels</b> '
       + 'quit, the nests get jumpy — they wake at noise <b>3</b> instead of 5, and Brutes come at <b>9</b> — and '
-      + 'you can\'t see as far past the fence. <b>Batteries</b> keep the lights on; a <b>Night Switch</b> '
-      + 'puts your loud machines to bed till sunrise.',
+      + 'you can\'t see as far past the fence. <b>Batteries</b> keep the lights on, and switching off '
+      + 'your noisiest machines keeps the critters home.',
     fx: e => e.k === 'dusk',
   },
   {

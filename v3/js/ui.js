@@ -66,7 +66,7 @@ const GROUPS = [
   { name: 'POWER', kinds: ['gen', 'solar', 'battery', 'pylon'] },
   { name: 'PROCESSING', kinds: ['mut', 'fuse', 'asm', 'recyc'] },
   { name: 'MULTIPLYING', kinds: ['dup', 'trident'] },
-  { name: 'DEFENCE', kinds: ['wall', 'nswitch', 'arm', 'zap', 'drone'] },
+  { name: 'DEFENCE', kinds: ['wall', 'arm', 'zap', 'drone'] },
   { name: 'TERRAIN', kinds: ['drill', 'bridge'] },
 ];
 

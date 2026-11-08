@@ -5,7 +5,7 @@
  */
 import {
   WORLD, cellOf, lightAt, isNight, DAY_LEN, swarmLine, bruteLine, fogOf, FOG, NIGHT_FOG,
-  SWARM_THRESHOLD, BRUTE_THRESHOLD, batteryCap, buyCost, unlockedBy, NOISE,
+  SWARM_THRESHOLD, BRUTE_THRESHOLD, batteryCap, buyCost, unlockedBy, NOISE, TECH,
 } from '../js/machines.js';
 import { createFactory, stepFactory, build, rebuild } from '../js/sim.js';
 import { balancePower } from '../js/power.js';
@@ -40,9 +40,6 @@ console.log('\nThe clock');
   ok(fogOf(f) === NIGHT_FOG, 'and you see 1 slot past the fence');
   f.t = 100;
   ok(swarmLine(f) === SWARM_THRESHOLD && bruteLine(f) === BRUTE_THRESHOLD && fogOf(f) === FOG, 'by day it is 5, 12 and 3');
-  f.done = ['nightshift', 'nightshift', 'nightshift', 'nightshift', 'nightshift'];
-  f.t = 500;
-  ok(swarmLine(f) === 5, 'Night Shift V brings the night line back up to 5');
   const off = bench(false); off.t = 500;
   ok(!isNight(off), 'a world without day and night is always day');
 }
@@ -82,7 +79,8 @@ console.log('\nSolar and the Battery');
   ok(!unlockedBy([]).has('battery') && unlockedBy(['batteries']).has('battery'), 'Batteries research unlocks it');
 }
 
-console.log('\nNight Switch');
+console.log('\nNight Switch (shelved: not in the shop, but one in a save still works)');
+ok(!unlockedBy(TECH.map(t => t.id)).has('nswitch'), 'no research unlocks the Night Switch');
 {
   const f = bench();
   put(f, 'nswitch', 30, 30);

@@ -383,7 +383,7 @@ At night:
   **9** instead of 12. The Noise card's marks move to match.
 - **You see less:** the fog closes in to 1 slot past your fence instead of 3.
 
-Two new machines:
+A new machine:
 
 - **Battery** (Power: *Batteries*, 500 science, after Solar Panels; $800, 1.2x each).
   It charges from whatever its grid has spare and pays it back when the grid runs
@@ -391,11 +391,8 @@ Two new machines:
   carries power. 3 MJ / 40 kW at level 1, 18 MJ / 150 kW at level 5; each rank of
   Batteries past I adds 15% capacity. Charging is real load: a Generator burns fuel
   for it. Its gauge fills up the middle of its art.
-- **Night Switch** (Defence: *Night Shift*, 150 science; $300). At nightfall it
-  switches off every machine joined to it by touching — except defences, Batteries,
-  Solar Panels, Pylons and Walls — and switches them back on at dawn. A machine you
-  switch by hand in the night stays as you set it. Its window shows a sun or a moon.
-  Each rank of Night Shift past I raises the night swarm line by 0.5 (back to 5 at V).
+- **Night Switch**: shelved for now. No research unlocks it, so it is not in the
+  shop; the machine and its art are kept, and one already in a save still works.
 
 `tools/daynight.mjs` checks the clock, the thresholds, the fog, the Battery and the
 Night Switch.

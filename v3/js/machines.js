@@ -413,6 +413,8 @@ export const KINDS = {
     price: 1600, cycle: 0, cap: 0, hold: 0, travel: 0, draw: 0, passive: true,
     body: '#1f2c22', trim: '#7fd36a', lit: '#d4ff9a',
   },
+  // Shelved for now: no research unlocks it, so it never reaches the shop. The
+  // machine itself still works, so a save that has one keeps it.
   nswitch: {
     name: 'Night Switch', short: 'NIGHT SWITCH',
     desc: 'At nightfall it switches off every machine touching it, and every machine touching '
@@ -464,9 +466,7 @@ export function nextTurn(f) {
 export const nightIndex = f => Math.floor(((f.t || 0) + DAY_START - (DUSK_AT + DUSK_LEN / 2)) / DAY_LEN);
 
 /** The noise that wakes the nests, and the noise that brings Brutes, right now. */
-export const swarmLine = f => (isNight(f)
-  ? Math.min(SWARM_THRESHOLD, NIGHT_SWARM + 0.5 * Math.max(0, rankOf(f.done, 'nightshift') - 1))
-  : SWARM_THRESHOLD);
+export const swarmLine = f => (isNight(f) ? NIGHT_SWARM : SWARM_THRESHOLD);
 export const bruteLine = f => (isNight(f) ? NIGHT_BRUTE : BRUTE_THRESHOLD);
 
 /** Battery: kJ stored, kW in or out, and how far it carries power, by level. */
@@ -1706,9 +1706,6 @@ export const TECH = [
     ranks: 'Ranks II–V: less each rank — 58% less at V.' },
 
   // ---- defence
-  { id: 'nightshift', branch: 'defense', name: 'Night Shift', cost: 150, flat: true, needs: [], unlocks: ['nswitch'],
-    blurb: 'Unlocks the Night Switch: it turns the machines around it off at nightfall and back on at dawn.',
-    ranks: 'Ranks II–V: nights are calmer — swarms wake at 0.5 more noise each (from 3 up to 5 at V).' },
   { id: 'walls', branch: 'defense', name: 'Walls', cost: 60, flat: true, needs: [], unlocks: ['wall'],
     blurb: 'Unlocks the Wall: creatures go round it, or chew through it if there is no way round.',
     ranks: 'Ranks II–V: Walls get 25% more hit points each (+100% at V).' },

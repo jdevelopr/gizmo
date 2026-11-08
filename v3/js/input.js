@@ -237,8 +237,12 @@ export class Input {
       this.stage.classList.remove('grab');
       // A press that never travelled was a click on a slot after all.
       if (p.pending >= 0 && !p.moved) {
-        S.selected = p.pending;
-        this.act('select', p.pending);
+        // Clicking the empty slot that is already selected lets go of it, and the
+        // pop-up with it.
+        const g = this.getGame();
+        const again = S.selected === p.pending && !g?.f.grid[p.pending];
+        S.selected = again ? -1 : p.pending;
+        this.act('select', S.selected);
       }
     }
     if (S.drag?.mode === 'box') {

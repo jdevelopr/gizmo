@@ -35,8 +35,8 @@ const SLAG = 0, SAP = 8;
 /** How many patches of each ore the world holds. */
 // Kept sparse on purpose: ore is something you go out and find, and a patch is
 // worth a long belt home, rather than a carpet you can build anywhere on.
-const SLAG_PATCHES = 9;
-const SAP_PATCHES = 3;
+const SLAG_PATCHES = 14;
+const SAP_PATCHES = 5;
 
 /** Richness at the middle of the map and out at the rim. */
 const RICH_MIN = 0.8;
@@ -59,6 +59,7 @@ const RICH_MAX = 2.6;
  */
 const ORE_GAP = 10;         // between patches of different ore
 const SAME_GAP = 9;         // between patches of the same ore
+const SPREAD_TRIES = 24;    // candidate spots weighed for each scattered patch
 const SAP_MIN_RING = 12;    // no Sap closer than this to the centre
 
 /**
@@ -551,19 +552,29 @@ function scatterPatches(rnd, patch, rich, patches, terrain, ty, count) {
   // away from the middle entirely, so the Part line is somewhere you go to.
   const inner = ty === SAP ? SAP_MIN_RING : OPENING_RADIUS;
   for (let k = 0; k < count; k++) {
-    let seedCell = -1;
-    for (let guard = 0; guard < 300 && seedCell < 0; guard++) {
+    // Best of many: try a good number of places that are allowed, and take the
+    // one furthest from every patch already down. Pure random placement clumps —
+    // three patches in one corner and an empty quarter of the map — where this
+    // spreads them out evenly without making the pattern regular.
+    let seedCell = -1, bestGap = -1, found = 0;
+    for (let guard = 0; guard < 600 && found < SPREAD_TRIES; guard++) {
       const x = Math.floor(rnd() * WORLD), y = Math.floor(rnd() * WORLD);
       const ring = Math.max(Math.abs(x - c), Math.abs(y - c));
       if (ring < inner) continue;
       const i = cellOf(x, y);
       if (patch[i] >= 0) continue;
       if (tooClose(patch, x, y, ty)) continue;
-      seedCell = i;
+      found++;
+      let gap = Infinity;
+      for (const p of patches) {
+        const d = Math.max(Math.abs(p.x - x), Math.abs(p.y - y));
+        if (d < gap) gap = d;
+      }
+      if (gap > bestGap) { bestGap = gap; seedCell = i; }
     }
     if (seedCell < 0) continue;
     const ring = Math.max(Math.abs(cx(seedCell) - c), Math.abs(cy(seedCell) - c)) / c;
-    const size = Math.round((ty === SLAG ? 5 : 4) + rnd() * (ty === SLAG ? 6 : 4));
+    const size = Math.round((ty === SLAG ? 6 : 5) + rnd() * (ty === SLAG ? 8 : 6));
     patches.push(growPatch(rnd, patch, rich, ty, seedCell, size, richAt(ring), terrain));
   }
 }

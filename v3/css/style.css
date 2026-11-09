@@ -259,7 +259,7 @@ h1 span { color: var(--gold); }
   pointer-events: none;
   z-index: 4;
 }
-#leftcards { left: 12px; width: var(--left); overflow-y: auto; scrollbar-width: none; bottom: calc(var(--shop) + 76px); }
+#leftcards { left: 12px; width: var(--left); overflow-y: auto; scrollbar-width: none; bottom: calc(var(--shop) + 64px); }
 #rightcards { right: 12px; width: var(--right); bottom: calc(var(--shop) + 10px + 116px + 8px); }
 .fcard {
   pointer-events: auto;
@@ -345,26 +345,47 @@ h1 span { color: var(--gold); }
 
 /* the kill switch --------------------------------------------------------- */
 
-/* A big red button in the bottom-left corner. Lit and pulsing while it is down. */
+/*
+ * A big blocky rocker switch, like a light switch turned on its side: a wall plate
+ * with two screws, and a rocker with ON at one end and OFF at the other. Whichever
+ * end you last pressed sits down in the plate; the other stands proud of it.
+ */
 #btn-kill {
-  position: absolute; left: 12px; bottom: calc(var(--shop) + 10px); z-index: 5;
-  width: var(--left); height: 56px;
-  display: flex; align-items: center; gap: 10px; padding: 6px 10px;
-  background: #2a0f12; border: 2px solid #6b2a24; color: #ffb0a6; text-align: left;
+  position: absolute; left: 12px; bottom: calc(var(--shop) + 12px); z-index: 5;
+  width: 200px; height: 46px; padding: 5px 7px;
+  display: flex; align-items: center; gap: 6px;
+  background: #c9cede; border: 2px solid #0c0e18;
+  box-shadow: inset 2px 2px 0 #f0f2f8, inset -2px -2px 0 #8b90a4, 0 3px 0 rgba(0, 0, 0, 0.5);
 }
-#btn-kill:hover { background: #3a1418; border-color: #a03a30; }
-#btn-kill .kb-cap {
-  flex: 0 0 auto; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
-  background: #c8281e; color: #fff0ec; border: 2px solid #0c0e18;
-  box-shadow: inset 0 -4px 0 #7a1410, inset 0 3px 0 #ff6a5a;
+#btn-kill:hover:not(:disabled) { background: #d6dae8; border-color: #0c0e18; }
+#btn-kill:active:not(:disabled) { transform: none; }
+#btn-kill .kb-screw {
+  flex: 0 0 auto; width: 6px; height: 6px; background: #8b90a4; border: 1px solid #5d6275;
+  box-shadow: inset 1px 1px 0 #f0f2f8;
 }
-#btn-kill .kb-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-#btn-kill .kb-text b { font-size: 13px; letter-spacing: 0.1em; font-weight: 400; color: #e8ecf8; }
-#btn-kill .kb-text i { font-style: normal; font-size: 9px; letter-spacing: 0.12em; color: #a0605a; }
-#btn-kill.down { background: #4a0c10; border-color: #ff3b30; animation: killpulse 1.2s steps(2) infinite; }
-#btn-kill.down .kb-cap { background: #ff3b30; box-shadow: inset 0 -2px 0 #a01810, inset 0 2px 0 #ff9a8a; }
-#btn-kill.down .kb-text b { color: #ff9a8a; }
-@keyframes killpulse { 50% { border-color: #6b2a24; } }
+#btn-kill .kb-rocker {
+  flex: 1 1 auto; height: 100%; display: flex;
+  background: #0c0e18; border: 2px solid #0c0e18; gap: 2px;
+}
+#btn-kill .kb-half {
+  flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 11px; letter-spacing: 0.14em; line-height: 1;
+}
+#btn-kill .kb-half i { display: block; width: 6px; height: 6px; }
+/* pressed in: flat, dark, sunk */
+#btn-kill .kb-half { background: #4a4f62; color: #8b90a4; box-shadow: inset 2px 2px 0 #2a2e3c; }
+#btn-kill .kb-half i { background: #2a2e3c; }
+/* standing proud: lit from above, a thick shadow under it */
+#btn-kill .kb-off { background: #eef0f6; color: #5d6275; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -4px 0 #a9aec0; }
+#btn-kill .kb-on i { background: #a7f070; box-shadow: 0 0 0 1px #2a4a1a; }
+#btn-kill .kb-on { color: #a7f070; }
+/* thrown to OFF: the other way about, and red */
+#btn-kill.down .kb-on { background: #eef0f6; color: #5d6275; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -4px 0 #a9aec0; }
+#btn-kill.down .kb-on i { background: #c9cede; box-shadow: none; }
+#btn-kill.down .kb-off { background: #4a1418; color: #ff9a8a; box-shadow: inset 2px 2px 0 #2a0a0c; }
+#btn-kill.down .kb-off i { background: #ff3b30; box-shadow: 0 0 0 1px #5a0c08; }
+#btn-kill.down { border-color: #ff3b30; animation: killpulse 1.2s steps(2) infinite; }
+@keyframes killpulse { 50% { border-color: #0c0e18; } }
 
 /* the pop-up -------------------------------------------------------------- */
 

@@ -270,7 +270,9 @@ function paintKill() {
   const down = !!g.f.killed;
   if (b.classList.contains('down') !== down) {
     b.classList.toggle('down', down);
-    $('kill-label').textContent = down ? 'FACTORY OFF' : 'FACTORY ON';
+    b.setAttribute('aria-checked', down ? 'false' : 'true');
+    b.title = down ? 'Kill switch: the factory is OFF. Flip to switch it back on  (P)'
+      : 'Kill switch: flip to switch every machine off  (P)';
   }
 }
 

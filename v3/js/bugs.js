@@ -27,7 +27,7 @@ import {
   WORLD, cellOf, cx, cy, inWorld, inClaim, claimed, claimMin, claimMax, OPEN, BEDROCK, MOUNTAIN, VALLEY, SPACE,
   rng, hashSeed, powerMult, hpMult, maxHp, broken, repairCost, NOISE, NOISE_IDLE, noiseLevelMult, SWARM_THRESHOLD, SWARM_COST, PASSIVE, swarmLine, bruteLine,
   SWARM_GRACE, MITE_CAP, MITE, swarmSize, NEST_POP_MIN, NEST_POP_MAX, CREATURES, SKITTER,
-  skitterShare, nestSpec, bruteShare, price, WALL_DETOUR,
+  skitterShare, nestSpec, bruteShare, price, WALL_DETOUR, rankOf,
   nestAnger, nestBrood,
   AMMO_CHARGES, zapRange, zapDamage, zapCool, zapChain, ARC_HOP, PLUMBING,
   CHARGED, CHARGED_MULT, shotsOf, centreOf, TREMOR_COST, tremorCost, DIRS, BEACON_SIZE, BEACON_NOISE, BEACON_DRAW,
@@ -240,7 +240,9 @@ export function stepBugs(f, dt) {
     if (quiet && f.mites.some(mt => !mt.beacon && mt.kind !== 'beetle')) f.fx.push({ k: 'quiet' });
   }
   if (quiet) {
-    f.swarm = Math.max(0, f.swarm - SWARM_COST * 0.02 * dt);
+    // With the whole factory shut down, Kill Switch ranks past I settle the nests faster.
+    const calm = f.killed ? 1 + 0.25 * Math.max(0, rankOf(f.done, 'killswitch') - 1) : 1;
+    f.swarm = Math.max(0, f.swarm - SWARM_COST * 0.02 * calm * dt);
     f.stirred = 0;
   } else if (f.t >= SWARM_GRACE && f.nests.some(n => n.hp > 0)) {
     f.swarm += f.noise * dt;

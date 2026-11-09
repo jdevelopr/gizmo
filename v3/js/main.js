@@ -129,6 +129,7 @@ function boot(game) {
 function wireChrome() {
   $('btn-expand').onclick = () => act('expand');
   $('btn-noise').onclick = () => act('noiseMap');
+  $('btn-kill').onclick = () => act('killAll');
   $('btn-power').onclick = () => { S.showPower = !S.showPower; view.showPower = S.showPower; sfx('click'); };
   $('pop-more').onclick = () => {
     const pop = $('pop');
@@ -260,6 +261,19 @@ function wireCards() {
   paintMore();
 }
 
+/** The kill switch: only there once researched, and lit while the factory is down. */
+function paintKill() {
+  const b = $('btn-kill');
+  const have = rankOf(g.f.done, 'killswitch') > 0;
+  if (b.hidden === have) b.hidden = !have;
+  if (!have) return;
+  const down = !!g.f.killed;
+  if (b.classList.contains('down') !== down) {
+    b.classList.toggle('down', down);
+    $('kill-label').textContent = down ? 'FACTORY OFF' : 'FACTORY ON';
+  }
+}
+
 function paintMore() {
   const pop = $('pop');
   $('pop-more').innerHTML = pop.classList.contains('compact') ? 'MORE &#9662;' : 'LESS &#9652;';
@@ -380,6 +394,7 @@ function frame(now) {
   side.update(g, S);
   placePop();
   $('btn-power').classList.toggle('on', !!S.showPower);
+  paintKill();
   if (tree?.open) tree.update(g);
   updateHint();
   updateGoals();
@@ -459,6 +474,8 @@ function playFx(fx) {
       case 'move': sfx('move'); break;
       case 'swarm': sfx('swarm'); view.pulse('#ff3b5c'); break;
       case 'quiet': toast(g, 'Quiet enough — the creatures are heading home to their nests', '#a7f070'); break;
+      case 'killOff': toast(g, `Factory shut down — ${e.n} machine${e.n === 1 ? '' : 's'} switched off`, '#ff8a6a'); break;
+      case 'killOn': toast(g, `Factory back on — ${e.n} machine${e.n === 1 ? '' : 's'} running`, '#a7f070'); break;
       case 'dusk': toast(g, 'Night falls — Solar goes dark, and the nests wake at less noise', '#c8ccff'); break;
       case 'dawn': toast(g, 'Dawn — the sun is up', '#ffcd75'); break;
       case 'nswitch': toast(g, `Night Switch — ${e.n} machine${e.n === 1 ? '' : 's'} off till dawn`, '#c8ccff'); break;
@@ -973,6 +990,12 @@ function act(name, payload, extra) {
       if (payload >= 0) panel.show('info');
       return;
     case 'rot': return applyAction(f, { a: 'rot', i: payload, back: extra });
+    case 'killAll': {
+      const r = applyAction(f, { a: 'killAll' });
+      if (!r.ok) { toast(g, r.msg, '#ff8a6a'); sfx('error'); } else sfx('click');
+      panel.key = '';
+      return r;
+    }
     case 'off': {
       if (payload == null || payload < 0 || !f.grid[payload]) return;
       const r = applyAction(f, { a: 'off', i: payload });

@@ -402,6 +402,7 @@ export class Input {
       case '-': case '_': this.act('zoom', -1); break;
       case 'v': S.showPower = !S.showPower; this.view.showPower = S.showPower; break;
       case 'l': this.act('noiseMap'); break;
+      case 'p': this.act('killAll'); break;
       case 'c': this.act('expand'); break;
       case 'e': this.act('clear', this.target()); break;
       case ' ': e.preventDefault(); this.act('togglePause'); break;

@@ -339,6 +339,16 @@ for every one you already own (the Assembler ladder counts all three recipes tog
 
 Upgrades are priced off the purchase price, so they rose in step.
 
+### Kill switch
+
+*Kill Switch* research (Power, 300 science, after Generators) puts a big red button
+in the bottom-left corner, with **P** as its key. Pressed, it switches every machine
+on the map off — defences included — and remembers which ones it did; pressed
+again, exactly those come back on, and anything you had switched off yourself stays
+off. Switching a machine by hand while the factory is down takes it out of the
+switch's hands. It survives a save. Ranks II–V: while the factory is shut down, the
+nests settle 25% faster each (+100% at V).
+
 ### Endless story worlds
 
 Story mode no longer stops at Orrin. Finishing world 8 opens world 9, and on it goes

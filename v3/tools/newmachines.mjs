@@ -10,6 +10,7 @@ import {
 import { createFactory, stepFactory, build, rebuild, applyAction } from '../js/sim.js';
 import { solveTopology, balancePower } from '../js/power.js';
 import { plainWorld } from '../js/world.js';
+import { serialise, deserialise } from '../js/game.js';
 
 let fails = 0;
 const ok = (cond, what, detail = '') => {
@@ -128,6 +129,23 @@ console.log('\nBuilding from the shop uses the crate first');
   const c2 = f.cash;
   build(f, { kind: 'mut', mut: 2 }, cellOf(30, 30), { dir: 0 });
   ok(f.cash < c2 && f.crate.some(m => m.kind === 'mut' && m.mut === 1), 'a different Mutator rung is bought, not swapped for the crated one');
+}
+
+console.log('\nKill switch');
+{
+  const f = bench();
+  put(f, 'pipe', 10, 10); put(f, 'pipe', 11, 10); put(f, 'zap', 12, 10); put(f, 'pipe', 13, 10);
+  rebuild(f);
+  ok(!applyAction(f, { a: 'killAll' }).ok, 'it needs researching first');
+  f.done.push('killswitch');
+  applyAction(f, { a: 'off', i: cellOf(13, 10) });              // one you switched off yourself
+  const r = applyAction(f, { a: 'killAll' });
+  ok(r.ok && f.killed && [10, 11, 12, 13].every(x => at(f, x, 10).off), 'down: every machine is off, defences too');
+  const back = deserialise(serialise({ f, story: null, contracts: [], done: new Set(), tut: -1 }));
+  ok(back.f.killed && back.f.grid[cellOf(10, 10)].kOff, 'it survives a save');
+  applyAction(f, { a: 'killAll' });
+  ok(!f.killed && !at(f, 10, 10).off && !at(f, 12, 10).off, 'up: they come back on');
+  ok(at(f, 13, 10).off, 'and one you had switched off yourself stays off');
 }
 
 console.log('\nSolar Panel');

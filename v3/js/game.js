@@ -515,6 +515,9 @@ export function serialise(g) {
       done: f.beacon.done, doneAt: Math.round(f.beacon.doneAt || 0),
     } : null,
     machines,
+    // The kill switch: whether it is down, and which machines it switched off.
+    killed: f.killed ? 1 : 0,
+    kill: f.killed ? f.cells.filter(i => f.grid[i]?.kOff) : [],
     crate,
     // Mites are saved, unlike gizmos: reloading must not be a way to make a
     // swarm that is halfway through your belts simply vanish.
@@ -599,6 +602,8 @@ export function deserialise(data) {
     }
     occupy(f, m, i);
   }
+  f.killed = data.killed ? 1 : 0;
+  for (const i of data.kill || []) if (f.grid[i]) f.grid[i].kOff = 1;
   for (const [kind, dir, level, mut, mir, off, hp, free] of data.crate || []) {
     if (!kind) continue;
     const cm = makeMachine({ kind, dir, mut, mir, level, off, hp: hp ?? undefined }, f.nid++);

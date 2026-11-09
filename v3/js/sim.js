@@ -1526,10 +1526,40 @@ export function applyAction(f, a) {
      * actually carrying. An off machine does nothing, draws nothing, accepts
      * nothing, and keeps everything it is holding.
      */
+    case 'killAll': {
+      // The factory kill switch. Off: every machine that is running is switched
+      // off and remembered. On: exactly those come back; anything you had already
+      // switched off by hand stays off.
+      if (!rankOf(f.done, 'killswitch')) return no('Research the Kill Switch first');
+      if (!f.killed) {
+        let n = 0;
+        for (const i of f.cells) {
+          const mm = f.grid[i];
+          if (!mm || mm.off) continue;
+          mm.off = 1; mm.kOff = 1; mm.blocked = 0; mm.blockT = 0; mm.waitT = 0;
+          n++;
+        }
+        f.killed = 1;
+        f.dirty = true;
+        f.fx.push({ k: 'killOff', n });
+        return yes(`Factory shut down — ${n} machine${n === 1 ? '' : 's'} off`);
+      }
+      let n = 0;
+      for (const i of f.cells) {
+        const mm = f.grid[i];
+        if (mm?.kOff) { mm.off = 0; mm.kOff = 0; n++; }
+      }
+      f.killed = 0;
+      f.dirty = true;
+      f.fx.push({ k: 'killOn', n });
+      return yes(`Factory back on — ${n} machine${n === 1 ? '' : 's'} running`);
+    }
+
     case 'off': {
       if (!m) return no('Nothing there');
       m.off = m.off ? 0 : 1;
-      m.nsOff = 0;          // a hand on the switch beats the Night Switch until dawn
+      m.nsOff = 0;
+      m.kOff = 0;           // and beats the kill switch: it stays as you set it          // a hand on the switch beats the Night Switch until dawn
       m.blocked = 0; m.blockT = 0; m.waitT = 0;
       f.fx.push({ k: m.off ? 'switchoff' : 'switchon', cell: a.i });
       return yes(m.off ? 'Switched off' : 'Switched on');

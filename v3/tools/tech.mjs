@@ -59,7 +59,7 @@ console.log('\nEvery card can be written');
   ok(M.unlockSpeed('drill', r('surveying', 5)) > 1.39, 'Surveying ranks II–V really speed up Mountain Drills');
   ok(M.maxHp({ kind: 'wall', level: 1 }, r('walls', 5)) === M.maxHp({ kind: 'wall', level: 1 }, r('walls', 1)) * 2, 'Walls ranks II–V really add hit points');
   ok(M.batteryCap({ kind: 'battery', level: 1 }, r('batteries', 5)) > M.batteryCap({ kind: 'battery', level: 1 }, r('batteries', 1)) * 1.59, 'Batteries ranks II–V really add capacity');
-  ok(TECH.every(t => !t.flat || /Generators|Balancers|Sorters|Fusers|Mutator|Overflow Splitters|Solar Panels|Walls|Batteries|Night Shift/.test(t.name)),
+  ok(TECH.every(t => !t.flat || /Generators|Balancers|Sorters|Fusers|Mutator|Overflow Splitters|Solar Panels|Walls|Batteries|Night Shift|Kill Switch/.test(t.name)),
     'every starter node is named after the machine it unlocks');
 }
 

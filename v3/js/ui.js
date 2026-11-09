@@ -2501,6 +2501,7 @@ Two originals make an original.</td><td class="k">${KINDS.fuse.cycle}s</td></tr>
 <tr><td>Q</td><td class="k">Pipette — copy whatever is under the cursor into your hand</td></tr>
 <tr><td>M</td><td class="k">Pick a machine up and move it, for free</td></tr>
 <tr><td>O</td><td class="k">Switch a machine off, or back on</td></tr>
+<tr><td>P</td><td class="k">Kill switch — every machine off at once, or back on (once researched)</td></tr>
 <tr><td>Z / B</td><td class="k">Pick up a Zapper / an Armory to build</td></tr>
 <tr><td>G / N</td><td class="k">Pick up a Mountain Drill / a Bridge to build</td></tr>
 <tr><td>Shift drag</td><td class="k">Select every machine in a box</td></tr>

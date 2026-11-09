@@ -354,18 +354,18 @@ h1 span { color: var(--gold); }
   position: absolute; left: 12px; bottom: calc(var(--shop) + 12px); z-index: 5;
   width: 200px; height: 46px; padding: 5px 7px;
   display: flex; align-items: center; gap: 6px;
-  background: #c9cede; border: 2px solid #0c0e18;
-  box-shadow: inset 2px 2px 0 #f0f2f8, inset -2px -2px 0 #8b90a4, 0 3px 0 rgba(0, 0, 0, 0.5);
+  background: rgba(21, 25, 41, 0.95); border: 2px solid var(--line);
+  box-shadow: inset 2px 2px 0 #262c42, inset -2px -2px 0 #0e1220, 0 3px 0 rgba(0, 0, 0, 0.5);
 }
-#btn-kill:hover:not(:disabled) { background: #d6dae8; border-color: #0c0e18; }
+#btn-kill:hover:not(:disabled) { background: #1d2238; border-color: #46507a; }
 #btn-kill:active:not(:disabled) { transform: none; }
 #btn-kill .kb-screw {
-  flex: 0 0 auto; width: 6px; height: 6px; background: #8b90a4; border: 1px solid #5d6275;
-  box-shadow: inset 1px 1px 0 #f0f2f8;
+  flex: 0 0 auto; width: 6px; height: 6px; background: #3a4260; border: 1px solid #0c0e18;
+  box-shadow: inset 1px 1px 0 #5d668a;
 }
 #btn-kill .kb-rocker {
   flex: 1 1 auto; height: 100%; display: flex;
-  background: #0c0e18; border: 2px solid #0c0e18; gap: 2px;
+  background: #05070d; border: 2px solid #05070d; gap: 2px;
 }
 #btn-kill .kb-half {
   flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -373,19 +373,19 @@ h1 span { color: var(--gold); }
 }
 #btn-kill .kb-half i { display: block; width: 6px; height: 6px; }
 /* pressed in: flat, dark, sunk */
-#btn-kill .kb-half { background: #4a4f62; color: #8b90a4; box-shadow: inset 2px 2px 0 #2a2e3c; }
-#btn-kill .kb-half i { background: #2a2e3c; }
+#btn-kill .kb-half { background: #0e1220; color: var(--dimmer); box-shadow: inset 2px 2px 0 #05070d; }
+#btn-kill .kb-half i { background: #262c42; }
 /* standing proud: lit from above, a thick shadow under it */
-#btn-kill .kb-off { background: #eef0f6; color: #5d6275; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -4px 0 #a9aec0; }
-#btn-kill .kb-on i { background: #a7f070; box-shadow: 0 0 0 1px #2a4a1a; }
+#btn-kill .kb-off { background: #2e3651; color: var(--dim); box-shadow: inset 2px 2px 0 #46507a, inset -2px -4px 0 #1c2133; }
+#btn-kill .kb-on i { background: #a7f070; box-shadow: 0 0 0 1px #2a4a1a, 0 0 6px rgba(167, 240, 112, 0.6); }
 #btn-kill .kb-on { color: #a7f070; }
 /* thrown to OFF: the other way about, and red */
-#btn-kill.down .kb-on { background: #eef0f6; color: #5d6275; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -4px 0 #a9aec0; }
-#btn-kill.down .kb-on i { background: #c9cede; box-shadow: none; }
-#btn-kill.down .kb-off { background: #4a1418; color: #ff9a8a; box-shadow: inset 2px 2px 0 #2a0a0c; }
-#btn-kill.down .kb-off i { background: #ff3b30; box-shadow: 0 0 0 1px #5a0c08; }
+#btn-kill.down .kb-on { background: #2e3651; color: var(--dim); box-shadow: inset 2px 2px 0 #46507a, inset -2px -4px 0 #1c2133; }
+#btn-kill.down .kb-on i { background: #46507a; box-shadow: none; }
+#btn-kill.down .kb-off { background: #2a0e12; color: #ff9a8a; box-shadow: inset 2px 2px 0 #12050a; }
+#btn-kill.down .kb-off i { background: #ff3b30; box-shadow: 0 0 0 1px #5a0c08, 0 0 6px rgba(255, 59, 48, 0.7); }
 #btn-kill.down { border-color: #ff3b30; animation: killpulse 1.2s steps(2) infinite; }
-@keyframes killpulse { 50% { border-color: #0c0e18; } }
+@keyframes killpulse { 50% { border-color: var(--line); } }
 
 /* the pop-up -------------------------------------------------------------- */
 

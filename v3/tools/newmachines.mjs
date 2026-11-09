@@ -148,6 +148,24 @@ console.log('\nKill switch');
   ok(at(f, 13, 10).off, 'and one you had switched off yourself stays off');
 }
 
+console.log('\nBuilding one Mutator rung over another');
+{
+  const f = bench();
+  f.cash = 100000;
+  build(f, { kind: 'mut', mut: 1 }, cellOf(20, 20), { dir: 0 });
+  const cash = f.cash;
+  const r = build(f, { kind: 'mut', mut: 2 }, cellOf(20, 20), { dir: 0 });
+  ok(r.ok && at(f, 20, 20)?.mut === 2, 'an Amber Mutator goes down over a Copper one');
+  ok(f.cash < cash, `and is paid for (spent $${cash - f.cash})`);
+  ok(f.crate.some(m => m.kind === 'mut' && m.mut === 1), 'and the Copper one goes to the crate');
+  const c2 = f.cash;
+  build(f, { kind: 'mut', mut: 2 }, cellOf(20, 20), { dir: 1 });
+  ok(f.cash === c2 && at(f, 20, 20)?.mut === 2 && f.crate.length === 1, 'the same rung over itself only turns it, free');
+  build(f, { kind: 'asm', mut: 0 }, cellOf(30, 30), { dir: 0 });
+  build(f, { kind: 'asm', mut: 1 }, cellOf(30, 30), { dir: 0 });
+  ok(f.crate.some(m => m.kind === 'asm' && m.mut === 0), 'an Assembler of another recipe likewise crates the old one');
+}
+
 console.log('\nSolar Panel');
 {
   const f = bench();

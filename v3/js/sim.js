@@ -1198,7 +1198,7 @@ export function replaceMode(f, spec, i, dir = null) {
   const cells = footprint(spec.kind, i, d) || [i];
   const here = occupants(f, cells);
   if (!here.length) return 'new';
-  if (here.length === 1 && here[0].kind === spec.kind && here[0].at === i) return 'reaim';
+  if (here.length === 1 && sameMachine(here[0], spec) && here[0].at === i) return 'reaim';
   return 'replace';
 }
 
@@ -1211,9 +1211,19 @@ export function replaceMode(f, spec, i, dir = null) {
  * @param {number} i slot
  * @param {object} opt { free: skip payment, dir: force a facing }
  */
+/**
+ * Is `spec` the same machine as `m`, so that building it there only turns it?
+ * A Mutator's rung and an Assembler's recipe are different machines at different
+ * prices: building a Copper Mutator over an Amber one buys the new one and crates
+ * the old, rather than retuning it for free. (A Sorter's filter is a setting, so
+ * that one does just retune.)
+ */
+const sameMachine = (m, spec) => m.kind === spec.kind
+  && ((m.kind !== 'mut' && m.kind !== 'asm') || spec.mut == null || (m.mut ?? 0) === spec.mut);
+
 export function build(f, spec, i, opt = {}) {
   // Same kind already anchored here: this is a re-aim, and is checked as one below.
-  const same = !!f.grid[i] && f.grid[i].kind === spec.kind && f.grid[i].at === i;
+  const same = !!f.grid[i] && sameMachine(f.grid[i], spec) && f.grid[i].at === i;
   const long = sizeKind(spec.kind) === 'long';
   const dir0 = long ? placementDir(f, spec, i, opt.dir ?? (same ? f.grid[i].dir : null)) : opt.dir;
   if (!same) {

@@ -1436,7 +1436,7 @@ export class Panel {
       add(`REPAIR ${money(rc)} <span class="k">H</span>`, () => this.act('repair', cell), true, f.cash < rc);
       const all = damaged(f);
       if (all.cells.length > 1) {
-        add(`REPAIR ALL ${all.cells.length}  ${money(all.cost)} <span class="k">⇧H</span>`,
+        add(`FIX ALL ${all.cells.length}  ${money(all.cost)} <span class="k">⇧H</span>`,
           () => this.act('repairAll'), true, f.cash < 1);
       }
     }

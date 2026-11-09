@@ -142,6 +142,10 @@
         <div class="ch"><span class="lbl">STATS</span><span class="val dimval">income · science · noise</span><span class="car"></span></div>
         <div class="cb tab-body" id="tab-stats"></div>
       </div>
+      <div class="fcard side" data-side="info" id="info-card" hidden>
+        <div class="ch"><span class="lbl">INFO</span><span class="val dimval" id="info-name"></span><span class="car"></span></div>
+        <div class="cb tab-body" id="tab-info"></div>
+      </div>
     </div>
 
     <!-- top centre: the one warning that matters, Gus, and the toasts -->
@@ -164,11 +168,6 @@
     </div>
     <div id="toasts"></div>
 
-    <!-- the pop-up over whatever is selected -->
-    <div id="pop" class="compact" hidden>
-      <div id="tab-info"></div>
-      <button id="pop-more" class="pop-more">MORE &#9662;</button>
-    </div>
 
     <!-- bottom left: the factory kill switch, once it is researched -->
     <button id="btn-kill" hidden role="switch" aria-checked="true" aria-label="Kill switch"

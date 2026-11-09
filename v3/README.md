@@ -309,10 +309,12 @@ the right — with a crowded HUD bar over the map. Now the map fills the window:
 - **The shop** runs along the bottom: category tabs, one row of machines, and a
   CRATE tab when the crate has anything in it. Picking a machine by its hotkey opens
   its tab. The hint for whatever is in your hand sits at the right end of the row.
-- **The pop-up:** clicking a machine, a slot or a box selection opens a card over it
-  (or beside it when there is no room) instead of the old INFO tab. It starts
-  compact — name, numbers and buttons — and MORE adds the description and recipe
-  picture. A machine in your hand gets the same card, docked above the shop.
+- **The Info card:** clicking a machine, a slot or a box selection opens an INFO card
+  at the bottom of the right-hand column, under Stats (one card open at a time, as
+  with Tech, Orders and Stats; it closes itself when nothing is selected). It never
+  scrolls: the long description and recipe picture are left out, the buttons sit in
+  an even grid of two, and if it is still too tall the least useful rows are hidden
+  (`fitInfo` in main.js) — health, status and the buttons always stay.
 
 The warning box, Gus and the toasts sit at the top centre. Which cards are open,
 and whether the pop-up is on MORE, is remembered in this browser.

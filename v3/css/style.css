@@ -387,36 +387,29 @@ h1 span { color: var(--gold); }
 #btn-kill.down { border-color: #ff3b30; animation: killpulse 1.2s steps(2) infinite; }
 @keyframes killpulse { 50% { border-color: var(--line); } }
 
-/* the pop-up -------------------------------------------------------------- */
+/* the info card ---------------------------------------------------------- */
 
 /*
- * What you clicked on, in a card that floats over it. Compact by default — the
- * name, the numbers that matter and the buttons — with MORE for the long version.
+ * What you clicked on, in the right-hand column under Stats. It opens by itself
+ * when you select something, and is laid out to fit without scrolling: the long
+ * description and the recipe picture are left out, rows and buttons are tight,
+ * and the buttons sit in an even grid of two.
  */
-#pop {
-  position: absolute; left: 0; top: 0;
-  width: 316px; max-height: calc(100% - var(--top) - var(--shop) - 24px);
-  background: rgba(21, 25, 41, 0.97);
-  border: 2px solid var(--gold);
-  display: flex; flex-direction: column;
-  z-index: 6;
+#rightcards #tab-info { overflow: hidden; padding: 8px 10px 10px; }
+#tab-info .more-only, #tab-info .blank { display: none; }
+#tab-info h3 { font-size: 13px; margin: 0 0 2px; }
+#tab-info .sub { font-size: 10px; margin: 0 0 6px; }
+#tab-info canvas { width: 28px !important; height: 28px !important; }
+#tab-info .rows { margin-bottom: 8px; }
+#tab-info .row { padding: 3px 7px; font-size: 10px; }
+#tab-info .acts { grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 0; }
+#tab-info .acts button, #tab-info .acts button.full {
+  grid-column: auto; font-size: 10px; padding: 6px 4px; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-#pop #tab-info { padding: 10px 12px 6px; overflow-y: auto; min-height: 0; }
-#pop.compact .more-only { display: none; }
-#pop .pop-more {
-  flex: 0 0 auto; width: 100%; border: 0; border-top: 1px solid var(--line);
-  background: transparent; color: var(--dim); font-size: 10px; letter-spacing: 0.14em; padding: 5px;
-}
-#pop .pop-more:hover { color: var(--text); background: #1d2238; }
-#pop.nomore .pop-more { display: none; }
-#pop::after {
-  content: ''; position: absolute; left: var(--ax, 50%); margin-left: -9px;
-  border: 9px solid transparent;
-}
-#pop.above::after { bottom: -11px; border-top-color: var(--gold); border-bottom: 0; }
-#pop.below::after { top: -11px; border-bottom-color: var(--gold); border-top: 0; }
-#pop.docked::after { display: none; }
-#pop .acts { margin-bottom: 4px; }
+#tab-info .acts button:last-child:nth-child(odd) { grid-column: 1 / -1; }
+#tab-info .body { font-size: 10px; margin: 0 0 6px; line-height: 1.5; }
+#tab-info > div > div[style*="margin-bottom:8px"] { margin-bottom: 6px !important; }
 
 /* toasts, hints, alerts --------------------------------------------------- */
 

@@ -469,6 +469,78 @@ export function ageToasts(g, dt) {
  * few seconds of production and saves a great deal of complexity, and no factory
  * game has ever been ruined by that.
  */
+/**
+ * A run-length string for a typed array of small integers: "v*n,v*n,...". The
+ * ground of a world is mostly long runs of the same thing, so 6,400 slots come
+ * to a few hundred characters.
+ */
+function rle(arr) {
+  const out = [];
+  for (let i = 0; i < arr.length;) {
+    let j = i + 1;
+    while (j < arr.length && arr[j] === arr[i]) j++;
+    out.push(j - i > 1 ? `${arr[i]}*${j - i}` : `${arr[i]}`);
+    i = j;
+  }
+  return out.join(',');
+}
+function unrle(str, into) {
+  let i = 0;
+  for (const part of String(str).split(',')) {
+    if (part === '') continue;
+    const [v, n] = part.split('*');
+    const val = +v, count = n ? +n : 1;
+    for (let k = 0; k < count && i < into.length; k++) into[i++] = val;
+  }
+  return i === into.length;
+}
+
+/**
+ * The world itself, exactly as it stands: ground, ore, richness, mountains, and
+ * where the Beacon and the opening are. Saves used to keep only the seed and
+ * rebuild the world from it — which quietly gave every old save a different world
+ * whenever the generator changed (mountains moved, valleys reshaped, ore gone).
+ * A save now carries its own world, and the seed is only a fallback.
+ */
+function snapshotWorld(f) {
+  const rich = [];
+  for (let i = 0; i < f.rich.length; i++) if (f.rich[i]) rich.push(i, Math.round(f.rich[i] * 100));
+  return {
+    v: 1,
+    terrain: rle(f.terrain),
+    patch: rle(f.patch),
+    rich,
+    mtn: rle(f.mtn || []),
+    mountains: (f.mountains || []).map(m => [m.id, m.ty, m.amount]),
+    beacon: f.world?.beacon ? [f.world.beacon.x0, f.world.beacon.y0] : null,
+    start: f.world?.start || null,
+    maxClaim: f.world?.maxClaim || 0,
+  };
+}
+
+function restoreWorld(f, w) {
+  if (!w || w.v !== 1) return false;
+  const n = f.terrain.length;
+  const terrain = new Uint8Array(n), patch = new Int8Array(n), mtn = new Int16Array(n), rich = new Float32Array(n);
+  if (!unrle(w.terrain, terrain) || !unrle(w.patch, patch) || !unrle(w.mtn, mtn)) return false;
+  for (let k = 0; k + 1 < (w.rich || []).length; k += 2) if (w.rich[k] < n) rich[w.rich[k]] = w.rich[k + 1] / 100;
+  f.terrain.set(terrain); f.patch.set(patch); f.rich.set(rich); f.mtn = mtn;
+  const cellsOf = new Map();
+  for (let i = 0; i < n; i++) if (mtn[i] >= 0) { if (!cellsOf.has(mtn[i])) cellsOf.set(mtn[i], []); cellsOf.get(mtn[i]).push(i); }
+  f.mountains = (w.mountains || []).map(([id, ty, amount]) => ({ id, ty, amount, left: amount, cells: cellsOf.get(id) || [] }));
+  // The world the factory stands on is this one now, for everything that asks it:
+  // where new nests may dig in, the Beacon, the fence limit, the opening.
+  if (f.world) {
+    f.world.terrain = terrain.slice(); f.world.patch = patch.slice(); f.world.rich = rich.slice();
+    f.world.mtn = mtn.slice(); f.world.mountains = f.mountains.map(m => ({ ...m, cells: m.cells.slice() }));
+    if (w.beacon) f.world.beacon = { ...(f.world.beacon || {}), x0: w.beacon[0], y0: w.beacon[1] };
+    if (w.start) f.world.start = w.start;
+    if (w.maxClaim) f.world.maxClaim = w.maxClaim;
+  }
+  if (f.beacon && w.beacon) { f.beacon.x0 = w.beacon[0]; f.beacon.y0 = w.beacon[1]; }
+  return true;
+}
+
 export function serialise(g) {
   const f = g.f;
   const machines = [];
@@ -509,6 +581,7 @@ export function serialise(g) {
     } : null,
     ground,
     mtn,
+    world: snapshotWorld(f),
     beacon: f.beacon ? {
       got: f.beacon.got, hp: Math.round(f.beacon.hp), loss: f.beacon.loss,
       fedAgo: Math.min(1e6, Math.round(f.t - f.beacon.fedAt)), assaults: f.beacon.assaults,
@@ -545,8 +618,13 @@ export function deserialise(data) {
   f.mean = data.story ? (storyLevel(data.story.level).mean || 0) : 0;
   f.dayNight = data.story ? data.story.level >= DAYNIGHT_FROM : true;
   f.claim = Math.max(CLAIM_START, Math.min(WORLD, data.claim || CLAIM_START));
-  for (const i of data.cleared || []) f.terrain[i] = OPEN;        // saves before mountains
-  for (const [i, t] of data.ground || []) if (i >= 0 && i < f.terrain.length) f.terrain[i] = t;
+  // A save that carries its own world gets exactly that world back. Older ones
+  // only have a seed, so theirs is rebuilt from it and the changes laid on top.
+  const snap = restoreWorld(f, data.world);
+  if (!snap) {
+    for (const i of data.cleared || []) f.terrain[i] = OPEN;        // saves before mountains
+    for (const [i, t] of data.ground || []) if (i >= 0 && i < f.terrain.length) f.terrain[i] = t;
+  }
   if (data.beacon && f.beacon) {
     const s = data.beacon;
     for (const ty of Object.keys(f.beacon.got)) f.beacon.got[ty] = s.got?.[ty] || 0;
@@ -558,7 +636,7 @@ export function deserialise(data) {
     f.beacon.doneAt = s.doneAt || 0;
   }
   for (const [id, left] of data.mtn || []) {
-    const mt = f.mountains[id];
+    const mt = f.mountains.find(m => m.id === id) || f.mountains[id];
     if (!mt) continue;
     mt.left = left;
     if (left <= 0) for (const c of mt.cells) f.mtn[c] = -1;

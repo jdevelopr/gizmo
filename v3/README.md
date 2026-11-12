@@ -749,9 +749,12 @@ because magnifying a rasterised 8-pixel font is what makes pixel UI look soft.
 
 A thirty-minute party game does not need a save file. A desktop factory is a
 two-hour object and closing the tab must not cost it, so the game autosaves every
-twenty seconds and on the way out. The world is not stored — it is a pure function
-of its seed — so a save is the seed, the handful of slots you have cleared, and the
-machines. Gizmos in flight are deliberately not saved: reloading empties the belts,
+twenty seconds and on the way out. A save carries its own world — the ground, ore,
+richness, mountains and where the Beacon stands, run-length packed to about 8 KB —
+because a world rebuilt from its seed is only the same world while the generator is
+unchanged, and every tweak to it used to hand old saves a different map (mountains
+gone to rubble, valleys moved). Saves from before that are still rebuilt from their
+seed. Then the machines. Gizmos in flight are deliberately not saved: reloading empties the belts,
 which costs a few seconds of production and saves a great deal of complexity.
 
 ### Mites, Zappers and the Armory

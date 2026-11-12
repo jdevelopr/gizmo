@@ -153,5 +153,30 @@ console.log('\nEndless worlds');
   ok(L8.goals.every(g => g.k === 'cash' || TYPES[g.ty]), 'every goal names a real gizmo');
 }
 
+console.log('\nA save keeps its own world');
+{
+  const { createGame, stepGame: step } = await import('../js/game.js');
+  for (const [name, make] of [['endless', () => createGame({ seed: 4242, teach: false })], ['story', () => createStoryGame(6, { seed: 4343 })], ['endless story', () => createStoryGame(10, { seed: 4444 })]]) {
+    const g = make();
+    for (let i = 0; i < 60; i++) step(g, 1 / 30);
+    const data = JSON.parse(JSON.stringify(serialise(g)));
+    // Pretend the world generator has changed since: the same seed now makes another world.
+    data.seed = data.seed + 1;
+    const back = deserialise(data);
+    let dt = 0, dp = 0, dm = 0;
+    for (let i = 0; i < g.f.terrain.length; i++) {
+      if (g.f.terrain[i] !== back.f.terrain[i]) dt++;
+      if (g.f.patch[i] !== back.f.patch[i]) dp++;
+      if (g.f.mtn[i] !== back.f.mtn[i]) dm++;
+    }
+    ok(!dt && !dp && !dm && back.f.mountains.length === g.f.mountains.length,
+      `${name}: mountains, valleys and ore come back exactly as saved, even if the generator changes (${dt}/${dp}/${dm} slots differ)`);
+    ok(!g.f.beacon || (back.f.beacon.x0 === g.f.beacon.x0 && back.f.beacon.y0 === g.f.beacon.y0), `${name}: and the Beacon stays put`);
+  }
+  const old = JSON.parse(JSON.stringify(serialise(createStoryGame(3, { seed: 99 }))));
+  delete old.world;
+  ok(!!deserialise(old), 'a save from before still loads (rebuilt from its seed)');
+}
+
 console.log(fails ? `\n${fails} FAILED\n` : '\nEight worlds, then endless ones, one tech tree, and every contract can be met.\n');
 process.exit(fails ? 1 : 0);
